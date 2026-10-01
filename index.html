@@ -11615,9 +11615,12 @@ function renderChatMessages() {
       } else {
         media = `<button class="chat-pill" style="margin-bottom:4px;" onclick="loadChatMedia('${escapeJsString(m.id)}','${m.type}')">${loaded && loaded.loading ? 'Carregando...' : (CHAT_MEDIA_LABELS[m.type] + (m.fileName ? ' · ' + escapeHtml(m.fileName) : '') + ' · ver')}</button>${loaded && loaded.error ? `<div style="font-size:11px;color:var(--red);">${escapeHtml(loaded.error)}</div>` : ''}<br>`;
       }
+    } else if (m.type === 'contact' && Array.isArray(m.contacts) && m.contacts.length) {
+      media = m.contacts.map(c => chatContactCardHtml(c)).join('');
     } else if (m.type !== 'text' && CHAT_MEDIA_LABELS[m.type]) {
       media = `<span style="color:var(--muted2);">${CHAT_MEDIA_LABELS[m.type]}</span>${m.text ? '<br>' : ''}`;
     }
+    const bodyText = m.type === 'contact' && Array.isArray(m.contacts) && m.contacts.length ? '' : (m.text || '');
     const who = m.fromMe ? [m.source, m.sentBy].filter(Boolean).join(' · ') : '';
     const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     if (m.deleted) {
@@ -11630,7 +11633,7 @@ function renderChatMessages() {
     const canEdit = !cloudChat && m.fromMe && (m.type || 'text') === 'text' && age < 15 * 60000 && !/^(crm|sch)\d/.test(m.id);
     const canDel = !cloudChat && m.fromMe && age < 2 * 86400000 && !/^(crm|sch)\d/.test(m.id);
     const menu = canEdit || canDel ? `<button class="chat-msg-more" title="Editar ou apagar" onclick="openChatMsgMenu(event, '${escapeJsString(m.id)}', ${canEdit}, ${canDel})">⋯</button>` : '';
-    parts.push(`<div class="chat-bubble ${m.fromMe ? 'out' : 'in'}">${menu}${media}${escapeHtml(m.text || '')}${m.failed ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">⚠️ Não entregue: ${escapeHtml(m.error || '')}</div>` : ''}<div class="chat-meta">${who ? escapeHtml(who) + ' · ' : ''}${m.edited ? 'editada · ' : ''}${time}</div></div>`);
+    parts.push(`<div class="chat-bubble ${m.fromMe ? 'out' : 'in'}">${menu}${media}${escapeHtml(bodyText)}${m.failed ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">⚠️ Não entregue: ${escapeHtml(m.error || '')}</div>` : ''}<div class="chat-meta">${who ? escapeHtml(who) + ' · ' : ''}${m.edited ? 'editada · ' : ''}${time}</div></div>`);
   });
   pendingSched.forEach(s => {
     const when = new Date(s.sendAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -11641,6 +11644,23 @@ function renderChatMessages() {
   box.innerHTML = parts.join('');
   box.dataset.loaded = '1';
   if (nearBottom) box.scrollTop = box.scrollHeight;
+}
+
+// Contato compartilhado pelo lead: cartão com o número, que abre a conversa no CRM ou no WhatsApp.
+function chatContactCardHtml(c) {
+  const phone = String(c.phone || '').replace(/\D/g, '');
+  const name = c.name || 'Contato';
+  return `<div style="border:1px solid var(--border2);border-radius:10px;padding:8px 10px;margin-bottom:6px;min-width:210px;">
+    <div style="font-weight:700;">👤 ${escapeHtml(name)}</div>
+    <div style="font-size:12px;color:var(--muted2);">${escapeHtml(chatFormatPhone(phone) || 'sem número')}</div>
+    ${phone ? `<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+      <button class="chat-pill" onclick="chatContactOpen('${phone}','${escapeJsString(name)}')">Abrir conversa</button>
+      <a class="chat-pill" href="https://wa.me/${phone}" target="_blank" rel="noopener" style="text-decoration:none;">WhatsApp</a>
+    </div>` : ''}
+  </div>`;
+}
+function chatContactOpen(phone, name) {
+  openChatWith({ act: chatAct(), phone, name, line: waLineOfKey(_chatOpenKey) });
 }
 
 // Menu da mensagem enviada: Editar / Apagar para todos.
