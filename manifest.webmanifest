@@ -1,0 +1,25 @@
+{
+  "name": "Huven CRM",
+  "short_name": "Huven",
+  "description": "CRM de leads da Huven",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#080810",
+  "theme_color": "#080810",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "huven-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "huven-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
