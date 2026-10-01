@@ -15354,16 +15354,21 @@ function renderAnaliseResult(d) {
   _an.charts = [];
   const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '—';
   const n = v => Number(v || 0).toLocaleString('pt-BR');
+  // Os tempos do cartão "1º contato" só contam quem foi respondido. Aqui entra também quem ainda espera (conta o tempo de espera até agora).
+  const withChat = d.leads.filter(r => r.hasChat);
+  const allTimes = withChat.map(r => r.dur != null ? r.dur : r.waiting).filter(v => v != null);
+  const oldestWait = Math.max(0, ...withChat.filter(r => r.dur == null).map(r => r.waiting || 0));
   const worst = d.leads.filter(r => r.hasChat).sort((a, b) => (b.dur == null ? b.waiting + 1e15 : b.dur) - (a.dur == null ? a.waiting + 1e15 : a.dur));
   out.innerHTML = `
     ${d.cfg.biz ? `<div class="integ-muted" style="margin-bottom:10px;font-size:12px;">Tempos contados só no expediente: ${escapeHtml(d.cfg.bizStart)} às ${escapeHtml(d.cfg.bizEnd)}, segunda a ${d.cfg.bizSat ? 'sábado' : 'sexta'}.</div>` : ''}
     <div class="an-section-title">Primeiro contato com o lead</div>
     <div class="an-kpis">
       ${anKpi('Leads que chegaram', n(d.totalLeads), `${n(d.noChat)} sem conversa no WhatsApp do CRM`)}
-      ${anKpi('Tempo até o 1º contato', anFmt(d.firstMedian), `mediana · média ${anFmt(d.firstAvg)}`, 'gold')}
+      ${anKpi('Tempo até o 1º contato', anFmt(d.firstMedian), `mediana · média ${anFmt(d.firstAvg)} · só de quem foi respondido`, 'gold')}
       ${anKpi('Respondidos em até 5 min', pct(d.within5, d.answered), `${n(d.within5)} de ${n(d.answered)} respondidos`, d.answered && d.within5 / d.answered >= 0.5 ? 'green' : '')}
       ${anKpi('Em até 1 hora', pct(d.within60, d.answered), `${n(d.within60)} ${d.within60 === 1 ? 'lead' : 'leads'}`)}
-      ${anKpi('Ainda sem contato humano', n(d.noContact), 'têm conversa, mas ninguém da equipe respondeu', d.noContact ? 'red' : '')}
+      ${anKpi('Sem resposta da equipe', n(d.noContact), d.noContact ? `${pct(d.noContact, withChat.length)} dos ${n(withChat.length)} leads com conversa · o mais antigo espera há ${anFmt(oldestWait)}` : 'todos os leads com conversa foram respondidos', d.noContact ? 'red' : 'green')}
+      ${anKpi('Tempo incluindo quem espera', anFmt(anMedian(allTimes)), `mediana · média ${anFmt(anAvg(allTimes))} · conta quem ainda não foi respondido`, d.noContact ? 'red' : 'gold')}
       ${d.autoMedian != null ? anKpi('1ª mensagem automática', anFmt(d.autoMedian), 'mediana depois da chegada') : ''}
     </div>
     <div class="an-grid">
