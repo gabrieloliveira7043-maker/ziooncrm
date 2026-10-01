@@ -9579,12 +9579,119 @@ async function renderAutomacoesView() {
           </div>
           <div class="huv-actions">
             <button class="huv-btn primary" onclick="openFlowEditor('${id}')">Abrir editor</button>
+            <button class="huv-btn" onclick="openFlowProgress('${id}')">Andamento</button>
             <button class="huv-btn" onclick="duplicateFlow('${id}')">Duplicar</button>
             <button class="huv-btn" style="margin-left:auto;color:var(--red);border-color:var(--red);" onclick="deleteFlowConfirm('${id}')">Excluir</button>
           </div>
         </article>`;
       }).join('') : '<div class="integ-empty" style="grid-column:1/-1;">Nenhuma automação ainda. Clique em "+ Nova automação" para montar o primeiro fluxo.</div>'}
     </div>`;
+}
+
+// ===== ANDAMENTO DA AUTOMAÇÃO (quantos receberam cada mensagem, quantos responderam, o que falta) =====
+// Cada lead guarda em automation: status, nodeId (bloco atual), sent (blocos de mensagem já enviados), nextAt e waiting.
+// Leads de antes dessa função não têm "sent": o passo em que estão é usado para estimar (marcado como estimado).
+function flowChain(f) {
+  const nodes = Array.isArray(f.nodes) ? f.nodes : [];
+  const byId = Object.fromEntries(nodes.map(n => [n.id, n]));
+  const start = nodes.find(n => n.type === 'trigger');
+  const order = [];
+  const seen = new Set();
+  const queue = start ? [start.id] : [];
+  while (queue.length) {
+    const id = queue.shift();
+    if (seen.has(id) || !byId[id]) continue;
+    seen.add(id);
+    order.push(byId[id]);
+    (f.edges || []).filter(e => e.from === id).forEach(e => queue.push(e.to));
+  }
+  return order;
+}
+
+function flowProgressStats(f, leadsAll) {
+  const chain = flowChain(f);
+  const idx = Object.fromEntries(chain.map((n, i) => [n.id, i]));
+  const msgNodes = chain.filter(n => n.type === 'message');
+  const states = leadsAll.filter(l => l.automation && l.automation.id === f.id);
+  const st = { entered: states.length, running: 0, done: 0, replied: 0, stopped: 0, stoppedWhy: {}, waitingWhy: {}, nextAt: '', estimated: false, remaining: 0 };
+  const perNode = Object.fromEntries(chain.map(n => [n.id, { sent: 0, here: 0, repliedAfter: 0 }]));
+  states.forEach(l => {
+    const a = l.automation;
+    if (a.status === 'running') st.running++;
+    else if (a.status === 'done') st.done++;
+    else if (a.status === 'replied') st.replied++;
+    else { st.stopped++; const why = a.reason || 'Sem motivo registrado'; st.stoppedWhy[why] = (st.stoppedWhy[why] || 0) + 1; }
+    let sent;
+    if (Array.isArray(a.sent)) sent = a.sent.filter(id => perNode[id]);
+    else {
+      st.estimated = true;
+      const cur = idx[a.nodeId];
+      sent = msgNodes.filter(n => a.status === 'done' ? true : (cur !== undefined && idx[n.id] < cur)).map(n => n.id);
+    }
+    sent.forEach(id => { perNode[id].sent++; });
+    if (a.status === 'replied' && sent.length) perNode[sent[sent.length - 1]].repliedAfter++;
+    if (a.status === 'running') {
+      if (perNode[a.nodeId]) perNode[a.nodeId].here++;
+      st.remaining += Math.max(0, msgNodes.length - sent.length);
+      if (a.waiting) st.waitingWhy[a.waiting] = (st.waitingWhy[a.waiting] || 0) + 1;
+      if (a.nextAt && (!st.nextAt || a.nextAt < st.nextAt)) st.nextAt = a.nextAt;
+    }
+  });
+  return { st, chain, perNode, msgCount: msgNodes.length };
+}
+
+function openFlowProgress(id) {
+  const f = _flowList.find(x => x.id === id);
+  if (!f) return;
+  const act = flowAct();
+  const leadsAll = getLeads().filter(l => !act || leadMatchesClient(l, act));
+  if (!Array.isArray(f.nodes)) {
+    const states = leadsAll.filter(l => l.automation && l.automation.id === f.id);
+    const c = s => states.filter(l => l.automation.status === s).length;
+    openHuvenModal('Andamento: ' + (f.name || 'Automação'), `<div class="integ-muted">Esta automação usa o formato antigo de passos. Entraram ${states.length}: ${c('running')} em andamento, ${c('done')} concluídos, ${c('replied')} responderam. Abra o editor e salve para passar ao formato novo e ver o andamento por mensagem.</div>`, 520);
+    return;
+  }
+  const { st, chain, perNode, msgCount } = flowProgressStats(f, leadsAll);
+  const pct = (n, d) => d ? Math.round(n * 100 / d) + '%' : '—';
+  const card = (label, value, sub, color) => `<div style="flex:1;min-width:120px;border:1px solid var(--border);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted2);">${label}</div><div style="font-size:22px;font-weight:700;${color ? 'color:' + color + ';' : ''}">${value}</div><div style="font-size:11px;color:var(--muted2);">${sub || ''}</div></div>`;
+  let msgNo = 0;
+  const rows = chain.filter(n => n.type !== 'trigger').map(n => {
+    const p = perNode[n.id] || { sent: 0, here: 0, repliedAfter: 0 };
+    let title, detail;
+    if (n.type === 'message') {
+      msgNo++;
+      const d = n.data || {};
+      const txt = (d.templates || []).find(Boolean) || '';
+      title = 'Mensagem ' + msgNo + (d.kind && d.kind !== 'text' ? ' (' + (FLOW_MEDIA[d.kind] || d.kind) + ')' : '');
+      detail = txt ? escapeHtml(limitText(txt, 70)) : '';
+      return `<tr><td style="padding:6px 8px;"><b>${title}</b><div style="font-size:11px;color:var(--muted2);">${detail}</div></td>
+        <td style="padding:6px 8px;text-align:center;"><b>${p.sent}</b><div style="font-size:11px;color:var(--muted2);">${pct(p.sent, st.entered)} dos que entraram</div></td>
+        <td style="padding:6px 8px;text-align:center;">${p.here || '—'}</td>
+        <td style="padding:6px 8px;text-align:center;">${p.repliedAfter || '—'}</td></tr>`;
+    }
+    if (n.type === 'wait') { title = 'Esperar ' + (Number((n.data || {}).amount) || 0) + ' ' + (FLOW_UNITS[(n.data || {}).unit] || 'horas'); }
+    else if (n.type === 'move') { title = 'Mover para ' + escapeHtml(autoStageLabel(f.act, (n.data || {}).stage)); }
+    else { title = 'Respondeu? (Sim ou Não)'; }
+    return `<tr style="color:var(--muted2);"><td style="padding:4px 8px;font-size:12px;">${title}</td><td></td><td style="padding:4px 8px;text-align:center;font-size:12px;">${p.here || '—'}</td><td></td></tr>`;
+  }).join('');
+  const why = (obj) => Object.entries(obj).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<li>${v} ${escapeHtml(k)}</li>`).join('');
+  const next = st.nextAt ? new Date(st.nextAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  openHuvenModal('Andamento: ' + (f.name || 'Automação'), `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      ${card('Entraram', st.entered, f.active ? 'automação ligada' : 'automação desligada')}
+      ${card('Em andamento', st.running, st.running ? st.remaining + ' mensagem(ns) ainda por enviar' : '', 'var(--amber)')}
+      ${card('Concluíram', st.done, pct(st.done, st.entered) + ' do total', 'var(--green)')}
+      ${card('Responderam', st.replied, pct(st.replied, st.entered) + ' do total', 'var(--accent2)')}
+      ${card('Parados', st.stopped, st.stopped ? 'veja o motivo abaixo' : '', st.stopped ? 'var(--red)' : '')}
+    </div>
+    <div style="margin-top:14px;font-size:12px;color:var(--muted2);">O fluxo tem ${msgCount} mensagem(ns). ${next ? 'Próximo envio previsto: ' + next + '.' : ''}</div>
+    <div style="overflow-x:auto;margin-top:8px;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="text-align:center;color:var(--muted2);font-size:11px;"><th style="text-align:left;padding:6px 8px;">Etapa</th><th style="padding:6px 8px;">Receberam</th><th style="padding:6px 8px;">Estão aqui agora</th><th style="padding:6px 8px;">Responderam depois</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4" class="integ-muted">Fluxo sem etapas.</td></tr>'}</tbody></table></div>
+    ${Object.keys(st.waitingWhy).length ? `<div style="margin-top:12px;font-size:12px;"><b>Esperando para enviar</b><ul style="margin:4px 0 0 18px;color:var(--muted2);">${why(st.waitingWhy)}</ul></div>` : ''}
+    ${Object.keys(st.stoppedWhy).length ? `<div style="margin-top:12px;font-size:12px;"><b>Motivos dos parados</b><ul style="margin:4px 0 0 18px;color:var(--muted2);">${why(st.stoppedWhy)}</ul></div>` : ''}
+    ${st.estimated ? '<div class="integ-muted" style="margin-top:12px;font-size:11.5px;">Leads que entraram antes desta função têm o número de mensagens estimado pela etapa em que estão. Os novos são contados mensagem a mensagem.</div>' : ''}
+  `, 760);
 }
 
 async function toggleFlow(id, on) {
