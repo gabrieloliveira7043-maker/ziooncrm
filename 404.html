@@ -13947,7 +13947,7 @@ function renderKanban() {
     header.style.cursor = 'grab';
     header.title = 'Arraste para reordenar';
     const headerLeft = document.createElement('div');
-    headerLeft.style.cssText = 'display:flex;align-items:center;gap:4px;flex:1;';
+    headerLeft.style.cssText = 'display:flex;align-items:center;gap:4px;flex:1;min-width:0;flex-wrap:wrap;';
     const titleDiv = document.createElement('div');
     titleDiv.className = 'kanban-col-title';
     titleDiv.id = 'col-title-' + stage.id;
@@ -13962,7 +13962,7 @@ function renderKanban() {
     editBtn.onmouseout = () => editBtn.style.color = 'var(--muted)';
     editBtn.addEventListener('click', (e) => { e.stopPropagation(); editStageLabel(stage.id); });
     const countSpan = document.createElement('span');
-    countSpan.className = 'kanban-col-count';
+    countSpan.className = 'kanban-col-count'; countSpan.style.flexShrink = '0';
     countSpan.textContent = stageLeads.length;
     const colTotal = stageLeads.reduce((sum, l) => {
       const v = parseFloat(String(l.valor || '').replace(/[^0-9,.]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.'));
@@ -13988,7 +13988,7 @@ function renderKanban() {
         const playBtn = document.createElement('button');
         playBtn.className = 'col-auto-btn on';
         playBtn.title = 'Começar a automação com os ' + stageLeads.length + ' lead(s) que já estão nesta coluna';
-        playBtn.innerHTML = '▶<span>Começar</span>';
+        playBtn.innerHTML = '▶'; playBtn.style.padding = '1px 8px';
         playBtn.addEventListener('click', e => { e.stopPropagation(); startColumnAutomation(stage.id, stage.label, colAuto.name, stageLeads.length); });
         headerLeft.appendChild(playBtn);
       }
