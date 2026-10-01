@@ -1,9 +1,9 @@
-const CACHE_NAME = 'zioon-v1';
+const CACHE_NAME = 'zioon-v2';
 const ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/icon.png'
+  '/zioon-192.png', '/zioon-512.png'
 ];
 
 self.addEventListener('install', event => {
