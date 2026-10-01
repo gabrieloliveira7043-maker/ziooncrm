@@ -2273,6 +2273,14 @@ td { font-family: var(--font); font-size: 13px; }
       await callAdminApi('/set-password', { login, password });
       await saveToVault(login, password);
     },
+    // Exclusão completa: o Worker apaga em rodadas (limite de pedidos do plano grátis) até terminar.
+    async deleteClientFull(login, act) {
+      for (let i = 0; i < 60; i++) {
+        const r = await callAdminApi('/admin/delete-client', { login, act });
+        if (r.done) return;
+      }
+      throw new Error('A exclusão ainda não terminou. Clique em Excluir de novo para continuar.');
+    },
     async deleteExtraClient(login) {
       const uid = await findUidByLogin(login);
       if (uid) {
@@ -3561,8 +3569,11 @@ applyDashboardMetricVisibility();
 }
 
 async function removeExtraClient(login, name) {
-  if (!await showConfirm('O cliente "' + name + '" e seu login serão removidos permanentemente.', 'Remover cliente', 'Remover')) return;
+  const act = (CREDENTIALS[login] && CREDENTIALS[login].act) || '';
+  if (!await showConfirm('O cliente "' + name + '" será excluído de vez: login, leads, funil, conversas e números de WhatsApp, campanhas, automações e páginas do Facebook ligadas. Não dá para desfazer.', 'Excluir cliente', 'Excluir', true)) return;
   try {
+    showToast('Excluindo "' + name + '"... pode levar alguns segundos.', 'info', 8000);
+    if (act) await window._fb.deleteClientFull(login, act);
     await window._fb.deleteExtraClient(login);
     delete CREDENTIALS[login];
     Object.keys(CLIENT_NAMES).forEach(act => {
@@ -3570,7 +3581,8 @@ async function removeExtraClient(login, name) {
     });
     renderSavedList();
     renderSidebar();
-  } catch(e) { alert('Erro ao remover: ' + e.message); }
+    showToast('Cliente excluído.', 'success');
+  } catch(e) { alert('Erro ao excluir: ' + e.message); }
 }
 
 function selectClient(name) {
@@ -3681,7 +3693,7 @@ async function renderSavedList() {
       extras.map(c => `
       <div class="saved-item">
         <div><div class="saved-name">${escapeHtml(c.name)}</div><div class="saved-id">${escapeHtml(getAdAccountFor(c.act) || 'sem conta de anúncios')} · login: ${escapeHtml(c.login)}</div></div>
-        <button class="btn-remove" onclick="removeExtraClient('${escapeJsString(c.login)}','${escapeJsString(c.name)}')">Remover</button>
+        <button class="btn-remove" onclick="removeExtraClient('${escapeJsString(c.login)}','${escapeJsString(c.name)}')">Excluir</button>
       </div>`).join('');
   } catch(e) { el.innerHTML = '<div style="font-size:12px;color:#f87171;margin:16px 0 8px;">Erro ao carregar.</div>'; }
 }
