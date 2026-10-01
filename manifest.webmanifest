@@ -1,25 +1,18 @@
 {
-  "name": "Huven CRM",
-  "short_name": "Huven",
-  "description": "CRM de leads da Huven",
+  "name": "Zioon",
+  "short_name": "Zioon",
+  "description": "CRM e painel de leads",
   "start_url": "/",
-  "scope": "/",
   "display": "standalone",
   "background_color": "#080810",
-  "theme_color": "#080810",
-  "orientation": "portrait",
+  "theme_color": "#b5124f",
+  "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "huven-icon.png",
-      "sizes": "192x192",
+      "src": "/icon.png",
+      "sizes": "155x146",
       "type": "image/png",
       "purpose": "any"
-    },
-    {
-      "src": "huven-icon.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
     }
   ]
 }
