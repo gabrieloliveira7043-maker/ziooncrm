@@ -15203,7 +15203,12 @@ async function computeAttendance(act, fromDay, toDay, cfg, onProgress) {
   if (!_leadsCache) await getLeadsAsync();
   const leads = (_leadsCache || []).filter(l => leadMatchesClient(l, act) && !l.importado && !l.teste && l.source !== 'prospeccao'
     && Date.parse(l.createdAt) >= fromMs && Date.parse(l.createdAt) <= toMs);
-  const chats = await window._fb.listInboxChatsSince(act, fromIso, 1000);
+  // Só entram as conversas dos leads que chegaram no período (nada de conversas soltas do WhatsApp).
+  const leadKeys = new Set(leads.map(anLeadChatKey).filter(Boolean));
+  const chats = (await window._fb.listInboxChatsSince(act, fromIso, 1000)).filter(c => {
+    const base = String(c.id).replace(/^[a-z0-9]{1,12}__/, '');
+    return leadKeys.has(c.id) || leadKeys.has(base);
+  });
   const chatByKey = Object.fromEntries(chats.map(c => [c.id, c]));
   const msgsByChat = {};
   let done = 0;
@@ -15296,7 +15301,7 @@ function renderAnaliseView() {
       <div style="flex:1;min-width:220px;">
         <div class="huv-crumb">Principal</div>
         <div class="huv-page-title" style="color:var(--text);">Atendimento</div>
-        <div class="integ-muted" style="margin-top:4px;">Quanto tempo a equipe leva para responder quem chega pelo WhatsApp, cruzando as conversas do Chat com os cards do funil.</div>
+        <div class="integ-muted" style="margin-top:4px;">Quanto tempo a equipe leva para responder os leads que chegam (formulário, landing page, planilha ou mensagem no WhatsApp), olhando só as conversas desses leads. Conversas de contatos que não viraram card ficam de fora.</div>
       </div>
     </div>
     <div class="an-filters">
