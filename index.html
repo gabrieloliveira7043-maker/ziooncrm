@@ -9422,6 +9422,16 @@ function prosApplyFilters() {
 function prosToggle(cnpj, on) { if (on) _prSelected.add(cnpj); else _prSelected.delete(cnpj); renderProsResult(); }
 function prosToggleAll(on) { _prFiltered.forEach(r => on ? _prSelected.add(r.cnpj) : _prSelected.delete(r.cnpj)); renderProsResult(); }
 
+// Marca só as N primeiras da lista (já com os filtros), no lugar de qualquer seleção anterior.
+function prosSelectFirst(n) {
+  n = Number(n) || 0;
+  if (!n) return;
+  _prSelected.clear();
+  _prFiltered.slice(0, n).forEach(r => _prSelected.add(r.cnpj));
+  if (_prShown < n) _prShown = n;
+  renderProsResult();
+}
+
 function prosFmtCnpj(c) { return String(c).replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5'); }
 
 function renderProsResult() {
@@ -9433,6 +9443,10 @@ function renderProsResult() {
   box.innerHTML = `
     <div class="pr-bar">
       <label class="integ-toggle"><input type="checkbox" ${allSel ? 'checked' : ''} onchange="prosToggleAll(this.checked)"> Selecionar todas</label>
+      <select class="field-input" style="width:auto;padding:4px 8px;font-size:12px;" onchange="prosSelectFirst(this.value)" aria-label="Selecionar as primeiras">
+        <option value="">Selecionar as primeiras...</option>
+        ${[100, 200, 300, 400, 500].map(n => `<option value="${n}">${n} primeiras</option>`).join('')}
+      </select>
       <span class="integ-muted">${list.length.toLocaleString('pt-BR')} empresas${_prRows.length !== list.length ? ` (de ${_prRows.length.toLocaleString('pt-BR')} na atividade)` : ''} · ${_prSelected.size} selecionada(s)</span>
       <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;">
         <button class="huv-btn" onclick="prosApplyFilters()">Aplicar filtros</button>
