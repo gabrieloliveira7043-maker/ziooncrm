@@ -9876,6 +9876,26 @@ function columnAutomation(act, stageId) {
   return list.find(a => a.triggerStage === stageId && a.active) || list.find(a => a.triggerStage === stageId) || null;
 }
 
+// Põe na automação da coluna os leads que já estão lá (o Worker faz em páginas e devolve "next" até acabar).
+async function startColumnAutomation(stageId, stageLabel, autoName, count) {
+  const act = normalizeActValue(getActForStages());
+  if (!act) return;
+  const ok = await showConfirm('Os ' + count + ' lead(s) da coluna "' + stageLabel + '" começam agora o fluxo "' + (autoName || 'Automação') + '". As mensagens saem aos poucos (cerca de 10 por minuto), respeitando o horário configurado. Leads sem WhatsApp, que pediram para sair ou que já estão no fluxo são pulados.', 'Começar automação', 'Começar', false);
+  if (!ok) return;
+  showToast('Começando a automação...', 'info', 6000);
+  let started = 0, running = 0, noPhone = 0, optOut = 0, after = '';
+  try {
+    for (let i = 0; i < 40; i++) {
+      const r = await window._fb.whatsapp('/automation/start-column', act, { stage: stageId, after });
+      started += r.started; running += r.running; noPhone += r.noPhone; optOut += r.optOut;
+      after = r.next || '';
+      if (!after) break;
+    }
+    const skipped = [running && running + ' já no fluxo', noPhone && noPhone + ' sem WhatsApp', optOut && optOut + ' que pediram para sair'].filter(Boolean).join(', ');
+    showToast(started + ' lead(s) entraram na automação' + (skipped ? ' (pulados: ' + skipped + ')' : '') + '.', started ? 'success' : 'warning', 7000);
+  } catch (e) { showToast('Não consegui começar: ' + e.message, 'error', 7000); }
+}
+
 function openColumnAutomation(stageId) {
   const act = normalizeActValue(getActForStages());
   if (!act) return showToast('Escolha um cliente para criar a automação da coluna.', 'warning');
@@ -13796,6 +13816,14 @@ function renderKanban() {
       autoBtn.innerHTML = '⚡' + (colAuto ? `<span>${escapeHtml(limitText(colAuto.name || 'Fluxo', 12))}</span>` : '');
       autoBtn.addEventListener('click', e => { e.stopPropagation(); openColumnAutomation(stage.id); });
       headerLeft.appendChild(autoBtn);
+      if (colAuto && colAuto.active && stageLeads.length) {
+        const playBtn = document.createElement('button');
+        playBtn.className = 'col-auto-btn on';
+        playBtn.title = 'Começar a automação com os ' + stageLeads.length + ' lead(s) que já estão nesta coluna';
+        playBtn.innerHTML = '▶<span>Começar</span>';
+        playBtn.addEventListener('click', e => { e.stopPropagation(); startColumnAutomation(stage.id, stage.label, colAuto.name, stageLeads.length); });
+        headerLeft.appendChild(playBtn);
+      }
     }
     if (col._totalSpan) headerLeft.appendChild(col._totalSpan);
     header.appendChild(headerLeft);
