@@ -9570,7 +9570,7 @@ async function renderAutomacoesView() {
           <div class="huv-card-head">
             <div class="huv-avatar" style="background:var(--amber-dim);color:var(--amber);">${flowIcon('trigger', 'currentColor')}</div>
             <div style="flex:1;min-width:0;"><div class="huv-name">${escapeHtml(f.name || 'Automação')}</div><div class="huv-sub">Quando entrar em ${escapeHtml(autoStageLabel(act, f.triggerStage))}</div></div>
-            <label class="integ-toggle"><input type="checkbox" ${f.active ? 'checked' : ''} onchange="toggleFlow('${id}', this.checked)"> ${f.active ? 'Ligada' : 'Desligada'}</label>
+            <label class="integ-toggle"><input type="checkbox" ${f.active ? 'checked' : ''} onchange="toggleFlow('${id}', this.checked)"> ${f.active ? (f.paused ? '⏸ Pausada' : 'Ligada') : 'Desligada'}</label>
           </div>
           <div class="huv-stats">
             <div><div class="huv-stat-label">Blocos</div><div class="huv-stat-value">${blocks}</div></div>
@@ -9580,6 +9580,7 @@ async function renderAutomacoesView() {
           <div class="huv-actions">
             <button class="huv-btn primary" onclick="openFlowEditor('${id}')">Abrir editor</button>
             <button class="huv-btn" onclick="openFlowProgress('${id}')">Andamento</button>
+            ${f.active ? `<button class="huv-btn" onclick="toggleFlowPause('${id}')">${f.paused ? '▶ Retomar' : '⏸ Pausar'}</button>` : ''}
             <button class="huv-btn" onclick="duplicateFlow('${id}')">Duplicar</button>
             <button class="huv-btn" style="margin-left:auto;color:var(--red);border-color:var(--red);" onclick="deleteFlowConfirm('${id}')">Excluir</button>
           </div>
@@ -9684,7 +9685,7 @@ function openFlowProgress(id) {
       ${card('Responderam', st.replied, pct(st.replied, st.entered) + ' do total', 'var(--accent2)')}
       ${card('Parados', st.stopped, st.stopped ? 'veja o motivo abaixo' : '', st.stopped ? 'var(--red)' : '')}
     </div>
-    <div style="margin-top:14px;font-size:12px;color:var(--muted2);">O fluxo tem ${msgCount} mensagem(ns). ${next ? 'Próximo envio previsto: ' + next + '.' : ''}</div>
+    ${f.paused ? '<div style="margin-top:12px;padding:8px 12px;border-radius:8px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.35);font-size:12.5px;">⏸ Automação pausada: os leads estão parados e não recebem mensagens até você retomar.</div>' : ''}<div style="margin-top:14px;font-size:12px;color:var(--muted2);">O fluxo tem ${msgCount} mensagem(ns). ${next ? 'Próximo envio previsto: ' + next + '.' : ''}</div>
     <div style="overflow-x:auto;margin-top:8px;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead><tr style="text-align:center;color:var(--muted2);font-size:11px;"><th style="text-align:left;padding:6px 8px;">Etapa</th><th style="padding:6px 8px;">Receberam</th><th style="padding:6px 8px;">Estão aqui agora</th><th style="padding:6px 8px;">Responderam depois</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="4" class="integ-muted">Fluxo sem etapas.</td></tr>'}</tbody></table></div>
@@ -9692,6 +9693,24 @@ function openFlowProgress(id) {
     ${Object.keys(st.stoppedWhy).length ? `<div style="margin-top:12px;font-size:12px;"><b>Motivos dos parados</b><ul style="margin:4px 0 0 18px;color:var(--muted2);">${why(st.stoppedWhy)}</ul></div>` : ''}
     ${st.estimated ? '<div class="integ-muted" style="margin-top:12px;font-size:11.5px;">Leads que entraram antes desta função têm o número de mensagens estimado pela etapa em que estão. Os novos são contados mensagem a mensagem.</div>' : ''}
   `, 760);
+}
+
+// Pausar não tira os leads do fluxo: eles ficam onde estão, sem receber mensagens, e continuam de onde pararam ao retomar.
+async function toggleFlowPause(id) {
+  const f = _flowList.find(x => x.id === id);
+  if (!f) return;
+  const pause = !f.paused;
+  const ok = await showConfirm(pause
+    ? 'Os leads que estão em "' + (f.name || 'Automação') + '" ficam parados onde estão, sem receber mensagens, e continuam de onde pararam quando você retomar. Leads que chegarem na coluna enquanto está pausada entram no fluxo e esperam. A pausa pode levar até 1 minuto para valer.'
+    : 'Os envios voltam de onde pararam. Os leads são reavaliados em ciclos de até 10 minutos, então o retorno pode levar um pouco. Esperas que já venceram durante a pausa seguem na hora.',
+    pause ? 'Pausar automação' : 'Retomar automação', pause ? 'Pausar' : 'Retomar', false);
+  if (!ok) return;
+  try {
+    await window._fb.saveAutomation(id, { paused: pause });
+    f.paused = pause;
+    showToast(pause ? 'Automação pausada.' : 'Automação retomada.', 'success');
+    renderAutomacoesView();
+  } catch (e) { showToast('Erro: ' + e.message, 'warning'); }
 }
 
 async function toggleFlow(id, on) {
