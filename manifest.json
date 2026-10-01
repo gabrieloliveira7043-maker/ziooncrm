@@ -4,8 +4,8 @@
   "description": "CRM e painel de leads",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#080810",
-  "theme_color": "#b5124f",
+  "background_color": "#001a4b",
+  "theme_color": "#001a4b",
   "orientation": "portrait-primary",
   "icons": [
     {
