@@ -13983,6 +13983,14 @@ function renderKanban() {
       autoBtn.innerHTML = '⚡' + (colAuto ? `<span>${escapeHtml(limitText(colAuto.name || 'Fluxo', 12))}</span>` : '');
       autoBtn.addEventListener('click', e => { e.stopPropagation(); openColumnAutomation(stage.id); });
       headerLeft.appendChild(autoBtn);
+      if (stageLeads.length) {
+        const bulkBtn = document.createElement('button');
+        bulkBtn.className = 'col-auto-btn';
+        bulkBtn.title = 'Mover leads desta coluna em massa';
+        bulkBtn.innerHTML = '⇄'; bulkBtn.style.padding = '1px 8px';
+        bulkBtn.addEventListener('click', e => { e.stopPropagation(); openBulkMove(stage.id); });
+        headerLeft.appendChild(bulkBtn);
+      }
       if (colAuto && colAuto.active && stageLeads.length) {
         const playBtn = document.createElement('button');
         playBtn.className = 'col-auto-btn on';
@@ -14579,6 +14587,105 @@ function openMoveModal(id) {
     })();
 
   document.getElementById('move-modal').classList.add('open');
+}
+
+// ===== MOVER EM MASSA =====
+// Escolhe os leads da coluna (todos marcados de início) e o destino: outra coluna do pipeline ou de outro pipeline.
+let _bulkMove = null;
+
+function bulkMoveLeads(act, stageId) {
+  const pid = currentPipeline(act);
+  return getLeads().filter(l => leadMatchesClient(l, act) && leadPipeline(l) === pid && getArteAzulejoStageForBoard(l, act) === stageId);
+}
+
+function openBulkMove(stageId) {
+  const act = normalizeActValue(getActForStages());
+  if (!act) return;
+  const pid = currentPipeline(act);
+  const leads = sortCrmLeadsForKanban(bulkMoveLeads(act, stageId), act);
+  if (!leads.length) return showToast('Esta coluna está vazia.', 'warning');
+  const from = (getStages(act, pid).find(s => s.id === stageId) || {}).label || stageId;
+  _bulkMove = { act, stageId, pid };
+  const dest = pipelineList(act).map(p => {
+    const opts = (getStages(act, p.id) || []).filter(s => !(p.id === pid && s.id === stageId))
+      .map(s => `<option value="${escapeHtml(p.id + '|' + s.id)}">${escapeHtml((p.id === pid ? '' : p.name + ' › ') + s.label)}</option>`).join('');
+    return opts ? `<optgroup label="${escapeHtml(p.id === pid ? 'Este pipeline' : p.name)}">${opts}</optgroup>` : '';
+  }).join('');
+  openHuvenModal(`Mover em massa · ${from}`, `
+    <label class="field-label">Mover para</label>
+    <select class="field-input" id="bm-dest" style="margin-bottom:10px;">${dest}</select>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+      <label class="integ-toggle" style="margin:0;"><input type="checkbox" id="bm-all" checked onchange="bulkMoveToggleAll(this.checked)"> Selecionar todos</label>
+      <span style="flex:1;"></span><span id="bm-count" class="integ-muted" style="font-size:12px;"></span>
+    </div>
+    <input class="field-input" placeholder="Buscar por nome ou telefone" style="margin-bottom:6px;" oninput="bulkMoveFilter(this.value)">
+    <div id="bm-list" style="max-height:340px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:6px;">${leads.map(l => `
+      <label class="integ-toggle" data-bm="${escapeHtml(((l.name || '') + ' ' + (l.phone || '')).toLowerCase())}" style="display:flex;padding:4px 2px;">
+        <input type="checkbox" value="${escapeHtml(l.id)}" checked onchange="bulkMoveCount()"> ${escapeHtml(l.name || 'Sem nome')} <span class="integ-muted" style="margin-left:auto;font-size:11.5px;">${escapeHtml(l.phone || '')}</span>
+      </label>`).join('')}</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:12px;">
+      <button class="btn-save" id="bm-btn" style="width:auto;padding:9px 16px;" onclick="runBulkMove()">Mover</button>
+      <span class="integ-muted" style="font-size:12px;">Se a coluna de destino tiver automação ligada, os leads movidos entram nela.</span>
+    </div>`, 520);
+  bulkMoveCount();
+}
+
+function bulkMoveToggleAll(on) {
+  document.querySelectorAll('#bm-list label').forEach(l => { if (l.style.display !== 'none') l.querySelector('input').checked = on; });
+  bulkMoveCount();
+}
+
+function bulkMoveFilter(q) {
+  q = String(q || '').toLowerCase().trim();
+  document.querySelectorAll('#bm-list label').forEach(l => { l.style.display = !q || l.dataset.bm.includes(q) ? '' : 'none'; });
+}
+
+function bulkMoveCount() {
+  const n = document.querySelectorAll('#bm-list input:checked').length;
+  const el = document.getElementById('bm-count');
+  if (el) el.textContent = n + ' selecionado(s)';
+  const btn = document.getElementById('bm-btn');
+  if (btn) btn.textContent = n ? `Mover ${n} lead(s)` : 'Mover';
+}
+
+async function runBulkMove() {
+  const ctx = _bulkMove;
+  if (!ctx) return;
+  const ids = new Set([...document.querySelectorAll('#bm-list input:checked')].map(i => i.value));
+  if (!ids.size) return showToast('Marque pelo menos um lead.', 'warning');
+  const [destPid, destStage] = (document.getElementById('bm-dest').value || '').split('|');
+  if (!destStage) return;
+  const label = (destPid !== ctx.pid ? pipelineName(ctx.act, destPid) + ' › ' : '') + ((getStages(ctx.act, destPid).find(s => s.id === destStage) || {}).label || destStage);
+  if (!await showConfirm(`Mover ${ids.size} lead(s) para "${label}"?`, 'Mover em massa', 'Mover', false)) return;
+  const btn = document.getElementById('bm-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Movendo...'; }
+  if (typeof muteLeadNotifier === 'function') muteLeadNotifier(20000);
+  const nowIso = new Date().toISOString();
+  const at = new Date().toLocaleString('pt-BR');
+  const items = [];
+  const leads = getLeads();
+  leads.forEach(l => {
+    if (!ids.has(l.id)) return;
+    l.stage = destStage;
+    if (destPid !== ctx.pid || l.pipeline) l.pipeline = destPid;
+    l.updatedAt = nowIso; l.stageChangedAt = nowIso;
+    l._crmOrder = null; // entra no topo da coluna de destino
+    l.history = (Array.isArray(l.history) ? l.history : []).concat([{ stage: label + ' (em massa)', at }]);
+    const item = { stage: l.stage, updatedAt: nowIso, stageChangedAt: nowIso, _crmOrder: null, history: l.history };
+    if (l.pipeline) item.pipeline = l.pipeline;
+    if (l._docId) items.push({ _docId: l._docId, ...item });
+  });
+  _leadsCache = leads;
+  if (typeof syncLeadNotifierKnownKeys === 'function') syncLeadNotifierKnownKeys(leads);
+  try {
+    await window._fb.saveLeadsBatch(items);
+    closeHuvenModal();
+    showToast(`${ids.size} lead(s) movido(s) para "${label}".`, 'success');
+  } catch (e) {
+    showToast('Erro ao mover: ' + e.message, 'error', 7000);
+    if (btn) { btn.disabled = false; bulkMoveCount(); }
+  }
+  renderKanban(); renderFunilChart(); renderFunilEvolucao();
 }
 
 function moveLeadTo(id, stageId, pipelineId) {
