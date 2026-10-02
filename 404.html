@@ -9218,6 +9218,25 @@ function prosOneToFunnel() {
     <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="prosOneSaveFunnel()">Enviar</button> <span id="pr-fb" class="integ-muted"></span>`);
 }
 
+function prosDupIndex(act) {
+  const phones = new Set(), cnpjs = new Set();
+  (_leadsCache || []).filter(l => leadMatchesClient(l, act)).forEach(l => {
+    [l.phone, l.whatsappPhone].forEach(p => { const k = chatPhoneKey(p); if (k) phones.add(k); });
+    const c = String(l.cnpj || (String(l.obs || '').match(/CNPJ:\s*([\d./-]{14,18})/) || [])[1] || '').replace(/\D/g, '');
+    if (c.length === 14) cnpjs.add(c);
+  });
+  return { phones, cnpjs };
+}
+
+// Já está no funil? Confere o CNPJ e os dois telefones da empresa. "add" registra a empresa (repetidas na mesma lista).
+function prosIsDup(idx, r, add) {
+  const cnpj = String(r.cnpj || '').replace(/\D/g, '');
+  const tels = [r.telefone1, r.telefone2].map(t => chatPhoneKey(String(t || '').replace(/\D/g, ''))).filter(Boolean);
+  const dup = (cnpj && idx.cnpjs.has(cnpj)) || tels.some(t => idx.phones.has(t));
+  if (add && !dup) { if (cnpj) idx.cnpjs.add(cnpj); tels.forEach(t => idx.phones.add(t)); }
+  return dup;
+}
+
 async function prosOneSaveFunnel() {
   const act = flowAct();
   const c = _prOne;
@@ -9225,10 +9244,10 @@ async function prosOneSaveFunnel() {
   const origem = document.getElementById('pr-origem').value.trim() || 'Prospecção';
   const tel = (prosIsMobile(c.telefone1) ? c.telefone1 : prosIsMobile(c.telefone2) ? c.telefone2 : (c.telefone1 || c.telefone2 || '')).replace(/\D/g, '');
   const fb = document.getElementById('pr-fb');
-  if (tel && (_leadsCache || []).some(l => leadMatchesClient(l, act) && chatPhoneKey(l.phone) === chatPhoneKey(tel))) { fb.textContent = 'Essa empresa já está no funil deste cliente.'; return; }
+  if (prosIsDup(prosDupIndex(act), c)) { fb.textContent = 'Essa empresa já está no funil deste cliente.'; return; }
   const now = new Date(), nowIso = now.toISOString();
   const lead = {
-    id: now.getTime() + '_0', name: c.fantasia || c.razao, phone: tel, email: c.email || '', stage, pipeline, act, origem, redeSocial: 'Prospecção', source: 'prospeccao', importado: true,
+    id: now.getTime() + '_0', name: c.fantasia || c.razao, phone: tel, email: c.email || '', cnpj: String(c.cnpj || '').replace(/\D/g, ''), stage, pipeline, act, origem, redeSocial: 'Prospecção', source: 'prospeccao', importado: true,
     obs: prosOneText(c).split('\n').slice(1).join('\n'),
     history: [{ stage: (getStages(act, pipeline).find(x => x.id === stage) || {}).label || stage, at: now.toLocaleString('pt-BR') }],
     stageChangedAt: nowIso, createdAt: nowIso, updatedAt: nowIso
@@ -9512,13 +9531,13 @@ async function prosSaveFunnel() {
   const stageLabel = (getStages(act, pipeline).find(x => x.id === stage) || {}).label || stage;
   const now = new Date();
   const nowIso = now.toISOString();
-  const existing = new Set((_leadsCache || []).filter(l => leadMatchesClient(l, act)).map(l => chatPhoneKey(l.phone)).filter(Boolean));
+  const idx = prosDupIndex(act);
   const leads = [];
   rows.forEach((r, i) => {
-    const tel = (prosIsMobile(r.telefone1) ? r.telefone1 : prosIsMobile(r.telefone2) ? r.telefone2 : (r.telefone1 || r.telefone2)).replace(/\D/g, '');
-    if (tel && existing.has(chatPhoneKey(tel))) return;
+    const tel = (prosIsMobile(r.telefone1) ? r.telefone1 : prosIsMobile(r.telefone2) ? r.telefone2 : (r.telefone1 || r.telefone2 || '')).replace(/\D/g, '');
+    if (prosIsDup(idx, r, true)) return;
     leads.push({
-      id: now.getTime() + '_' + i, name: r.fantasia || r.razao, phone: tel, email: r.email || '',
+      id: now.getTime() + '_' + i, name: r.fantasia || r.razao, phone: tel, email: r.email || '', cnpj: String(r.cnpj || '').replace(/\D/g, ''),
       stage, pipeline, act, origem, redeSocial: 'Prospecção', source: 'prospeccao', importado: true,
       obs: [`Razão social: ${r.razao}`, `CNPJ: ${prosFmtCnpj(r.cnpj)}`, r.socios ? `Sócios: ${r.socios}` : '', `Endereço: ${[r.endereco, r.bairro, r.municipio + '/' + r.uf].filter(Boolean).join(', ')}`, r.telefone2 && r.telefone2 !== r.telefone1 ? `Outro telefone: ${r.telefone2}` : ''].filter(Boolean).join('\n'),
       history: [{ stage: stageLabel, at: now.toLocaleString('pt-BR') }],
@@ -9529,9 +9548,11 @@ async function prosSaveFunnel() {
   if (!leads.length) { fb.textContent = 'Todas já estão no funil deste cliente.'; return; }
   fb.textContent = 'Enviando...';
   try {
-    await window._fb.saveLeadsBatch(leads);
+    const ids = await window._fb.saveLeadsBatch(leads);
+    (ids || []).forEach((id, i) => { if (leads[i] && id) leads[i]._docId = id; });
+    if (_leadsCache) _leadsCache.push(...leads.filter(l => !_leadsCache.some(x => x.id === l.id))); // um segundo envio na mesma sessão já reconhece estas
     closeHuvenModal();
-    showToast(`${leads.length} empresa(s) no funil${rows.length - leads.length ? ` · ${rows.length - leads.length} já estavam lá` : ''}.`, 'success', 5000);
+    showToast(`${leads.length} empresa(s) nova(s) no funil${rows.length - leads.length ? ` · ${rows.length - leads.length} repetida(s) não foram (já estavam no funil ou na lista)` : ''}.`, 'success', 7000);
     _prSelected = new Set();
     renderProsResult();
   } catch (e) { fb.textContent = 'Erro: ' + e.message; }
