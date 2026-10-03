@@ -752,6 +752,17 @@ tr:hover td { background: var(--surface2); }
     .sub-msg { font-size: 12px; font-weight: 600; }
     .sub-empty { font-size: 12px; color: var(--muted); }
 
+    .ai-modal-box { max-width: 680px; width: 94vw; max-height: 90vh; overflow: auto; }
+    .ai-sec { margin-top: 16px; }
+    .ai-sec > .ai-t { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+    .ai-sec > .ai-h { font-size: 12px; color: var(--muted); margin-bottom: 8px; line-height: 1.5; }
+    .ai-modal-box textarea.field-input { height: auto; padding: 10px 12px; line-height: 1.5; resize: vertical; }
+    .ai-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .ai-row > label { flex: 1; min-width: 150px; font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+    .ai-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--border2); border-radius: 12px; background: var(--surface2); font-size: 13px; font-weight: 700; color: var(--text); cursor: pointer; }
+    .ai-test { margin-top: 8px; padding: 12px; border: 1px dashed var(--border2); border-radius: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .ai-reply { padding: 10px 12px; border-radius: 12px; background: rgba(212,175,55,.12); border: 1px solid rgba(212,175,55,.4); font-size: 13px; color: var(--text); white-space: pre-wrap; }
+
   /* ===== MOBILE ===== */
   @media (max-width: 768px) {
     .layout { flex-direction: column; }
@@ -13467,9 +13478,10 @@ function renderAdminWhatsAppList() {
       <div class="wa-card-stats">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><span style="flex:1;">1ª mensagem automática no "Novo lead"</span><input type="checkbox" onchange="toggleWhatsAppAuto('${jsLogin}', this)" ${s.autoFirstMessage ? 'checked' : ''}></label>
         <div style="display:flex;"><span style="flex:1;">Captura de leads pelo WhatsApp</span><b>${capture ? (rules ? rules + (rules > 1 ? ' regras' : ' regra') : 'Ligada') : 'Desligada'}</b></div>
+        <div style="display:flex;"><span style="flex:1;">Atendente com IA</span><b>${s.aiAgent && s.aiAgent.enabled ? 'Ligado' : 'Desligado'}</b></div>
         <div style="display:flex;"><span style="flex:1;">Enviadas hoje</span><b>${sentToday}</b></div>
       </div>
-      <div style="display:flex;gap:8px;"><button class="huv-btn" onclick="toggleWhatsAppSettings('${jsLogin}')">Configurações</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="huv-btn" onclick="toggleWhatsAppSettings('${jsLogin}')">Configurações</button><button class="huv-btn" onclick="openAiAgent('${jsLogin}')">🤖 Atendente IA</button></div>
       <div id="wa-settings-${id}" style="display:none;"></div>
     </div>`;
   }).join('');
@@ -13514,6 +13526,143 @@ function toggleWhatsAppSettings(login) {
     </div>`;
   box.style.display = 'block';
 }
+
+// ===== Atendente com IA no WhatsApp (admin) =====
+// Guardado em whatsapp_settings/{act}.aiAgent. Quem responde é o Worker (Workers AI), lendo estas regras.
+const AI_AGENT_DEFAULTS = {
+  enabled: false, name: '', business: '', tone: '', goal: '', rules: '',
+  stages: ['novo'], stopOnHuman: true, hoursOn: false, from: '08:00', to: '18:00', days: [1, 2, 3, 4, 5],
+  maxReplies: 6, delaySec: 10, qualifiedStage: '',
+  handoffMessage: 'Vou pedir para um atendente da equipe continuar com você por aqui, tudo bem?'
+};
+let _aiAct = '';
+function aiAgentOf(act) { return { ...AI_AGENT_DEFAULTS, ...((WHATSAPP_SETTINGS[act] || {}).aiAgent || {}) }; }
+
+function aiChecks(items, selected, cls) {
+  return `<div class="sub-views ${cls}">${items.map(([v, label]) =>
+    `<label class="sub-view"><input type="checkbox" value="${escapeHtml(String(v))}" ${selected.map(String).includes(String(v)) ? 'checked' : ''}><span class="sub-box"></span>${escapeHtml(label)}</label>`).join('')}</div>`;
+}
+
+function openAiAgent(login) {
+  const act = CREDENTIALS[login] && CREDENTIALS[login].act;
+  if (!act) return;
+  _aiAct = act;
+  const a = aiAgentOf(act);
+  const stages = getStages(act).map(st => [st.id, st.label]);
+  let ov = document.getElementById('ai-agent-modal');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'ai-agent-modal';
+    ov.className = 'modal-overlay stages-modal';
+    document.body.appendChild(ov);
+  }
+  const days = [[0, 'Dom'], [1, 'Seg'], [2, 'Ter'], [3, 'Qua'], [4, 'Qui'], [5, 'Sex'], [6, 'Sáb']];
+  ov.innerHTML = `<div class="modal-box ai-modal-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;">
+      <div class="modal-title" style="margin-bottom:0;">Atendente com IA · ${escapeHtml(getClientDisplayName(act) || act)}</div>
+      <button class="btn-close-panel" onclick="closeAiAgent()">×</button>
+    </div>
+    <label class="ai-switch"><span>Atendente ligado</span><input type="checkbox" id="ai-enabled" ${a.enabled ? 'checked' : ''}></label>
+    <div class="integ-muted" style="margin-top:8px;">Atenção: esta tela guarda as regras. A IA só passa a responder no WhatsApp depois que o servidor (worker) receber a atualização do atendente. Até lá, ligar não envia nada.</div>
+
+    <div class="ai-sec"><div class="ai-t">Quem é o atendente</div>
+      <div class="ai-row"><label>Nome do atendente<input class="field-input" id="ai-name" value="${escapeHtml(a.name)}" placeholder="Ex.: Camila"></label></div></div>
+
+    <div class="ai-sec"><div class="ai-t">Sobre a empresa</div>
+      <div class="ai-h">Tudo que a IA pode afirmar: o que vende, preços, horários, endereço, formas de pagamento, diferenciais, perguntas frequentes. Ela só usa o que estiver aqui.</div>
+      <textarea class="field-input" id="ai-business" rows="7" placeholder="Ex.: Somos a Clínica X, em Curitiba. Fazemos clareamento (a partir de R$ 600) e lentes. Atendemos de seg a sex, 8h às 18h...">${escapeHtml(a.business)}</textarea></div>
+
+    <div class="ai-sec"><div class="ai-t">Como responder</div>
+      <textarea class="field-input" id="ai-tone" rows="3" placeholder="Ex.: Simpática e direta, mensagens curtas, no máximo 2 emojis, trata por você.">${escapeHtml(a.tone)}</textarea></div>
+
+    <div class="ai-sec"><div class="ai-t">Objetivo da conversa</div>
+      <textarea class="field-input" id="ai-goal" rows="3" placeholder="Ex.: Entender o que a pessoa procura, tirar dúvidas e agendar uma avaliação gratuita.">${escapeHtml(a.goal)}</textarea></div>
+
+    <div class="ai-sec"><div class="ai-t">Regras e proibições</div>
+      <div class="ai-h">Uma por linha.</div>
+      <textarea class="field-input" id="ai-rules" rows="4" placeholder="Nunca prometer resultado&#10;Não falar de preço de procedimentos que não estão na lista&#10;Se pedirem desconto, passar para a equipe">${escapeHtml(a.rules)}</textarea></div>
+
+    <div class="ai-sec"><div class="ai-t">Em quais colunas do funil ela responde</div>
+      <div class="ai-h">Só leads que estão nas colunas marcadas recebem resposta da IA.</div>
+      ${aiChecks(stages, a.stages, 'ai-stages')}</div>
+
+    <div class="ai-sec"><div class="ai-t">Quando passar para a equipe</div>
+      <div class="ai-row">
+        <label>Ao qualificar, mover o card para<select class="field-input" id="ai-qstage"><option value="">Não mover</option>${stages.map(([id, l]) => `<option value="${escapeHtml(id)}" ${a.qualifiedStage === id ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select></label>
+        <label>Máximo de respostas por lead<input class="field-input" id="ai-max" type="number" min="1" max="30" value="${Number(a.maxReplies) || 6}"></label>
+        <label>Espera antes de responder (segundos)<input class="field-input" id="ai-delay" type="number" min="3" max="120" value="${Number(a.delaySec) || 10}"></label>
+      </div>
+      <label class="ai-switch" style="margin-top:8px;"><span>Parar quando alguém da equipe responder na conversa</span><input type="checkbox" id="ai-stop" ${a.stopOnHuman ? 'checked' : ''}></label>
+      <div class="ai-row" style="margin-top:8px;"><label style="flex-basis:100%;">Mensagem ao passar para a equipe<textarea class="field-input" id="ai-handoff" rows="2">${escapeHtml(a.handoffMessage)}</textarea></label></div></div>
+
+    <div class="ai-sec"><div class="ai-t">Horário de atendimento da IA</div>
+      <label class="ai-switch"><span>Responder só dentro de um horário</span><input type="checkbox" id="ai-hours" ${a.hoursOn ? 'checked' : ''}></label>
+      <div class="ai-row" style="margin-top:8px;"><label>Das<input class="field-input" id="ai-from" type="time" value="${escapeHtml(a.from)}"></label><label>Até<input class="field-input" id="ai-to" type="time" value="${escapeHtml(a.to)}"></label></div>
+      <div style="margin-top:8px;">${aiChecks(days, a.days, 'ai-days')}</div></div>
+
+    <div class="ai-sec"><div class="ai-t">Testar</div>
+      <div class="ai-test">
+        <textarea class="field-input" id="ai-test-msg" rows="2" placeholder="Escreva como se fosse o cliente. Ex.: Quanto custa o clareamento?"></textarea>
+        <div><button class="integ-btn" onclick="testAiAgent(this)">Ver a resposta da IA</button></div>
+        <div id="ai-test-out"></div>
+      </div></div>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap;">
+      <span id="ai-feedback" style="font-size:12px;align-self:center;margin-right:auto;"></span>
+      <button class="modal-btn-cancel" onclick="closeAiAgent()">Cancelar</button>
+      <button class="modal-btn-save" onclick="saveAiAgent(this)">Salvar</button>
+    </div>
+  </div>`;
+  ov.style.display = 'flex';
+  ov.classList.add('open');
+}
+function closeAiAgent() {
+  const ov = document.getElementById('ai-agent-modal');
+  if (ov) { ov.classList.remove('open'); ov.style.display = 'none'; }
+}
+function readAiAgent() {
+  const ov = document.getElementById('ai-agent-modal');
+  const v = id => (ov.querySelector('#' + id) || {}).value || '';
+  const checked = sel => [...ov.querySelectorAll(sel + ' input:checked')].map(i => i.value);
+  return {
+    enabled: ov.querySelector('#ai-enabled').checked,
+    name: v('ai-name').trim(), business: v('ai-business').trim(), tone: v('ai-tone').trim(), goal: v('ai-goal').trim(), rules: v('ai-rules').trim(),
+    stages: checked('.ai-stages'), stopOnHuman: ov.querySelector('#ai-stop').checked,
+    hoursOn: ov.querySelector('#ai-hours').checked, from: v('ai-from') || '08:00', to: v('ai-to') || '18:00', days: checked('.ai-days').map(Number),
+    maxReplies: Math.min(30, Math.max(1, Number(v('ai-max')) || 6)), delaySec: Math.min(120, Math.max(3, Number(v('ai-delay')) || 10)),
+    qualifiedStage: v('ai-qstage'), handoffMessage: v('ai-handoff').trim() || AI_AGENT_DEFAULTS.handoffMessage
+  };
+}
+async function saveAiAgent(btn) {
+  const fb = document.getElementById('ai-feedback');
+  const say = (t, ok) => { fb.textContent = t; fb.style.color = ok ? 'var(--green)' : 'var(--red)'; };
+  const a = readAiAgent();
+  if (a.enabled && a.business.length < 30) return say('Descreva a empresa (pelo menos 30 caracteres) antes de ligar.', false);
+  if (a.enabled && !a.stages.length) return say('Marque pelo menos uma coluna do funil.', false);
+  if (a.hoursOn && !a.days.length) return say('Marque os dias do horário.', false);
+  btn.disabled = true; say('Salvando...', true);
+  try {
+    await window._fb.saveWhatsAppSettings(_aiAct, { aiAgent: a });
+    WHATSAPP_SETTINGS[_aiAct] = { ...(WHATSAPP_SETTINGS[_aiAct] || {}), aiAgent: a };
+    showToast(a.enabled ? 'Atendente com IA ligado.' : 'Configuração salva (atendente desligado).', 'success');
+    closeAiAgent();
+    renderAdminWhatsAppList();
+  } catch (e) { btn.disabled = false; say('Erro: ' + e.message, false); }
+}
+async function testAiAgent(btn) {
+  const out = document.getElementById('ai-test-out');
+  const text = document.getElementById('ai-test-msg').value.trim();
+  if (!text) { out.innerHTML = '<div class="integ-muted">Escreva uma mensagem de teste.</div>'; return; }
+  btn.disabled = true; out.innerHTML = '<div class="integ-muted">A IA está pensando...</div>';
+  try {
+    const r = await window._fb.whatsapp('/ai/test', _aiAct, { agent: readAiAgent(), messages: [{ role: 'user', content: text }] });
+    out.innerHTML = `<div class="ai-reply">${escapeHtml(r.reply || '(sem resposta)')}</div>`;
+  } catch (e) {
+    out.innerHTML = `<div class="integ-error">Não foi possível testar: ${escapeHtml(e.message)}. Se o servidor ainda não tem a IA instalada, o teste só funciona depois dessa etapa.</div>`;
+  }
+  btn.disabled = false;
+}
+window.openAiAgent = openAiAgent; window.closeAiAgent = closeAiAgent; window.saveAiAgent = saveAiAgent; window.testAiAgent = testAiAgent;
 
 // ----- Identificações de mensagem (captura de leads pelo WhatsApp) -----
 const CAPTURE_MATCH_LABELS = { contains: 'Contém a frase', starts: 'Começa com a frase', exact: 'É exatamente a frase' };

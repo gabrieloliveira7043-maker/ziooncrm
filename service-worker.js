@@ -1,4 +1,4 @@
-const CACHE_NAME = 'zioon-v6';
+const CACHE_NAME = 'zioon-v7';
 const ASSETS = [
   '/',
   '/index.html',
