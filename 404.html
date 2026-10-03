@@ -13636,7 +13636,7 @@ function toggleWhatsAppSettings(login) {
 const AI_AGENT_DEFAULTS = {
   enabled: false, name: '', business: '', tone: '', goal: '', rules: '',
   stages: ['novo'], stopOnHuman: true, hoursOn: false, from: '08:00', to: '18:00', days: [1, 2, 3, 4, 5],
-  maxReplies: 6, delaySec: 10, qualifiedStage: '', handoffOn: true, autoLead: false, mediaOn: false, media: [], examples: '',
+  maxReplies: 6, delaySec: 10, qualifiedStage: '', handoffOn: true, autoLead: false, onlyTriggered: false, mediaOn: false, media: [], examples: '',
   calendar: { enabled: false, minutes: 30, days: [1, 2, 3, 4, 5], from: '09:00', to: '18:00', daysAhead: 7, noticeHours: 4, meet: true, title: 'Call de apresentação', commitment: true, askEmail: true },
   handoffMessage: 'Vou pedir para um atendente da equipe continuar com você por aqui, tudo bem?'
 };
@@ -13734,6 +13734,8 @@ function openAiAgent(login, actDirect) {
 
     <div class="ai-sec"><div class="ai-t">Em quais colunas do funil ela responde</div>
       <div class="ai-h">Só leads que estão nas colunas marcadas recebem resposta da IA.</div>
+      <label class="ai-switch" style="margin-top:8px;"><span>Responder só quem for ativado por uma frase ou automação</span><input type="checkbox" id="ai-onlytrig" ${a.onlyTriggered ? 'checked' : ''}></label>
+      <div class="ai-h" style="margin-top:4px;">Ligado: a IA ignora as colunas e só atende o contato que mandou uma frase marcada com "Acionar a IA" (Conexões, captura de leads) ou que passou pelo bloco "Agente de IA entra" de uma automação.</div>
       <label class="ai-switch" style="margin-top:8px;"><span>Atender também quem ainda não é lead (cria o card na primeira coluna marcada)</span><input type="checkbox" id="ai-autolead" ${a.autoLead ? 'checked' : ''}></label>
       ${aiChecks(stages, a.stages, 'ai-stages')}</div>
 
@@ -13801,7 +13803,7 @@ function readAiAgent() {
       noticeHours: Math.min(72, Math.max(0, v('ai-cal-notice') === '' ? 4 : Number(v('ai-cal-notice')))),
       meet: ov.querySelector('#ai-cal-meet').checked, commitment: ov.querySelector('#ai-cal-commit').checked, askEmail: ov.querySelector('#ai-cal-askmail').checked, title: v('ai-cal-title').trim() || 'Call de apresentação'
     },
-    handoffOn: ov.querySelector('#ai-handoff-on').checked, mediaOn: ov.querySelector('#ai-media-on').checked, examples: (ov.querySelector('#ai-examples').value || '').slice(0, 10000), media: _aiMedia.map(m => ({ id: m.id, type: m.type, url: m.url, mimetype: m.mimetype || '', fileName: m.fileName || '', title: String(m.title || '').trim(), when: String(m.when || '').trim() })), autoLead: ov.querySelector('#ai-autolead').checked,
+    handoffOn: ov.querySelector('#ai-handoff-on').checked, mediaOn: ov.querySelector('#ai-media-on').checked, examples: (ov.querySelector('#ai-examples').value || '').slice(0, 10000), media: _aiMedia.map(m => ({ id: m.id, type: m.type, url: m.url, mimetype: m.mimetype || '', fileName: m.fileName || '', title: String(m.title || '').trim(), when: String(m.when || '').trim() })), autoLead: ov.querySelector('#ai-autolead').checked, onlyTriggered: ov.querySelector('#ai-onlytrig').checked,
     qualifiedStage: v('ai-qstage'), handoffMessage: v('ai-handoff').trim() || AI_AGENT_DEFAULTS.handoffMessage
   };
 }
@@ -14201,6 +14203,7 @@ function captureRuleRowHtml(act, rule) {
         ${stages.map(s => `<option value="${escapeHtml(s.id)}" ${(rule.stage || 'novo') === s.id ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
       </select>
       <input class="field-input wa-rule-origem" style="${input}flex:1;min-width:150px;" placeholder="Campanha / origem (opcional)" value="${escapeHtml(rule.origem || '')}">
+      <label class="integ-toggle" style="font-size:12px;white-space:nowrap;" title="Quem mandar esta frase passa a ser atendido pelo agente de IA"><input type="checkbox" class="wa-rule-ai" ${rule.ai ? 'checked' : ''}> 🤖 Acionar a IA</label>
       <button style="${wbtn}background:transparent;color:#f87171;border-color:#f87171;" onclick="this.closest('.wa-rule').remove()" title="Remover">✕</button>
     </div>`;
 }
@@ -14221,7 +14224,8 @@ function readCaptureRules(login) {
     phrase: row.querySelector('.wa-rule-phrase').value.trim(),
     match: row.querySelector('.wa-rule-match').value,
     stage: row.querySelector('.wa-rule-stage').value,
-    origem: row.querySelector('.wa-rule-origem').value.trim()
+    origem: row.querySelector('.wa-rule-origem').value.trim(),
+    ai: !!(row.querySelector('.wa-rule-ai') || {}).checked
   })).filter(r => r.phrase);
 }
 
