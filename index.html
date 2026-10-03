@@ -1277,6 +1277,16 @@ html[data-theme="light"] .login-overlay { background: var(--paper); }
 .integ-form-row { display:grid; grid-template-columns:2fr 1.3fr 1.3fr 1.3fr; gap:8px; align-items:center; padding:6px 0; border-bottom:1px solid var(--border); }
 .integ-form-row .field-input { padding:6px 8px; font-size:12px; }
 .integ-toggle { display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700; color:var(--text); }
+/* Conversões Meta */
+.capi-rule { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 12px; padding: 10px; margin-bottom: 8px; }
+.capi-rule .field-input { width: auto; flex: 1; min-width: 120px; padding: 7px 10px; font-size: 12.5px; }
+.capi-arrow { color: var(--muted); font-weight: 700; }
+.capi-test { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.capi-log { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.capi-log-row { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--text); padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; }
+.capi-log-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; background: #9aa0aa; }
+.capi-log-dot.ok { background: #22c55e; } .capi-log-dot.bad { background: #ef4444; }
+
 /* Página "Configurar clientes" */
 .cfgc-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 .cfgc-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px 24px; box-shadow: var(--card-shadow); }
@@ -2555,6 +2565,7 @@ td { font-family: var(--font); font-size: 13px; }
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('automacoes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM19 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM5 7v4a4 4 0 0 0 4 4h6a4 4 0 0 1 4 4M19 3v6M16 6h6"/></svg><span>Automações</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('prospeccao'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6M11 8v6"/></svg><span>Prospecção</span></button>
     <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); switchView('agenteia'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 4h6M9 14h.01M15 14h.01M2 14h2M20 14h2"/></svg><span>Agente de IA</span></button>
+    <button type="button" class="mnav-sheet-item" onclick="closeMobileMore(); switchView('capi'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8M14 7h7v7"/></svg><span>Conversões Meta</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('cadencia'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM16 2v4M8 2v4M3 10h18"/></svg><span>Cadência</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('whatsapp'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/></svg><span>Conexões</span></button>
     <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); switchView('integracoes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>Integrações</span></button>
@@ -2667,6 +2678,10 @@ td { font-family: var(--font); font-size: 13px; }
       </div>
       <div class="nav-group">
         <div class="nav-group-label">Ajustes</div>
+        <div class="nav-item" id="nav-capi" onclick="switchView('capi')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8M14 7h7v7"/></svg>
+          Conversões Meta
+        </div>
         <div class="nav-item" id="nav-integracoes" onclick="switchView('integracoes')" style="display:none;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
           Integrações
@@ -3636,6 +3651,9 @@ td { font-family: var(--font); font-size: 13px; }
         </section>
       </div>
     </div>
+
+    <!-- Conversões Meta (API de Conversões) -->
+    <div id="capi-view" class="huv-view" style="display:none;"><div id="capi-body"></div></div>
 
     <!-- Clientes View (admin) -->
     <div id="clientes-view" class="huv-view" style="display:none;">
@@ -6925,7 +6943,7 @@ function switchView(view) {
     showToast('Seu login não tem acesso a esta área.', 'warning');
     view = firstAllowedView();
   }
-  ['report','analise','clientes','automacoes','agenteia','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes'].forEach(v => {
+  ['report','analise','clientes','automacoes','agenteia','capi','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes'].forEach(v => {
     const el = document.getElementById('nav-' + v);
     if (el) el.classList.toggle('active', v === view);
   });
@@ -6962,6 +6980,9 @@ function switchView(view) {
   const cfgcView = document.getElementById('cfgclientes-view');
   if (cfgcView) cfgcView.style.display = view === 'cfgclientes' ? 'block' : 'none';
   if (view === 'cfgclientes') renderSavedList();
+  const capiView = document.getElementById('capi-view');
+  if (capiView) capiView.style.display = view === 'capi' ? 'block' : 'none';
+  if (view === 'capi') renderCapiView();
   const cfgBtn = document.getElementById('btn-config');
   if (cfgBtn) cfgBtn.classList.toggle('active', view === 'cfgclientes');
   closeClientSwitcher();
@@ -13869,6 +13890,131 @@ async function toggleLeadAi(leadId, resume) {
 }
 window.toggleLeadAi = toggleLeadAi;
 
+// ===== Conversões Meta (API de Conversões): avisa a Meta quando o lead chega numa coluna =====
+const CAPI_EVENT_OPTIONS = [
+  ['Purchase', 'Compra (Purchase)'], ['Lead', 'Lead'], ['QualifiedLead', 'Lead qualificado'], ['Schedule', 'Agendamento (Schedule)'],
+  ['Contact', 'Contato (Contact)'], ['CompleteRegistration', 'Cadastro completo'], ['SubmitApplication', 'Proposta enviada'], ['InitiateCheckout', 'Início de compra'],
+  ['__custom', 'Outro nome...']
+];
+let _capi = { rules: [], tokenSet: false };
+
+function capiRuleRowHtml(act, r) {
+  const stages = (typeof getAllStages === 'function' ? getAllStages(act) : getStages(act)) || [];
+  const known = CAPI_EVENT_OPTIONS.some(([k]) => k === r.event && k !== '__custom');
+  const sel = known ? r.event : (r.event ? '__custom' : 'Purchase');
+  const custom = !known && r.event ? r.event : '';
+  return `<div class="capi-rule">
+    <select class="field-input capi-stage">${stages.map(s => `<option value="${escapeHtml(s.id)}" ${r.stage === s.id ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}</select>
+    <span class="capi-arrow">→</span>
+    <select class="field-input capi-event" onchange="this.parentNode.querySelector('.capi-custom').style.display = this.value === '__custom' ? '' : 'none'">${CAPI_EVENT_OPTIONS.map(([k, l]) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <input class="field-input capi-custom" style="${sel === '__custom' ? '' : 'display:none;'}" placeholder="NomeDoEvento" value="${escapeHtml(custom)}">
+    <label class="integ-toggle" title="Só envia quando o valor do card estiver preenchido"><input type="checkbox" class="capi-val" ${r.requireValue ? 'checked' : ''}> Só com valor</label>
+    <button class="btn-remove" type="button" onclick="this.closest('.capi-rule').remove()">Remover</button>
+  </div>`;
+}
+
+async function renderCapiView() {
+  const box = document.getElementById('capi-body');
+  if (!box) return;
+  const act = flowAct();
+  if (!act) { box.innerHTML = '<div class="integ-empty">Escolha o cliente no topo do menu para configurar as conversões dele.</div>'; return; }
+  box.innerHTML = '<div class="integ-muted">Carregando...</div>';
+  let c;
+  try { c = await window._fb.whatsapp('/capi/get', act, {}); }
+  catch (e) { box.innerHTML = `<div class="integ-error">Erro: ${escapeHtml(e.message)}</div>`; return; }
+  _capi = { rules: c.rules || [], tokenSet: !!c.tokenSet };
+  const rules = (c.rules && c.rules.length ? c.rules : [{ stage: 'fechado', event: 'Purchase', requireValue: true }]);
+  const client = escapeHtml(getClientDisplayName(act) || act);
+  box.innerHTML = `
+    <div class="huv-header" style="margin-bottom:18px;">
+      <div style="flex:1;min-width:220px;">
+        <div class="huv-crumb">${client}  /  Meta</div>
+        <div class="huv-page-title" style="color:var(--text);">Conversões Meta</div>
+        <div class="integ-muted" style="margin-top:4px;">Avise a Meta quando o lead avançar no funil (compra, lead qualificado, agendamento). Ela passa a otimizar os anúncios para quem realmente fecha, e não só para quem preenche o formulário.</div>
+      </div>
+    </div>
+    <div class="cfgc-grid">
+      <section class="cfgc-card">
+        <div class="cfgc-card-title">Conexão com o pixel</div>
+        <div class="cfgc-sub">Cada cliente usa o próprio pixel (conjunto de dados) da Meta.</div>
+        <label class="ai-switch" style="margin-bottom:14px;"><span>Enviar eventos para a Meta</span><input type="checkbox" id="capi-on" ${c.enabled ? 'checked' : ''}></label>
+        <div class="field-group"><label class="field-label">ID do pixel (conjunto de dados)</label><input class="field-input mono" id="capi-pixel" placeholder="Ex: 123456789012345" value="${escapeHtml(c.pixelId || '')}"></div>
+        <div class="field-group"><label class="field-label">Token de acesso da API de Conversões</label><input class="field-input mono" id="capi-token" type="password" autocomplete="off" placeholder="${c.tokenSet ? escapeHtml(c.tokenHint) + ' salvo. Deixe em branco para manter.' : 'Cole o token gerado na Meta'}"></div>
+        <div class="field-group"><label class="field-label">Código de teste (opcional)</label><input class="field-input mono" id="capi-testcode" placeholder="Ex: TEST12345" value="${escapeHtml(c.testCode || '')}"></div>
+        <div class="integ-muted" style="line-height:1.55;">Onde achar: Gerenciador de Eventos da Meta, escolha o pixel, aba <b>Configurações</b>, seção <b>API de Conversões</b>, botão <b>Gerar token de acesso</b>. O código de teste fica na aba <b>Testar eventos</b>. O token é guardado só no servidor e não aparece de novo.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
+          <button class="btn-save" style="width:auto;padding:0 22px;" onclick="saveCapi(this)">Salvar</button>
+          ${c.pixelId ? '<button class="huv-btn" onclick="disconnectCapi()">Desconectar</button>' : ''}
+        </div>
+        <div id="capi-fb" style="font-size:13px;margin-top:10px;"></div>
+        <div class="capi-test">
+          <div class="cfgc-card-title" style="font-size:14px;">Testar</div>
+          <div class="cfgc-sub" style="margin-bottom:8px;">Manda um evento de teste. Ele só aparece na aba Testar eventos e não entra nos dados reais.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;"><select class="field-input" id="capi-test-event" style="width:auto;"><option value="Lead">Lead</option><option value="Purchase">Purchase (R$ 100)</option></select><button class="huv-btn" onclick="testCapi(this)">Enviar evento de teste</button></div>
+          <div id="capi-test-out" style="font-size:13px;margin-top:8px;"></div>
+        </div>
+      </section>
+      <div style="display:flex;flex-direction:column;gap:18px;">
+        <section class="cfgc-card">
+          <div class="cfgc-card-title">Eventos por coluna</div>
+          <div class="cfgc-sub">Quando o lead chegar na coluna, o evento sai uma única vez, com o valor do card e os dados do cliente (nome, e-mail, telefone), todos criptografados.</div>
+          <div id="capi-rules">${rules.map(r => capiRuleRowHtml(act, r)).join('')}</div>
+          <button class="huv-btn" style="margin-top:8px;" onclick="capiAddRule()">+ Adicionar evento</button>
+          <div class="integ-muted" style="margin-top:10px;line-height:1.55;">Para Compra, deixe "Só com valor" ligado: se o card ainda não tem o valor, o envio espera você preencher.</div>
+        </section>
+        <section class="cfgc-card">
+          <div class="cfgc-card-title">Últimos envios</div>
+          <div class="cfgc-sub">Os envios são feitos a cada minuto.</div>
+          ${(c.log || []).length ? `<div class="capi-log">${c.log.map(l => `<div class="capi-log-row"><span class="capi-log-dot ${l.ok ? 'ok' : 'bad'}"></span><div style="flex:1;min-width:0;"><b>${escapeHtml(l.lead || 'Lead')}</b> · ${escapeHtml(l.event)}${l.value ? ' · R$ ' + Number(l.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : ''}<div class="integ-muted" style="font-size:11.5px;">${escapeHtml(new Date(l.at).toLocaleString('pt-BR'))} · ${escapeHtml(l.msg || '')}</div></div></div>`).join('')}</div>` : '<div class="integ-muted">Nenhum envio ainda.</div>'}
+        </section>
+      </div>
+    </div>`;
+}
+
+function capiAddRule() {
+  const box = document.getElementById('capi-rules');
+  const act = flowAct();
+  if (box && act) box.insertAdjacentHTML('beforeend', capiRuleRowHtml(act, { stage: '', event: 'Lead', requireValue: false }));
+}
+function capiReadRules() {
+  return [...document.querySelectorAll('#capi-rules .capi-rule')].map(row => {
+    const ev = row.querySelector('.capi-event').value;
+    return { stage: row.querySelector('.capi-stage').value, event: ev === '__custom' ? row.querySelector('.capi-custom').value.trim() : ev, requireValue: row.querySelector('.capi-val').checked };
+  }).filter(r => r.stage && r.event);
+}
+async function saveCapi(btn) {
+  const fb = document.getElementById('capi-fb');
+  const say = (t, ok) => { fb.textContent = t; fb.style.color = ok ? 'var(--green)' : 'var(--red)'; };
+  const act = flowAct();
+  btn.disabled = true; say('Salvando...', true);
+  try {
+    await window._fb.whatsapp('/capi/save', act, {
+      enabled: document.getElementById('capi-on').checked, pixelId: document.getElementById('capi-pixel').value,
+      token: document.getElementById('capi-token').value, testCode: document.getElementById('capi-testcode').value, rules: capiReadRules()
+    });
+    showToast('Conversões Meta salvas.', 'success');
+    renderCapiView();
+  } catch (e) { say('Erro: ' + e.message, false); }
+  btn.disabled = false;
+}
+async function testCapi(btn) {
+  const out = document.getElementById('capi-test-out');
+  const act = flowAct();
+  btn.disabled = true; out.style.color = 'var(--muted)'; out.textContent = 'Enviando...';
+  try {
+    const r = await window._fb.whatsapp('/capi/test', act, { event: document.getElementById('capi-test-event').value, testCode: document.getElementById('capi-testcode').value });
+    out.style.color = 'var(--green)'; out.textContent = 'A Meta recebeu o evento de teste (' + (r.received ?? 1) + '). Confira na aba Testar eventos do Gerenciador de Eventos.';
+  } catch (e) { out.style.color = 'var(--red)'; out.textContent = e.message; }
+  btn.disabled = false;
+}
+async function disconnectCapi() {
+  if (!await showConfirm('O CRM para de avisar a Meta e o token salvo é apagado.', 'Desconectar', 'Desconectar', true)) return;
+  try { await window._fb.whatsapp('/capi/disconnect', flowAct(), {}); showToast('Desconectado.', 'success'); }
+  catch (e) { showToast('Erro: ' + e.message, 'error'); }
+  renderCapiView();
+}
+window.renderCapiView = renderCapiView; window.capiAddRule = capiAddRule; window.saveCapi = saveCapi; window.testCapi = testCapi; window.disconnectCapi = disconnectCapi;
+
 // ===== PÁGINA "AGENTE DE IA": card do agente do cliente (editar, pausar/iniciar, conversa de teste) =====
 function aiAgentConfigured(act) {
   const a = ((WHATSAPP_SETTINGS[act] || {}).aiAgent) || null;
@@ -16784,7 +16930,7 @@ function onMobileClientChange() {
 // ===== Logins extras do cliente: o admin escolhe quais áreas cada login enxerga =====
 const SUB_LOGIN_VIEWS = [
   ['report', 'Dashboard'], ['analise', 'Atendimento'], ['crm', 'Funil de vendas'], ['chat', 'Chat'], ['contatos', 'Contatos'],
-  ['automacoes', 'Automações'], ['prospeccao', 'Prospecção'], ['campanhas', 'Campanhas'], ['cadencia', 'Cadência'], ['whatsapp', 'Conexões']
+  ['automacoes', 'Automações'], ['capi', 'Conversões Meta'], ['prospeccao', 'Prospecção'], ['campanhas', 'Campanhas'], ['cadencia', 'Cadência'], ['whatsapp', 'Conexões']
 ];
 let SUB_LOGINS = [];
 let _subVault = {};
