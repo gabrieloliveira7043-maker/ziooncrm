@@ -773,6 +773,11 @@ tr:hover td { background: var(--surface2); }
     .wa-ai { align-self: flex-start; background: #202c33; border-top-left-radius: 2px; }
     .wa-typing { color: #8696a0; font-style: italic; }
     .wa-sys { align-self: center; max-width: 90%; text-align: center; font-size: 11.5px; line-height: 1.4; color: #e6c46a; background: rgba(212,175,55,.12); border: 1px solid rgba(212,175,55,.35); padding: 6px 10px; border-radius: 8px; margin: 4px 0; }
+    .wa-media { display: block; max-width: 100%; width: 240px; max-height: 220px; object-fit: cover; border-radius: 7px; margin: 0 0 5px; background: #000; }
+    .ai-media-item { display: flex; gap: 12px; padding: 10px; border: 1px solid var(--border2); border-radius: 12px; margin-bottom: 8px; align-items: flex-start; }
+    .ai-media-thumb { width: 84px; height: 84px; border-radius: 10px; overflow: hidden; background: #000; flex-shrink: 0; }
+    .ai-media-thumb img, .ai-media-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .ai-media-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
     .wa-empty { margin: auto; text-align: center; font-size: 12px; color: #8696a0; max-width: 260px; line-height: 1.5; }
     .wa-bar { display: flex; gap: 8px; align-items: flex-end; padding: 8px; background: #1f2c34; }
     .wa-bar textarea { flex: 1; min-height: 38px; max-height: 90px; resize: none; border: none; outline: none; border-radius: 20px; background: #2a3942; color: #e9edef; padding: 9px 14px; font: inherit; font-size: 13.5px; line-height: 1.35; }
@@ -13628,7 +13633,7 @@ function toggleWhatsAppSettings(login) {
 const AI_AGENT_DEFAULTS = {
   enabled: false, name: '', business: '', tone: '', goal: '', rules: '',
   stages: ['novo'], stopOnHuman: true, hoursOn: false, from: '08:00', to: '18:00', days: [1, 2, 3, 4, 5],
-  maxReplies: 6, delaySec: 10, qualifiedStage: '', handoffOn: true, autoLead: false,
+  maxReplies: 6, delaySec: 10, qualifiedStage: '', handoffOn: true, autoLead: false, mediaOn: false, media: [], examples: '',
   calendar: { enabled: false, minutes: 30, days: [1, 2, 3, 4, 5], from: '09:00', to: '18:00', daysAhead: 7, noticeHours: 4, meet: true, title: 'Call de apresentação', commitment: true },
   handoffMessage: 'Vou pedir para um atendente da equipe continuar com você por aqui, tudo bem?'
 };
@@ -13652,6 +13657,7 @@ function openAiAgent(login, actDirect) {
   _aiAct = act;
   _aiSimView = []; _aiSim = []; _aiSimBusy = false; _aiSimDone = false; _aiSimN = 0; _aiSimSource = 'form';
   const a = aiAgentOf(act);
+  _aiMedia = (Array.isArray(a.media) ? a.media : []).map(m => ({ ...m }));
   const stages = getStages(act).map(st => [st.id, st.label]);
   let ov = document.getElementById('ai-agent-modal');
   if (!ov) {
@@ -13706,6 +13712,22 @@ function openAiAgent(login, actDirect) {
       <div class="ai-h" style="margin-top:6px;">Se o lead tiver e-mail no card, ele recebe o convite do Google. Sem a agenda conectada, a IA não oferece horário e passa o lead para a equipe quando ele quiser a call.</div>
     </div>
 
+    <div class="ai-sec"><div class="ai-t">Conversas de exemplo</div>
+      <div class="ai-h">Cole ou suba conversas reais do seu atendimento (por exemplo, a exportação de uma conversa do WhatsApp). A IA aprende o jeito de conduzir, o tom e o tamanho das mensagens. Apague nomes e telefones antes. Aceita arquivo .txt, .md, .csv ou .docx, até cerca de 10.000 caracteres.</div>
+      <textarea class="field-input" id="ai-examples" rows="7" maxlength="10000" oninput="aiExamplesCount()" placeholder="Ex.:&#10;Lead: Oi, vi o anúncio, como funciona?&#10;Atendente: Oi! Me conta, hoje você atende pelo WhatsApp sozinho ou com equipe?&#10;Lead: Tenho 2 atendentes.&#10;...">${escapeHtml(a.examples || '')}</textarea>
+      <div class="ai-row" style="margin-top:8px;align-items:center;">
+        <label style="flex:2;min-width:220px;">Subir arquivo<input type="file" class="field-input" accept=".txt,.md,.csv,.docx,text/plain" onchange="aiExamplesLoad(this)"></label>
+        <span id="ai-examples-count" class="integ-muted" style="flex:1;min-width:140px;text-align:right;"></span>
+      </div>
+    </div>
+
+    <div class="ai-sec"><div class="ai-t">Imagens e vídeos nas respostas</div>
+      <div class="ai-h">A IA pode mandar uma imagem ou um vídeo junto da resposta, quando a situação combinar. Cadastre cada arquivo e diga quando enviar. Ela manda no máximo um por mensagem e não repete para o mesmo contato.</div>
+      <label class="ai-switch"><span>Permitir que a IA envie imagens e vídeos</span><input type="checkbox" id="ai-media-on" ${a.mediaOn ? 'checked' : ''}></label>
+      <div id="ai-media-list" style="margin-top:10px;"></div>
+      <div id="ai-media-add" style="margin-top:8px;"></div>
+    </div>
+
     <div class="ai-sec"><div class="ai-t">Em quais colunas do funil ela responde</div>
       <div class="ai-h">Só leads que estão nas colunas marcadas recebem resposta da IA.</div>
       <label class="ai-switch" style="margin-top:8px;"><span>Atender também quem ainda não é lead (cria o card na primeira coluna marcada)</span><input type="checkbox" id="ai-autolead" ${a.autoLead ? 'checked' : ''}></label>
@@ -13744,6 +13766,8 @@ function openAiAgent(login, actDirect) {
   aiSimRender();
   refreshAiGcal();
   aiHandoffToggle();
+  aiMediaRender();
+  aiExamplesCount();
 }
 function aiHandoffToggle() {
   const on = document.getElementById('ai-handoff-on'), row = document.getElementById('ai-handoff-row');
@@ -13773,7 +13797,7 @@ function readAiAgent() {
       noticeHours: Math.min(72, Math.max(0, v('ai-cal-notice') === '' ? 4 : Number(v('ai-cal-notice')))),
       meet: ov.querySelector('#ai-cal-meet').checked, commitment: ov.querySelector('#ai-cal-commit').checked, title: v('ai-cal-title').trim() || 'Call de apresentação'
     },
-    handoffOn: ov.querySelector('#ai-handoff-on').checked, autoLead: ov.querySelector('#ai-autolead').checked,
+    handoffOn: ov.querySelector('#ai-handoff-on').checked, mediaOn: ov.querySelector('#ai-media-on').checked, examples: (ov.querySelector('#ai-examples').value || '').slice(0, 10000), media: _aiMedia.map(m => ({ id: m.id, type: m.type, url: m.url, mimetype: m.mimetype || '', fileName: m.fileName || '', title: String(m.title || '').trim(), when: String(m.when || '').trim() })), autoLead: ov.querySelector('#ai-autolead').checked,
     qualifiedStage: v('ai-qstage'), handoffMessage: v('ai-handoff').trim() || AI_AGENT_DEFAULTS.handoffMessage
   };
 }
@@ -13784,6 +13808,7 @@ async function saveAiAgent(btn) {
   if (a.enabled && a.business.length < 30) return say('Descreva a empresa (pelo menos 30 caracteres) antes de ligar.', false);
   if (a.enabled && !a.stages.length) return say('Marque pelo menos uma coluna do funil.', false);
   if (a.hoursOn && !a.days.length) return say('Marque os dias do horário.', false);
+  if (a.mediaOn && a.media.some(m => !m.title || !m.when)) return say('Preencha o título e o "quando enviar" de cada imagem ou vídeo.', false);
   if (a.calendar.enabled && !a.calendar.days.length) return say('Marque os dias em que a call pode acontecer.', false);
   if (a.calendar.enabled && a.calendar.from >= a.calendar.to) return say('O horário final da call precisa ser depois do inicial.', false);
   if (a.enabled && a.calendar.enabled && !_aiGcal.connected) return say('Conecte o Google Agenda antes de deixar a IA marcar a call.', false);
@@ -13908,6 +13933,84 @@ function closeAiSimPopup() {
 window.renderAgenteIaView = renderAgenteIaView; window.openAiAgentForNav = openAiAgentForNav;
 window.toggleAiAgentRun = toggleAiAgentRun; window.openAiSimPopup = openAiSimPopup; window.closeAiSimPopup = closeAiSimPopup;
 
+// ===== Imagens e vídeos que a IA pode enviar + conversas de exemplo =====
+let _aiMedia = [];
+function aiMediaRender() {
+  const box = document.getElementById('ai-media-list'), add = document.getElementById('ai-media-add');
+  if (!box || !add) return;
+  box.innerHTML = _aiMedia.map((m, i) => `<div class="ai-media-item">
+      <div class="ai-media-thumb">${m.type === 'video' ? `<video src="${escapeHtml(m.url)}#t=0.5" preload="metadata" muted></video>` : `<img src="${escapeHtml(m.url)}" alt="">`}</div>
+      <div class="ai-media-fields">
+        <div style="display:flex;gap:8px;align-items:center;"><span class="huv-chip">${m.type === 'video' ? 'Vídeo' : 'Imagem'}</span><input class="field-input" style="flex:1;" placeholder="Título (ex.: Demonstração do CRM)" value="${escapeHtml(m.title || '')}" oninput="_aiMedia[${i}].title = this.value"><button class="btn-remove" type="button" onclick="aiMediaRemove(${i})">Remover</button></div>
+        <textarea class="field-input" rows="2" placeholder="Quando enviar (ex.: quando o lead pedir para ver o sistema funcionando)" oninput="_aiMedia[${i}].when = this.value">${escapeHtml(m.when || '')}</textarea>
+      </div>
+    </div>`).join('') || '<div class="integ-muted">Nenhuma mídia cadastrada ainda.</div>';
+  add.innerHTML = _aiMedia.length >= 8
+    ? '<div class="integ-muted">Limite de 8 arquivos.</div>'
+    : '<label class="huv-btn" style="display:inline-flex;align-items:center;cursor:pointer;height:38px;padding:0 14px;">+ Adicionar imagem ou vídeo<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4" style="display:none;" onchange="aiMediaUpload(this)"></label><span id="ai-media-fb" class="integ-muted" style="margin-left:10px;"></span>';
+}
+async function aiMediaUpload(input) {
+  const file = input.files && input.files[0];
+  const fb = document.getElementById('ai-media-fb');
+  input.value = '';
+  if (!file) return;
+  if (file.size > 24 * 1024 * 1024) { if (fb) fb.textContent = 'Arquivo maior que 24 MB.'; return; }
+  if (fb) fb.textContent = 'Enviando arquivo...';
+  try {
+    const m = await window._fb.uploadCampaignMedia(_aiAct, file, true);
+    if (m.type !== 'image' && m.type !== 'video') throw new Error('Use uma imagem (JPG, PNG, WEBP) ou um vídeo MP4.');
+    _aiMedia.push({ id: 'm' + Date.now().toString(36), type: m.type, url: m.url, mimetype: m.mimetype, fileName: m.fileName, title: String(m.fileName || '').replace(/\.[^.]+$/, ''), when: '' });
+    aiMediaRender();
+  } catch (e) { if (fb) fb.textContent = 'Erro: ' + e.message; }
+}
+function aiMediaRemove(i) { _aiMedia.splice(i, 1); aiMediaRender(); }
+function aiExamplesCount() {
+  const t = document.getElementById('ai-examples'), c = document.getElementById('ai-examples-count');
+  if (t && c) c.textContent = t.value.length + ' de 10.000 caracteres';
+}
+// Lê o texto de um .docx (arquivo zip): procura word/document.xml e descompacta com o navegador.
+async function aiDocxText(file) {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const dv = new DataView(buf.buffer);
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65600); i--) { if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; } }
+  if (eocd < 0) throw new Error('arquivo inválido');
+  let p = dv.getUint32(eocd + 16, true);
+  const n = dv.getUint16(eocd + 10, true);
+  for (let k = 0; k < n; k++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+    const nlen = dv.getUint16(p + 28, true), elen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(buf.slice(p + 46, p + 46 + nlen)).split(String.fromCharCode(92)).join('/');
+    if (name === 'word/document.xml') {
+      const lnlen = dv.getUint16(off + 26, true), lelen = dv.getUint16(off + 28, true);
+      const data = buf.slice(off + 30 + lnlen + lelen, off + 30 + lnlen + lelen + csize);
+      let xml;
+      if (method === 0) xml = new TextDecoder().decode(data);
+      else xml = await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+      return xml.replace(/<\/w:p>/g, '\n').replace(/<w:tab\/>/g, ' ').replace(/<[^>]+>/g, '')
+        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/\n{3,}/g, '\n\n').trim();
+    }
+    p += 46 + nlen + elen + clen;
+  }
+  throw new Error('texto não encontrado');
+}
+async function aiExamplesLoad(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  try {
+    const text = /\.docx$/i.test(file.name) ? await aiDocxText(file) : await file.text();
+    if (!text.trim()) throw new Error('arquivo sem texto');
+    const t = document.getElementById('ai-examples');
+    const joined = (t.value.trim() ? t.value.trim() + '\n\n' : '') + text.trim();
+    t.value = joined.slice(0, 10000);
+    aiExamplesCount();
+    showToast(joined.length > 10000 ? 'Arquivo carregado, mas só os primeiros 10.000 caracteres cabem.' : 'Arquivo carregado.', joined.length > 10000 ? 'warning' : 'success', 6000);
+  } catch (e) { showToast('Não consegui ler o arquivo (' + e.message + '). Abra o documento, copie o texto e cole no campo.', 'warning', 8000); }
+}
+window.aiMediaUpload = aiMediaUpload; window.aiMediaRemove = aiMediaRemove; window.aiExamplesLoad = aiExamplesLoad; window.aiExamplesCount = aiExamplesCount;
+
 // Google Agenda do cliente: estado da conexão e botões Conectar / Desconectar.
 let _aiGcal = { connected: false, email: '', configured: true, loaded: false };
 async function refreshAiGcal() {
@@ -13974,7 +14077,7 @@ function aiSimRender() {
   box.innerHTML = (_aiSimView.length ? '' : '<div class="wa-empty">Mande a primeira mensagem como se fosse o lead. Ex.: "Oi, vi a Zioon, como funciona?"</div>')
     + _aiSimView.map(m => m.who === 'sys'
       ? '<div class="wa-sys">' + escapeHtml(m.text) + '</div>'
-      : '<div class="wa-b ' + (m.who === 'me' ? 'wa-me' : 'wa-ai') + '">' + escapeHtml(m.text) + '<span class="wa-t">' + m.time + '</span></div>').join('')
+      : '<div class="wa-b ' + (m.who === 'me' ? 'wa-me' : 'wa-ai') + '">' + (m.media ? aiSimMediaHtml(m.media) : '') + escapeHtml(m.text) + '<span class="wa-t">' + m.time + '</span></div>').join('')
     + (_aiSimBusy ? '<div class="wa-b wa-ai wa-typing">digitando...</div>' : '');
   box.scrollTop = box.scrollHeight;
   const c = document.getElementById('ai-sim-count');
@@ -13982,6 +14085,7 @@ function aiSimRender() {
   const btn = document.getElementById('ai-sim-send');
   if (btn) btn.disabled = _aiSimBusy;
 }
+function aiSimMediaHtml(m) { return m.type === 'video' ? '<video class="wa-media" src="' + escapeHtml(m.url) + '" controls preload="metadata"></video>' : '<img class="wa-media" src="' + escapeHtml(m.url) + '" alt="">'; }
 function resetAiSim() { _aiSimView = []; _aiSim = []; _aiSimBusy = false; _aiSimDone = false; _aiSimN = 0; aiSimRender(); }
 async function sendAiSim() {
   if (_aiSimBusy) return;
@@ -13999,7 +14103,7 @@ async function sendAiSim() {
     const reply = (r.reply || '').trim();
     if (reply) {
       _aiSim.push({ role: 'assistant', content: reply });
-      _aiSimView.push({ who: 'ai', text: reply, time: aiSimTime() });
+      _aiSimView.push({ who: 'ai', text: reply, media: r.media || null, time: aiSimTime() });
       _aiSimN++;
     } else {
       _aiSimView.push({ who: 'sys', text: 'A IA não gerou resposta (na prática, nada seria enviado).' });
