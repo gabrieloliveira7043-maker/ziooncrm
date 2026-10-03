@@ -13556,10 +13556,14 @@ const AI_AGENT_DEFAULTS = {
   enabled: false, name: '', business: '', tone: '', goal: '', rules: '',
   stages: ['novo'], stopOnHuman: true, hoursOn: false, from: '08:00', to: '18:00', days: [1, 2, 3, 4, 5],
   maxReplies: 6, delaySec: 10, qualifiedStage: '',
+  calendar: { enabled: false, minutes: 30, days: [1, 2, 3, 4, 5], from: '09:00', to: '18:00', daysAhead: 7, noticeHours: 4, meet: true, title: 'Call de apresentação' },
   handoffMessage: 'Vou pedir para um atendente da equipe continuar com você por aqui, tudo bem?'
 };
 let _aiAct = '';
-function aiAgentOf(act) { return { ...AI_AGENT_DEFAULTS, ...((WHATSAPP_SETTINGS[act] || {}).aiAgent || {}) }; }
+function aiAgentOf(act) {
+  const saved = (WHATSAPP_SETTINGS[act] || {}).aiAgent || {};
+  return { ...AI_AGENT_DEFAULTS, ...saved, calendar: { ...AI_AGENT_DEFAULTS.calendar, ...(saved.calendar || {}) } };
+}
 
 function aiChecks(items, selected, cls) {
   return `<div class="sub-views ${cls}">${items.map(([v, label]) =>
@@ -13613,6 +13617,25 @@ function openAiAgent(login, actDirect) {
       <div class="ai-h">Uma por linha.</div>
       <textarea class="field-input" id="ai-rules" rows="4" placeholder="Nunca prometer resultado&#10;Não falar de preço de procedimentos que não estão na lista&#10;Se pedirem desconto, passar para a equipe">${escapeHtml(a.rules)}</textarea></div>
 
+    <div class="ai-sec"><div class="ai-t">Marcar a call no Google Agenda</div>
+      <div class="ai-h">A IA enxerga os horários livres da agenda conectada, oferece opções ao lead e cria o evento quando ele escolher. Cada cliente conecta a própria agenda.</div>
+      <div class="ai-gcal-box"><span id="ai-gcal-status" class="integ-muted">Verificando a conexão...</span><span id="ai-gcal-btns" style="display:flex;gap:6px;flex-wrap:wrap;"></span></div>
+      <label class="ai-switch" style="margin-top:8px;"><span>Deixar a IA marcar a call</span><input type="checkbox" id="ai-cal-on" ${a.calendar.enabled ? 'checked' : ''}></label>
+      <div class="ai-row" style="margin-top:8px;">
+        <label>Duração da call<select class="field-input" id="ai-cal-min">${[15, 30, 45, 60, 90].map(m => `<option value="${m}" ${Number(a.calendar.minutes) === m ? 'selected' : ''}>${m} minutos</option>`).join('')}</select></label>
+        <label>Horários da call, das<input class="field-input" id="ai-cal-from" type="time" value="${escapeHtml(a.calendar.from)}"></label>
+        <label>Até<input class="field-input" id="ai-cal-to" type="time" value="${escapeHtml(a.calendar.to)}"></label>
+      </div>
+      <div style="margin-top:8px;">${aiChecks(days, a.calendar.days, 'ai-cal-days')}</div>
+      <div class="ai-row" style="margin-top:8px;">
+        <label>Oferecer horários dos próximos (dias)<input class="field-input" id="ai-cal-ahead" type="number" min="1" max="30" value="${Number(a.calendar.daysAhead) || 7}"></label>
+        <label>Antecedência mínima (horas)<input class="field-input" id="ai-cal-notice" type="number" min="0" max="72" value="${a.calendar.noticeHours === 0 || a.calendar.noticeHours ? Number(a.calendar.noticeHours) : 4}"></label>
+        <label>Título do evento<input class="field-input" id="ai-cal-title" value="${escapeHtml(a.calendar.title)}" placeholder="Call de apresentação"></label>
+      </div>
+      <label class="ai-switch" style="margin-top:8px;"><span>Criar link do Google Meet no evento</span><input type="checkbox" id="ai-cal-meet" ${a.calendar.meet ? 'checked' : ''}></label>
+      <div class="ai-h" style="margin-top:6px;">Se o lead tiver e-mail no card, ele recebe o convite do Google. Sem a agenda conectada, a IA não oferece horário e passa o lead para a equipe quando ele quiser a call.</div>
+    </div>
+
     <div class="ai-sec"><div class="ai-t">Em quais colunas do funil ela responde</div>
       <div class="ai-h">Só leads que estão nas colunas marcadas recebem resposta da IA.</div>
       ${aiChecks(stages, a.stages, 'ai-stages')}</div>
@@ -13651,6 +13674,7 @@ function openAiAgent(login, actDirect) {
   ov.style.display = 'flex';
   ov.classList.add('open');
   aiSimRender();
+  refreshAiGcal();
 }
 function closeAiAgent() {
   const ov = document.getElementById('ai-agent-modal');
@@ -13666,6 +13690,13 @@ function readAiAgent() {
     stages: checked('.ai-stages'), stopOnHuman: ov.querySelector('#ai-stop').checked,
     hoursOn: ov.querySelector('#ai-hours').checked, from: v('ai-from') || '08:00', to: v('ai-to') || '18:00', days: checked('.ai-days').map(Number),
     maxReplies: Math.min(100, Math.max(1, Number(v('ai-max')) || 6)), delaySec: Math.min(120, Math.max(3, Number(v('ai-delay')) || 10)),
+    calendar: {
+      enabled: ov.querySelector('#ai-cal-on').checked, minutes: Number(v('ai-cal-min')) || 30,
+      days: checked('.ai-cal-days').map(Number), from: v('ai-cal-from') || '09:00', to: v('ai-cal-to') || '18:00',
+      daysAhead: Math.min(30, Math.max(1, Number(v('ai-cal-ahead')) || 7)),
+      noticeHours: Math.min(72, Math.max(0, v('ai-cal-notice') === '' ? 4 : Number(v('ai-cal-notice')))),
+      meet: ov.querySelector('#ai-cal-meet').checked, title: v('ai-cal-title').trim() || 'Call de apresentação'
+    },
     qualifiedStage: v('ai-qstage'), handoffMessage: v('ai-handoff').trim() || AI_AGENT_DEFAULTS.handoffMessage
   };
 }
@@ -13676,6 +13707,9 @@ async function saveAiAgent(btn) {
   if (a.enabled && a.business.length < 30) return say('Descreva a empresa (pelo menos 30 caracteres) antes de ligar.', false);
   if (a.enabled && !a.stages.length) return say('Marque pelo menos uma coluna do funil.', false);
   if (a.hoursOn && !a.days.length) return say('Marque os dias do horário.', false);
+  if (a.calendar.enabled && !a.calendar.days.length) return say('Marque os dias em que a call pode acontecer.', false);
+  if (a.calendar.enabled && a.calendar.from >= a.calendar.to) return say('O horário final da call precisa ser depois do inicial.', false);
+  if (a.enabled && a.calendar.enabled && !_aiGcal.connected) return say('Conecte o Google Agenda antes de deixar a IA marcar a call.', false);
   btn.disabled = true; say('Salvando...', true);
   try {
     await window._fb.saveWhatsAppSettings(_aiAct, { aiAgent: a });
@@ -13685,6 +13719,49 @@ async function saveAiAgent(btn) {
     renderAdminWhatsAppList();
   } catch (e) { btn.disabled = false; say('Erro: ' + e.message, false); }
 }
+// Google Agenda do cliente: estado da conexão e botões Conectar / Desconectar.
+let _aiGcal = { connected: false, email: '', configured: true, loaded: false };
+async function refreshAiGcal() {
+  const st = document.getElementById('ai-gcal-status'), btns = document.getElementById('ai-gcal-btns');
+  if (!st || !btns) return;
+  try {
+    const r = await window._fb.whatsapp('/gcal/status', _aiAct, {});
+    _aiGcal = { connected: !!r.connected, email: r.email || '', configured: r.configured !== false, expired: !!r.expired, loaded: true };
+  } catch (e) { _aiGcal = { connected: false, email: '', configured: true, loaded: false, error: e.message }; }
+  if (_aiGcal.connected) {
+    st.innerHTML = '<b style="color:var(--green);">Conectado</b>' + (_aiGcal.email ? ' · ' + escapeHtml(_aiGcal.email) : '');
+    btns.innerHTML = '<button class="integ-btn" type="button" onclick="disconnectAiGcal()">Desconectar</button>';
+  } else if (!_aiGcal.configured) {
+    st.innerHTML = '<span style="color:var(--red);">O servidor ainda não tem as chaves do Google. Falta rodar o salvar-google-oauth.js.</span>';
+    btns.innerHTML = '';
+  } else {
+    st.textContent = _aiGcal.expired ? 'A conexão expirou. Conecte de novo.' : (_aiGcal.error ? 'Não foi possível verificar: ' + _aiGcal.error : 'Nenhuma agenda conectada.');
+    btns.innerHTML = '<button class="integ-btn" type="button" onclick="connectAiGcal()">Conectar Google Agenda</button>';
+  }
+}
+async function connectAiGcal() {
+  try {
+    const r = await window._fb.whatsapp('/gcal/login-url', _aiAct, {});
+    const w = window.open(r.url, 'huvengcal', 'width=560,height=720');
+    if (!w) { showToast('O navegador bloqueou a janela. Libere pop-ups para o CRM e tente de novo.', 'warning', 7000); return; }
+    const onMsg = ev => {
+      if (!ev.data || ev.data.huvenGcal === undefined) return;
+      window.removeEventListener('message', onMsg);
+      showToast(ev.data.msg || (ev.data.huvenGcal ? 'Google Agenda conectado.' : 'Não conectou.'), ev.data.huvenGcal ? 'success' : 'warning', 8000);
+      refreshAiGcal();
+    };
+    window.addEventListener('message', onMsg);
+    const t = setInterval(() => { if (w.closed) { clearInterval(t); setTimeout(refreshAiGcal, 800); } }, 1000);
+  } catch (e) { showToast('Erro: ' + e.message, 'error', 6000); }
+}
+async function disconnectAiGcal() {
+  if (!await showConfirm('A IA deixa de ver a agenda e de marcar calls para este cliente. Os eventos já criados continuam na agenda.', 'Desconectar', 'Desconectar', true)) return;
+  try { await window._fb.whatsapp('/gcal/disconnect', _aiAct, {}); showToast('Google Agenda desconectado.', 'success'); }
+  catch (e) { showToast('Erro: ' + e.message, 'error'); }
+  refreshAiGcal();
+}
+window.connectAiGcal = connectAiGcal; window.disconnectAiGcal = disconnectAiGcal;
+
 // Simulador de conversa (estilo WhatsApp) para testar a IA com as regras da tela, sem enviar nada a ninguém.
 let _aiSimView = [], _aiSim = [], _aiSimBusy = false, _aiSimDone = false, _aiSimN = 0;
 function aiSimTime() { return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
@@ -13728,7 +13805,13 @@ async function sendAiSim() {
     } else {
       _aiSimView.push({ who: 'sys', text: 'A IA não gerou resposta (na prática, nada seria enviado).' });
     }
-    if (r.handoff) {
+    if (r.calNote) _aiSimView.push({ who: 'sys', text: 'Agenda indisponível neste teste: ' + r.calNote });
+    if (r.booking) {
+      _aiSimView.push({ who: 'sys', text: r.booking.valid
+        ? 'Neste teste nenhum evento é criado. Na prática, a IA marcaria a call para ' + r.booking.label + ' na agenda conectada' + (agent.calendar.meet ? ', com link do Meet' : '') + ', moveria o card e ficaria pausada neste lead.'
+        : 'A IA tentou marcar um horário que não está livre (' + r.booking.label + '). Na prática, ela pediria outro horário ao lead.' });
+      if (r.booking.valid) _aiSimDone = true;
+    } else if (r.handoff) {
       _aiSimView.push({ who: 'ai', text: agent.handoffMessage, time: aiSimTime() });
       _aiSimView.push({ who: 'sys', text: 'A IA passou a conversa para a equipe e ficaria pausada neste lead.' });
       _aiSimDone = true;
