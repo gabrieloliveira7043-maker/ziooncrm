@@ -13837,16 +13837,19 @@ function aiLeadState(lead) {
   const ag = ((WHATSAPP_SETTINGS[lead.act] || {}).aiAgent) || null;
   const max = ag && Number(ag.maxReplies) ? Number(ag.maxReplies) : 0;
   if (max && (lead.aiReplies || 0) >= max) return 'paused';
-  return (lead.aiReplies || 0) > 0 || lead.aiTakeover ? 'active' : '';
+  if ((lead.aiReplies || 0) > 0 || lead.aiTakeover) return 'active';
+  // Modo "só quem for ativado": o lead ainda não foi ativado, dá para ativar na mão.
+  return ag && ag.enabled && ag.onlyTriggered ? 'idle' : '';
 }
 function aiLeadBtnHtml(lead, kind) {
   const st = aiLeadState(lead);
   if (!st) return '';
   const id = escapeJsString(lead.id);
-  const resume = st === 'paused';
+  const resume = st === 'paused' || st === 'idle';
+  const idle = st === 'idle';
   const why = resume ? (lead.aiPausedReason ? ' (' + lead.aiPausedReason + ')' : '') : '';
-  if (kind === 'card') return `<button class="card-btn ${resume ? 'card-btn-ai-off' : 'card-btn-ai-on'}" onclick="toggleLeadAi('${id}', ${resume})" title="${resume ? 'Reativar o atendimento da IA' + escapeHtml(why) : 'Pausar a IA neste lead'}">${resume ? '🤖 Reativar' : '⏸ IA'}</button>`;
-  return `<button class="chat-pill ${resume ? 'active' : ''}" onclick="toggleLeadAi('${id}', ${resume})" title="${resume ? 'A IA está parada neste lead' + escapeHtml(why) : 'A IA está atendendo este lead'}">${resume ? '🤖 Reativar IA' : '⏸ Pausar IA'}</button>`;
+  if (kind === 'card') return `<button class="card-btn ${resume ? 'card-btn-ai-off' : 'card-btn-ai-on'}" onclick="toggleLeadAi('${id}', ${resume})" title="${idle ? 'Ativar o atendimento da IA neste lead' : resume ? 'Reativar o atendimento da IA' + escapeHtml(why) : 'Pausar a IA neste lead'}">${idle ? '🤖 Ativar' : resume ? '🤖 Reativar' : '⏸ IA'}</button>`;
+  return `<button class="chat-pill ${resume ? 'active' : ''}" onclick="toggleLeadAi('${id}', ${resume})" title="${idle ? 'Ativar a IA neste lead' : resume ? 'A IA está parada neste lead' + escapeHtml(why) : 'A IA está atendendo este lead'}">${idle ? '🤖 Ativar IA' : resume ? '🤖 Reativar IA' : '⏸ Pausar IA'}</button>`;
 }
 async function toggleLeadAi(leadId, resume) {
   const lead = (typeof getLeads === 'function' ? getLeads() : []).find(l => l.id === leadId) || (_leadsCache || []).find(l => l.id === leadId);
