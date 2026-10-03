@@ -13925,6 +13925,7 @@ async function sendAiSim() {
       _aiSimView.push({ who: 'sys', text: 'A IA não gerou resposta (na prática, nada seria enviado).' });
     }
     if (r.calNote) _aiSimView.push({ who: 'sys', text: 'Agenda indisponível neste teste: ' + r.calNote });
+    else if (r.slotsInfo && _aiSimN === 1) _aiSimView.push({ who: 'sys', text: r.slotsInfo.count ? 'Agenda lida: ' + r.slotsInfo.count + ' horários livres encontrados. Ex.: ' + r.slotsInfo.sample.join('; ') + '.' : 'Agenda lida, mas nenhum horário livre dentro das regras de dias, horário e antecedência.' });
     if (r.booking) {
       _aiSimView.push({ who: 'sys', text: r.booking.valid
         ? 'Neste teste nenhum evento é criado. Na prática, a IA marcaria a call para ' + r.booking.label + ' na agenda conectada' + (agent.calendar.meet ? ', com link do Meet' : '') + ', moveria o card e ficaria pausada neste lead.'
