@@ -2498,6 +2498,7 @@ td { font-family: var(--font); font-size: 13px; }
     <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); switchView('clientes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16M9 7h2M13 7h2M9 11h2M13 11h2"/></svg><span>Clientes</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('automacoes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM19 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM5 7v4a4 4 0 0 0 4 4h6a4 4 0 0 1 4 4M19 3v6M16 6h6"/></svg><span>Automações</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('prospeccao'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6M11 8v6"/></svg><span>Prospecção</span></button>
+    <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); openAiAgentFromNav()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 4h6M9 14h.01M15 14h.01M2 14h2M20 14h2"/></svg><span>Agente de IA</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('cadencia'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM16 2v4M8 2v4M3 10h18"/></svg><span>Cadência</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('whatsapp'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/></svg><span>Conexões</span></button>
     <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); switchView('integracoes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>Integrações</span></button>
@@ -2602,6 +2603,10 @@ td { font-family: var(--font); font-size: 13px; }
         <div class="nav-item" id="nav-whatsapp" onclick="switchView('whatsapp')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/></svg>
           Conexões
+        </div>
+        <div class="nav-item" id="nav-agente-ia" onclick="openAiAgentFromNav()" style="display:none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 4h6M9 14h.01M15 14h.01M2 14h2M20 14h2"/></svg>
+          Agente de IA
         </div>
       </div>
       <div class="nav-group">
@@ -13543,8 +13548,15 @@ function aiChecks(items, selected, cls) {
     `<label class="sub-view"><input type="checkbox" value="${escapeHtml(String(v))}" ${selected.map(String).includes(String(v)) ? 'checked' : ''}><span class="sub-box"></span>${escapeHtml(label)}</label>`).join('')}</div>`;
 }
 
-function openAiAgent(login) {
-  const act = CREDENTIALS[login] && CREDENTIALS[login].act;
+function openAiAgentFromNav() {
+  const act = flowAct();
+  if (!act) { showToast('Escolha o cliente no topo do menu para programar o agente de IA dele.', 'warning'); return; }
+  openAiAgent('', act);
+}
+window.openAiAgentFromNav = openAiAgentFromNav;
+
+function openAiAgent(login, actDirect) {
+  const act = actDirect || (CREDENTIALS[login] && CREDENTIALS[login].act);
   if (!act) return;
   _aiAct = act;
   const a = aiAgentOf(act);
@@ -13563,7 +13575,7 @@ function openAiAgent(login) {
       <button class="btn-close-panel" onclick="closeAiAgent()">×</button>
     </div>
     <label class="ai-switch"><span>Atendente ligado</span><input type="checkbox" id="ai-enabled" ${a.enabled ? 'checked' : ''}></label>
-    <div class="integ-muted" style="margin-top:8px;">Atenção: esta tela guarda as regras. A IA só passa a responder no WhatsApp depois que o servidor (worker) receber a atualização do atendente. Até lá, ligar não envia nada.</div>
+    <div class="integ-muted" style="margin-top:8px;">A IA só responde a mensagens que o contato enviar (nunca puxa conversa) e para quando a equipe responde na conversa. Teste primeiro com o seu número.</div>
 
     <div class="ai-sec"><div class="ai-t">Quem é o atendente</div>
       <div class="ai-row"><label>Nome do atendente<input class="field-input" id="ai-name" value="${escapeHtml(a.name)}" placeholder="Ex.: Camila"></label></div></div>
@@ -16214,6 +16226,8 @@ function updateSidebarForUser() {
   if (integNav) integNav.style.display = isAdmin ? 'flex' : 'none';
   const clientesNav = document.getElementById('nav-clientes');
   if (clientesNav) clientesNav.style.display = isAdmin ? 'flex' : 'none';
+  const agenteNav = document.getElementById('nav-agente-ia');
+  if (agenteNav) agenteNav.style.display = isAdmin ? 'flex' : 'none';
   renderClientSwitch();
   const camposBtn = document.getElementById('btn-cfg-campos');
   if (camposBtn) camposBtn.style.display = isAdmin ? 'inline-flex' : 'none';
