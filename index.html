@@ -761,6 +761,24 @@ tr:hover td { background: var(--surface2); }
     .ai-row > label { flex: 1; min-width: 150px; font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
     .ai-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--border2); border-radius: 12px; background: var(--surface2); font-size: 13px; font-weight: 700; color: var(--text); cursor: pointer; }
     .ai-test { margin-top: 8px; padding: 12px; border: 1px dashed var(--border2); border-radius: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .wa-sim { border: 1px solid var(--border2); border-radius: 14px; overflow: hidden; background: #0b141a; }
+    .wa-top { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #1f2c34; color: #e9edef; }
+    .wa-av { width: 34px; height: 34px; border-radius: 50%; background: #2a7f62; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; color: #fff; flex-shrink: 0; }
+    .wa-nm { font-size: 14px; font-weight: 700; line-height: 1.2; }
+    .wa-st { font-size: 11px; color: #8696a0; }
+    .wa-msgs { height: 340px; overflow-y: auto; padding: 12px 10px; display: flex; flex-direction: column; gap: 5px; background-color: #0b141a; background-image: radial-gradient(rgba(255,255,255,.035) 1px, transparent 1px); background-size: 14px 14px; }
+    .wa-b { max-width: 82%; padding: 6px 9px 4px; border-radius: 9px; font-size: 13.5px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; color: #e9edef; position: relative; }
+    .wa-b .wa-t { display: block; text-align: right; font-size: 10px; color: #8696a0; margin-top: 1px; }
+    .wa-me { align-self: flex-end; background: #005c4b; border-top-right-radius: 2px; }
+    .wa-ai { align-self: flex-start; background: #202c33; border-top-left-radius: 2px; }
+    .wa-typing { color: #8696a0; font-style: italic; }
+    .wa-sys { align-self: center; max-width: 90%; text-align: center; font-size: 11.5px; line-height: 1.4; color: #e6c46a; background: rgba(212,175,55,.12); border: 1px solid rgba(212,175,55,.35); padding: 6px 10px; border-radius: 8px; margin: 4px 0; }
+    .wa-empty { margin: auto; text-align: center; font-size: 12px; color: #8696a0; max-width: 260px; line-height: 1.5; }
+    .wa-bar { display: flex; gap: 8px; align-items: flex-end; padding: 8px; background: #1f2c34; }
+    .wa-bar textarea { flex: 1; min-height: 38px; max-height: 90px; resize: none; border: none; outline: none; border-radius: 20px; background: #2a3942; color: #e9edef; padding: 9px 14px; font: inherit; font-size: 13.5px; line-height: 1.35; }
+    .wa-bar button { width: 40px; height: 40px; border-radius: 50%; border: none; background: #00a884; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .wa-bar button:disabled { opacity: .5; cursor: default; }
+    .wa-foot { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-top: 8px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
     .ai-reply { padding: 10px 12px; border-radius: 12px; background: rgba(212,175,55,.12); border: 1px solid rgba(212,175,55,.4); font-size: 13px; color: var(--text); white-space: pre-wrap; }
 
   /* ===== MOBILE ===== */
@@ -13559,6 +13577,7 @@ function openAiAgent(login, actDirect) {
   const act = actDirect || (CREDENTIALS[login] && CREDENTIALS[login].act);
   if (!act) return;
   _aiAct = act;
+  _aiSimView = []; _aiSim = []; _aiSimBusy = false; _aiSimDone = false; _aiSimN = 0;
   const a = aiAgentOf(act);
   const stages = getStages(act).map(st => [st.id, st.label]);
   let ov = document.getElementById('ai-agent-modal');
@@ -13601,10 +13620,11 @@ function openAiAgent(login, actDirect) {
     <div class="ai-sec"><div class="ai-t">Quando passar para a equipe</div>
       <div class="ai-row">
         <label>Ao qualificar, mover o card para<select class="field-input" id="ai-qstage"><option value="">Não mover</option>${stages.map(([id, l]) => `<option value="${escapeHtml(id)}" ${a.qualifiedStage === id ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select></label>
-        <label>Máximo de respostas por lead<input class="field-input" id="ai-max" type="number" min="1" max="30" value="${Number(a.maxReplies) || 6}"></label>
+        <label>Limite de respostas da IA por lead (trava de segurança)<input class="field-input" id="ai-max" type="number" min="1" max="100" value="${Number(a.maxReplies) || 6}"></label>
         <label>Espera antes de responder (segundos)<input class="field-input" id="ai-delay" type="number" min="3" max="120" value="${Number(a.delaySec) || 10}"></label>
       </div>
       <label class="ai-switch" style="margin-top:8px;"><span>Parar quando alguém da equipe responder na conversa</span><input type="checkbox" id="ai-stop" ${a.stopOnHuman ? 'checked' : ''}></label>
+      <div class="ai-h" style="margin-top:6px;">O lead pode mandar quantas mensagens quiser. O limite conta só as respostas que a IA dá: ao chegar nele, ela para de responder aquele lead e deixa para a equipe. Serve para a IA não conversar para sempre nem gastar cota à toa. Para uma qualificação completa, use 12 ou mais.</div>
       <div class="ai-row" style="margin-top:8px;"><label style="flex-basis:100%;">Mensagem ao passar para a equipe<textarea class="field-input" id="ai-handoff" rows="2">${escapeHtml(a.handoffMessage)}</textarea></label></div></div>
 
     <div class="ai-sec"><div class="ai-t">Horário de atendimento da IA</div>
@@ -13612,12 +13632,15 @@ function openAiAgent(login, actDirect) {
       <div class="ai-row" style="margin-top:8px;"><label>Das<input class="field-input" id="ai-from" type="time" value="${escapeHtml(a.from)}"></label><label>Até<input class="field-input" id="ai-to" type="time" value="${escapeHtml(a.to)}"></label></div>
       <div style="margin-top:8px;">${aiChecks(days, a.days, 'ai-days')}</div></div>
 
-    <div class="ai-sec"><div class="ai-t">Testar</div>
-      <div class="ai-test">
-        <textarea class="field-input" id="ai-test-msg" rows="2" placeholder="Escreva como se fosse o cliente. Ex.: Quanto custa o clareamento?"></textarea>
-        <div><button class="integ-btn" onclick="testAiAgent(this)">Ver a resposta da IA</button></div>
-        <div id="ai-test-out"></div>
-      </div></div>
+    <div class="ai-sec"><div class="ai-t">Testar a conversa</div>
+      <div class="ai-h">Simulador no estilo WhatsApp: você faz o papel do lead e a IA responde com as regras que estão na tela agora (mesmo sem salvar). Nada é enviado a ninguém. Converse como o lead conversaria, várias mensagens seguidas, para ver o fluxo inteiro.</div>
+      <div class="wa-sim">
+        <div class="wa-top"><div class="wa-av" id="ai-sim-av">A</div><div><div class="wa-nm" id="ai-sim-name">Atendente</div><div class="wa-st">online</div></div></div>
+        <div class="wa-msgs" id="ai-sim-msgs"></div>
+        <div class="wa-bar"><textarea id="ai-sim-in" rows="1" placeholder="Escreva como o lead" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAiSim();}"></textarea><button id="ai-sim-send" onclick="sendAiSim()" title="Enviar"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg></button></div>
+      </div>
+      <div class="wa-foot"><span id="ai-sim-count"></span><button class="integ-btn" type="button" onclick="resetAiSim()">Reiniciar conversa</button></div>
+    </div>
 
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap;">
       <span id="ai-feedback" style="font-size:12px;align-self:center;margin-right:auto;"></span>
@@ -13627,6 +13650,7 @@ function openAiAgent(login, actDirect) {
   </div>`;
   ov.style.display = 'flex';
   ov.classList.add('open');
+  aiSimRender();
 }
 function closeAiAgent() {
   const ov = document.getElementById('ai-agent-modal');
@@ -13641,7 +13665,7 @@ function readAiAgent() {
     name: v('ai-name').trim(), business: v('ai-business').trim(), tone: v('ai-tone').trim(), goal: v('ai-goal').trim(), rules: v('ai-rules').trim(),
     stages: checked('.ai-stages'), stopOnHuman: ov.querySelector('#ai-stop').checked,
     hoursOn: ov.querySelector('#ai-hours').checked, from: v('ai-from') || '08:00', to: v('ai-to') || '18:00', days: checked('.ai-days').map(Number),
-    maxReplies: Math.min(30, Math.max(1, Number(v('ai-max')) || 6)), delaySec: Math.min(120, Math.max(3, Number(v('ai-delay')) || 10)),
+    maxReplies: Math.min(100, Math.max(1, Number(v('ai-max')) || 6)), delaySec: Math.min(120, Math.max(3, Number(v('ai-delay')) || 10)),
     qualifiedStage: v('ai-qstage'), handoffMessage: v('ai-handoff').trim() || AI_AGENT_DEFAULTS.handoffMessage
   };
 }
@@ -13661,20 +13685,69 @@ async function saveAiAgent(btn) {
     renderAdminWhatsAppList();
   } catch (e) { btn.disabled = false; say('Erro: ' + e.message, false); }
 }
-async function testAiAgent(btn) {
-  const out = document.getElementById('ai-test-out');
-  const text = document.getElementById('ai-test-msg').value.trim();
-  if (!text) { out.innerHTML = '<div class="integ-muted">Escreva uma mensagem de teste.</div>'; return; }
-  btn.disabled = true; out.innerHTML = '<div class="integ-muted">A IA está pensando...</div>';
-  try {
-    const r = await window._fb.whatsapp('/ai/test', _aiAct, { agent: readAiAgent(), messages: [{ role: 'user', content: text }] });
-    out.innerHTML = `<div class="ai-reply">${escapeHtml(r.reply || '(sem resposta)')}</div>`;
-  } catch (e) {
-    out.innerHTML = `<div class="integ-error">Não foi possível testar: ${escapeHtml(e.message)}. Se o servidor ainda não tem a IA instalada, o teste só funciona depois dessa etapa.</div>`;
-  }
-  btn.disabled = false;
+// Simulador de conversa (estilo WhatsApp) para testar a IA com as regras da tela, sem enviar nada a ninguém.
+let _aiSimView = [], _aiSim = [], _aiSimBusy = false, _aiSimDone = false, _aiSimN = 0;
+function aiSimTime() { return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
+function aiSimRender() {
+  const box = document.getElementById('ai-sim-msgs');
+  if (!box) return;
+  const a = readAiAgent();
+  const nm = document.getElementById('ai-sim-name'), av = document.getElementById('ai-sim-av');
+  if (nm) nm.textContent = a.name || 'Atendente';
+  if (av) av.textContent = (a.name || 'A').trim().charAt(0).toUpperCase();
+  box.innerHTML = (_aiSimView.length ? '' : '<div class="wa-empty">Mande a primeira mensagem como se fosse o lead. Ex.: "Oi, vi a Zioon, como funciona?"</div>')
+    + _aiSimView.map(m => m.who === 'sys'
+      ? '<div class="wa-sys">' + escapeHtml(m.text) + '</div>'
+      : '<div class="wa-b ' + (m.who === 'me' ? 'wa-me' : 'wa-ai') + '">' + escapeHtml(m.text) + '<span class="wa-t">' + m.time + '</span></div>').join('')
+    + (_aiSimBusy ? '<div class="wa-b wa-ai wa-typing">digitando...</div>' : '');
+  box.scrollTop = box.scrollHeight;
+  const c = document.getElementById('ai-sim-count');
+  if (c) c.textContent = 'Respostas da IA nesta conversa: ' + _aiSimN + ' de ' + a.maxReplies + (_aiSimDone ? ' (a IA parou)' : '');
+  const btn = document.getElementById('ai-sim-send');
+  if (btn) btn.disabled = _aiSimBusy;
 }
-window.openAiAgent = openAiAgent; window.closeAiAgent = closeAiAgent; window.saveAiAgent = saveAiAgent; window.testAiAgent = testAiAgent;
+function resetAiSim() { _aiSimView = []; _aiSim = []; _aiSimBusy = false; _aiSimDone = false; _aiSimN = 0; aiSimRender(); }
+async function sendAiSim() {
+  if (_aiSimBusy) return;
+  const inp = document.getElementById('ai-sim-in');
+  const text = inp.value.trim();
+  if (!text) return;
+  if (_aiSimDone) { _aiSimView.push({ who: 'sys', text: 'Nesta conversa a IA já parou. Clique em "Reiniciar conversa" para testar de novo.' }); aiSimRender(); return; }
+  inp.value = '';
+  _aiSimView.push({ who: 'me', text, time: aiSimTime() });
+  _aiSim.push({ role: 'user', content: text });
+  _aiSimBusy = true; aiSimRender();
+  const agent = readAiAgent();
+  try {
+    const r = await window._fb.whatsapp('/ai/test', _aiAct, { agent, messages: _aiSim.slice(-12) });
+    const reply = (r.reply || '').trim();
+    if (reply) {
+      _aiSim.push({ role: 'assistant', content: reply });
+      _aiSimView.push({ who: 'ai', text: reply, time: aiSimTime() });
+      _aiSimN++;
+    } else {
+      _aiSimView.push({ who: 'sys', text: 'A IA não gerou resposta (na prática, nada seria enviado).' });
+    }
+    if (r.handoff) {
+      _aiSimView.push({ who: 'ai', text: agent.handoffMessage, time: aiSimTime() });
+      _aiSimView.push({ who: 'sys', text: 'A IA passou a conversa para a equipe e ficaria pausada neste lead.' });
+      _aiSimDone = true;
+    } else if (r.qualified) {
+      const st = getStages(_aiAct).find(x => x.id === agent.qualifiedStage);
+      _aiSimView.push({ who: 'sys', text: 'Lead qualificado. ' + (st ? 'O card iria para a coluna "' + st.label + '".' : 'O card não seria movido.') + ' A IA ficaria pausada neste lead.' });
+      _aiSimDone = true;
+    } else if (_aiSimN >= agent.maxReplies) {
+      _aiSimView.push({ who: 'sys', text: 'Limite de ' + agent.maxReplies + ' respostas atingido. Na prática, a IA pararia aqui e deixaria o lead para a equipe.' });
+      _aiSimDone = true;
+    }
+  } catch (e) {
+    _aiSim.pop();
+    _aiSimView.push({ who: 'sys', text: 'Não foi possível testar: ' + e.message });
+  }
+  _aiSimBusy = false; aiSimRender();
+}
+window.sendAiSim = sendAiSim; window.resetAiSim = resetAiSim;
+window.openAiAgent = openAiAgent; window.closeAiAgent = closeAiAgent; window.saveAiAgent = saveAiAgent; window.aiSimRender = aiSimRender;
 
 // ----- Identificações de mensagem (captura de leads pelo WhatsApp) -----
 const CAPTURE_MATCH_LABELS = { contains: 'Contém a frase', starts: 'Começa com a frase', exact: 'É exatamente a frase' };
