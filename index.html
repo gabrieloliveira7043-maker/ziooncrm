@@ -735,16 +735,34 @@ tr:hover td { background: var(--surface2); }
       background: var(--surface); border-top: 1px solid var(--border);
       padding: 8px 0 12px;
     }
-    .sublogin-box { border-top: 1px dashed var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
-    .sub-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 600; color: var(--text); }
-    .sub-new, .sub-item { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
-    .sub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-bottom: 8px; }
-    .sub-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
-    .sub-views { display: flex; flex-wrap: wrap; gap: 6px 14px; }
-    .sub-view { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text); cursor: pointer; }
-    .sub-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-    .sub-id { font-size: 12px; color: var(--muted); }
-    .sub-msg { font-size: 12px; }
+    .sublogin-box { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+    .sub-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .sub-head-t { font-size: 13px; font-weight: 700; color: var(--text); }
+    .sub-head-t small { font-weight: 600; color: var(--muted); margin-left: 4px; }
+    .sub-new, .sub-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+    .sub-new { border-color: var(--gold); }
+    .sub-new-t { font-size: 13px; font-weight: 700; color: var(--text); }
+    .sublogin-box .field-input { padding: 0 12px; height: 36px; font-size: 13px; border-radius: 9px; }
+    .sub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+    .sub-views-head { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+    .sub-views-head a { cursor: pointer; text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--gold); }
+    .sub-views { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+    .sub-view { position: relative; display: flex; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid var(--border2); border-radius: 10px; background: var(--surface); font-size: 12.5px; font-weight: 600; color: var(--muted2); cursor: pointer; user-select: none; transition: border-color .15s, background .15s, color .15s; }
+    .sub-view:hover { border-color: var(--gold); }
+    .sub-view input { position: absolute; opacity: 0; pointer-events: none; }
+    .sub-box { flex: 0 0 18px; width: 18px; height: 18px; border-radius: 6px; border: 1.5px solid var(--border2); display: flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1; color: transparent; transition: all .15s; }
+    .sub-view input:checked + .sub-box { background: var(--gold); border-color: var(--gold); color: #111; }
+    .sub-view input:checked + .sub-box::after { content: '✓'; font-weight: 900; }
+    .sub-view:has(input:checked) { border-color: var(--gold); background: rgba(212,175,55,.10); color: var(--text); }
+    .sub-view input:focus-visible + .sub-box { box-shadow: 0 0 0 3px rgba(212,175,55,.35); }
+    .sub-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .sub-av { flex: 0 0 34px; width: 34px; height: 34px; border-radius: 50%; background: var(--accent-glow, rgba(212,175,55,.15)); color: var(--gold); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
+    .sub-id { font-size: 11.5px; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
+    .sub-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .sub-actions .sub-newpass { width: 150px; }
+    .sub-sep { flex: 1; }
+    .sub-msg { font-size: 12px; font-weight: 600; }
+    .sub-empty { font-size: 12px; color: var(--muted); }
     .mobile-nav-item {
       flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px;
       cursor: pointer; color: var(--muted2); font-size: 9px; font-weight: 500;
@@ -6967,43 +6985,49 @@ async function renderAdminLogins() {
 }
 
 function subViewChecks(selected) {
-  return `<div class="sub-views">${SUB_LOGIN_VIEWS.map(([v, label]) =>
-    `<label class="sub-view"><input type="checkbox" value="${v}" ${!selected || selected.includes(v) ? 'checked' : ''}> ${escapeHtml(label)}</label>`).join('')}</div>`;
+  return `<div class="sub-views-head"><span>Áreas liberadas</span><span><a onclick="subViewsAll(this, true)">Marcar todas</a> · <a onclick="subViewsAll(this, false)">Limpar</a></span></div>
+    <div class="sub-views">${SUB_LOGIN_VIEWS.map(([v, label]) =>
+    `<label class="sub-view"><input type="checkbox" value="${v}" ${!selected || selected.includes(v) ? 'checked' : ''}><span class="sub-box"></span>${escapeHtml(label)}</label>`).join('')}</div>`;
+}
+function subViewsAll(a, on) {
+  a.closest('.sub-new, .sub-item').querySelectorAll('.sub-views input').forEach(i => { i.checked = on; });
 }
 
 function subLoginsHtml(parentLogin) {
   const subs = SUB_LOGINS.filter(x => x.parentLogin === parentLogin).sort((a, b) => String(a.name).localeCompare(String(b.name), 'pt-BR'));
   const pj = escapeJsString(parentLogin);
-  return `<div class="sub-head"><span>Logins extras deste cliente (${subs.length})</span>
+  return `<div class="sub-head"><div class="sub-head-t">Logins extras <small>${subs.length ? subs.length + ' criado' + (subs.length > 1 ? 's' : '') : 'nenhum ainda'}</small></div>
       <button class="integ-btn" onclick="toggleSubLoginForm('${pj}', this)">+ Novo login</button></div>
     <div class="sub-new" style="display:none;">
+      <div class="sub-new-t">Novo login para a equipe deste cliente</div>
       <div class="sub-grid">
-        <input class="field-input sub-name" placeholder="Nome da pessoa (ex.: Maria, vendedora)">
+        <input class="field-input sub-name" placeholder="Nome da pessoa (ex.: Maria)">
         <input class="field-input sub-login mono" placeholder="Login (ex.: maria.petland)" autocomplete="off">
         <input class="field-input sub-pass mono" placeholder="Senha (mín. 6)" autocomplete="off">
       </div>
-      <div class="sub-label">Áreas que este login pode abrir (Conta e Ajuda ficam sempre liberadas)</div>
       ${subViewChecks(null)}
-      <div class="integ-row" style="margin-top:8px;"><button class="integ-btn primary" onclick="createSubLogin('${pj}', this)">Criar login</button><span class="sub-msg"></span></div>
+      <div class="sub-actions"><button class="integ-btn primary" onclick="createSubLogin('${pj}', this)">Criar login</button><span class="sub-msg"></span></div>
     </div>
-    ${subs.map(sl => {
+    ${subs.length ? subs.map(sl => {
       const lj = escapeJsString(sl.login);
       const views = sl.perms && Array.isArray(sl.perms.views) ? sl.perms.views : null;
       const pass = _subVault[sl.login] || '';
       return `<div class="sub-item" data-sublogin="${escapeHtml(sl.login)}">
-        <div class="sub-row"><input class="field-input sub-name" value="${escapeHtml(sl.name)}" style="flex:1;min-width:140px;">
+        <div class="sub-row"><div class="sub-av">${escapeHtml((sl.name || '?').trim().charAt(0).toUpperCase())}</div>
+          <input class="field-input sub-name" value="${escapeHtml(sl.name)}" style="flex:1;min-width:140px;">
           <span class="mono sub-id">${escapeHtml(sl.login)}</span>
           ${pass ? `<button class="integ-btn" onclick="copyText(_subVault['${lj}'], 'Senha copiada')">Copiar senha</button>` : ''}</div>
         ${subViewChecks(views)}
-        <div class="integ-row" style="margin-top:8px;">
+        <div class="sub-actions">
           <button class="integ-btn primary" onclick="saveSubLogin('${lj}', this)">Salvar acessos</button>
-          <input class="field-input sub-newpass mono" placeholder="Nova senha" style="width:140px;" autocomplete="off">
+          <span class="sub-sep"></span>
+          <input class="field-input sub-newpass mono" placeholder="Nova senha" autocomplete="off">
           <button class="integ-btn" onclick="resetSubLoginPass('${lj}', this)">Trocar senha</button>
-          <button class="integ-btn" style="color:var(--red);" onclick="deleteSubLogin('${lj}', this)">Excluir login</button>
+          <button class="integ-btn danger" onclick="deleteSubLogin('${lj}', this)">Excluir</button>
           <span class="sub-msg"></span>
         </div>
       </div>`;
-    }).join('')}`;
+    }).join('') : '<div class="sub-empty">Crie logins para a equipe do cliente e escolha o que cada pessoa pode abrir.</div>'}`;
 }
 
 function subMsg(el, text, ok) {
