@@ -13562,7 +13562,7 @@ const AI_AGENT_DEFAULTS = {
   enabled: false, name: '', business: '', tone: '', goal: '', rules: '',
   stages: ['novo'], stopOnHuman: true, hoursOn: false, from: '08:00', to: '18:00', days: [1, 2, 3, 4, 5],
   maxReplies: 6, delaySec: 10, qualifiedStage: '', handoffOn: true,
-  calendar: { enabled: false, minutes: 30, days: [1, 2, 3, 4, 5], from: '09:00', to: '18:00', daysAhead: 7, noticeHours: 4, meet: true, title: 'Call de apresentação' },
+  calendar: { enabled: false, minutes: 30, days: [1, 2, 3, 4, 5], from: '09:00', to: '18:00', daysAhead: 7, noticeHours: 4, meet: true, title: 'Call de apresentação', commitment: true },
   handoffMessage: 'Vou pedir para um atendente da equipe continuar com você por aqui, tudo bem?'
 };
 let _aiAct = '';
@@ -13634,6 +13634,7 @@ function openAiAgent(login, actDirect) {
         <label>Antecedência mínima (horas)<input class="field-input" id="ai-cal-notice" type="number" min="0" max="72" value="${a.calendar.noticeHours === 0 || a.calendar.noticeHours ? Number(a.calendar.noticeHours) : 4}"></label>
         <label>Título do evento<input class="field-input" id="ai-cal-title" value="${escapeHtml(a.calendar.title)}" placeholder="Call de apresentação"></label>
       </div>
+      <label class="ai-switch" style="margin-top:8px;"><span>Pedir o compromisso de comparecimento antes de marcar</span><input type="checkbox" id="ai-cal-commit" ${a.calendar.commitment !== false ? 'checked' : ''}></label>
       <label class="ai-switch" style="margin-top:8px;"><span>Criar link do Google Meet no evento</span><input type="checkbox" id="ai-cal-meet" ${a.calendar.meet ? 'checked' : ''}></label>
       <div class="ai-h" style="margin-top:6px;">Se o lead tiver e-mail no card, ele recebe o convite do Google. Sem a agenda conectada, a IA não oferece horário e passa o lead para a equipe quando ele quiser a call.</div>
     </div>
@@ -13702,7 +13703,7 @@ function readAiAgent() {
       days: checked('.ai-cal-days').map(Number), from: v('ai-cal-from') || '09:00', to: v('ai-cal-to') || '18:00',
       daysAhead: Math.min(30, Math.max(1, Number(v('ai-cal-ahead')) || 7)),
       noticeHours: Math.min(72, Math.max(0, v('ai-cal-notice') === '' ? 4 : Number(v('ai-cal-notice')))),
-      meet: ov.querySelector('#ai-cal-meet').checked, title: v('ai-cal-title').trim() || 'Call de apresentação'
+      meet: ov.querySelector('#ai-cal-meet').checked, commitment: ov.querySelector('#ai-cal-commit').checked, title: v('ai-cal-title').trim() || 'Call de apresentação'
     },
     handoffOn: ov.querySelector('#ai-handoff-on').checked,
     qualifiedStage: v('ai-qstage'), handoffMessage: v('ai-handoff').trim() || AI_AGENT_DEFAULTS.handoffMessage
