@@ -1270,6 +1270,37 @@ html[data-theme="light"] .login-overlay { background: var(--paper); }
 .integ-form-row { display:grid; grid-template-columns:2fr 1.3fr 1.3fr 1.3fr; gap:8px; align-items:center; padding:6px 0; border-bottom:1px solid var(--border); }
 .integ-form-row .field-input { padding:6px 8px; font-size:12px; }
 .integ-toggle { display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700; color:var(--text); }
+/* Página "Configurar clientes" */
+.cfgc-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.cfgc-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px 24px; box-shadow: var(--card-shadow); }
+.cfgc-card-title { font-size: 16px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.cfgc-count { font-size: 11px; font-weight: 700; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+.cfgc-count:empty { display: none; }
+.cfgc-sub { font-size: 12.5px; color: var(--muted); margin: 3px 0 18px; line-height: 1.5; }
+.cfgc-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+.cfgc-form .full { grid-column: 1 / -1; }
+.cfgc-card .saved-list { margin-top: 0; }
+.cfgc-card .saved-item { gap: 12px; justify-content: flex-start; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; }
+.cfgc-card .saved-item:last-child { border-bottom: 1px solid var(--border); }
+.cfgc-card .saved-item .btn-remove { margin-left: auto; }
+.cfgc-av { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; flex-shrink: 0; }
+@media (max-width: 900px) { .cfgc-grid { grid-template-columns: 1fr; } .cfgc-form { grid-template-columns: 1fr; } }
+
+/* Interruptores de ligar/desligar (verde ligado, bolinha branca) */
+.integ-toggle:not(.plain) input[type="checkbox"]:not([name]), .ai-switch input[type="checkbox"], .sw-row input[type="checkbox"] {
+  -webkit-appearance: none; appearance: none; position: relative; width: 40px; height: 23px; flex-shrink: 0; margin: 0;
+  border-radius: 999px; background: #9aa0aa; border: none; cursor: pointer; outline: none; transition: background .18s ease;
+}
+.integ-toggle:not(.plain) input[type="checkbox"]:not([name])::after, .ai-switch input[type="checkbox"]::after, .sw-row input[type="checkbox"]::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 19px; height: 19px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .18s ease;
+}
+.integ-toggle:not(.plain) input[type="checkbox"]:not([name]):checked, .ai-switch input[type="checkbox"]:checked, .sw-row input[type="checkbox"]:checked { background: #22c55e; }
+.integ-toggle:not(.plain) input[type="checkbox"]:not([name]):checked::after, .ai-switch input[type="checkbox"]:checked::after, .sw-row input[type="checkbox"]:checked::after { transform: translateX(17px); }
+.integ-toggle:not(.plain) input[type="checkbox"]:not([name]):focus-visible, .ai-switch input[type="checkbox"]:focus-visible, .sw-row input[type="checkbox"]:focus-visible { box-shadow: 0 0 0 3px rgba(34,197,94,.35); }
+.integ-toggle:not(.plain) input[type="checkbox"]:not([name]):disabled, .ai-switch input[type="checkbox"]:disabled, .sw-row input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
+.integ-toggle:not(.plain) { gap: 9px; cursor: pointer; }
+
 @media (max-width: 768px) {
   #integracoes-view { padding:16px !important; }
   .integ-form-row { grid-template-columns:1fr; }
@@ -3549,6 +3580,56 @@ td { font-family: var(--font); font-size: 13px; }
     <!-- Atendimento (análise de tempo de resposta) -->
     <div id="analise-view" class="huv-view" style="display:none;"><div id="analise-body"></div></div>
 
+    <!-- Configurar clientes (página de cadastro, admin) -->
+    <div id="cfgclientes-view" class="huv-view" style="display:none;">
+      <div class="huv-header" style="margin-bottom:18px;">
+        <div style="flex:1;min-width:220px;">
+          <div class="huv-crumb">Administração  /  Clientes</div>
+          <div class="huv-page-title" style="color:var(--text);">Configurar clientes</div>
+          <div class="integ-muted" style="margin-top:4px;">Cadastre um novo cliente. Ele aparece no menu lateral e ganha um login próprio para entrar no CRM.</div>
+        </div>
+        <button class="huv-btn" style="height:40px;padding:0 16px;" onclick="switchView('clientes')">← Voltar para Clientes</button>
+      </div>
+      <div class="cfgc-grid">
+        <section class="cfgc-card">
+          <div class="cfgc-card-title">Novo cliente</div>
+          <div class="cfgc-sub">Preencha os dados de acesso e escolha o layout do funil.</div>
+          <div class="cfgc-form">
+            <div class="field-group full">
+              <label class="field-label">Nome do cliente</label>
+              <input type="text" class="field-input" id="cfg-name" placeholder="Ex: Clínica Vital">
+            </div>
+            <div class="field-group">
+              <label class="field-label">Login (sem espaços)</label>
+              <input type="text" class="field-input mono" id="cfg-login" placeholder="Ex: vital">
+            </div>
+            <div class="field-group">
+              <label class="field-label">Senha</label>
+              <input type="text" class="field-input mono" id="cfg-senha" placeholder="Mínimo 6 caracteres">
+            </div>
+            <div class="field-group full">
+              <label class="field-label">Conta de anúncios (opcional)</label>
+              <input type="text" class="field-input mono" id="cfg-account" placeholder="act_123456789, pode definir depois">
+            </div>
+            <div class="field-group full">
+              <label class="field-label">Layout do CRM</label>
+              <select class="field-input" id="cfg-layout" style="cursor:pointer;">
+                <option value="default">Padrão (Novo lead, Em contato, Proposta, Fechado, Perdido)</option>
+                <option value="clinica">Clínica (Novo lead, Conversando, Não respondeu, Agendou, Compareceu, Fechou)</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn-save" id="btn-salvar-cliente" onclick="saveClient()">Salvar cliente</button>
+          <div id="cfg-feedback" style="font-size:13px;margin-top:10px;display:none;"></div>
+        </section>
+        <section class="cfgc-card">
+          <div class="cfgc-card-title">Clientes adicionados <span class="cfgc-count" id="cfgc-count"></span></div>
+          <div class="cfgc-sub">Clientes cadastrados por aqui. Excluir apaga login, leads, conversas e conexões.</div>
+          <div class="saved-list" id="saved-list"></div>
+        </section>
+      </div>
+    </div>
+
     <!-- Clientes View (admin) -->
     <div id="clientes-view" class="huv-view" style="display:none;">
       <div class="huv-header">
@@ -3663,40 +3744,7 @@ td { font-family: var(--font); font-size: 13px; }
   </main>
 </div>
 
-<div class="overlay" id="overlay" onclick="closeConfig()"></div>
-<div class="config-panel" id="config-panel">
-  <div class="panel-header">
-    <div class="panel-title">Configurar clientes</div>
-    <button class="btn-close-panel" onclick="closeConfig()">×</button>
-  </div>
-  <div class="panel-desc">Adicione um novo cliente. Ele aparecerá na sidebar e terá login próprio.</div>
-  <div class="field-group">
-    <label class="field-label">Nome do cliente</label>
-    <input type="text" class="field-input" id="cfg-name" placeholder="Ex: Clínica Vital">
-  </div>
-  <div class="field-group">
-    <label class="field-label">Login (sem espaços)</label>
-    <input type="text" class="field-input mono" id="cfg-login" placeholder="Ex: vital">
-  </div>
-  <div class="field-group">
-    <label class="field-label">Senha</label>
-    <input type="text" class="field-input mono" id="cfg-senha" placeholder="Ex: vital123">
-  </div>
-  <div class="field-group">
-    <label class="field-label">Conta de anúncios (opcional)</label>
-    <input type="text" class="field-input mono" id="cfg-account" placeholder="act_123456789 — pode definir depois">
-  </div>
-  <div class="field-group">
-    <label class="field-label">Layout do CRM</label>
-    <select class="field-input" id="cfg-layout" style="cursor:pointer;">
-      <option value="default">Padrão (Novo lead, Em contato, Proposta, Fechado, Perdido)</option>
-      <option value="clinica">Clínica (Novo lead, Conversando, Não respondeu, Agendou, Compareceu, Fechou)</option>
-    </select>
-  </div>
-  <button class="btn-save" id="btn-salvar-cliente" onclick="saveClient()">Salvar cliente</button>
-  <div id="cfg-feedback" style="font-size:13px;margin-top:8px;display:none;"></div>
-  <div class="saved-list" id="saved-list"></div>
-</div>
+
 
 <script>
 const STORAGE_KEY = 'meta_ads_clients_v2';
@@ -3934,21 +3982,26 @@ async function renderSavedList() {
     // Documentos "fixed" só guardam edições dos clientes que vêm do código; não entram nesta lista.
     const extras = (await window._fb.getExtraClients()).filter(c => !c.fixed && !c.parentLogin && !FIXED_CLIENT_LOGINS.includes(c.login));
     if (!extras.length) {
-      el.innerHTML = '<div style="font-size:12px;color:var(--muted);margin:16px 0 8px;">Nenhum cliente extra adicionado.</div>';
+      const cnt0 = document.getElementById('cfgc-count'); if (cnt0) cnt0.textContent = '';
+      el.innerHTML = '<div class="integ-empty">Nenhum cliente adicionado por aqui ainda. Use o formulário ao lado.</div>';
       return;
     }
-    el.innerHTML = '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:16px 0 8px;">Clientes adicionados</div>' +
-      extras.map(c => `
+    const cnt = document.getElementById('cfgc-count'); if (cnt) cnt.textContent = String(extras.length);
+    el.innerHTML = extras.map(c => {
+      const tone = (typeof huvTone === 'function' ? huvTone(c.act) : ['var(--amber-dim)', 'var(--amber)']);
+      return `
       <div class="saved-item">
+        <div class="cfgc-av" style="background:${tone[0]};color:${tone[1]};">${escapeHtml(typeof huvInitials === 'function' ? huvInitials(c.name) : String(c.name || '?').slice(0, 2).toUpperCase())}</div>
         <div><div class="saved-name">${escapeHtml(c.name)}</div><div class="saved-id">${escapeHtml(getAdAccountFor(c.act) || 'sem conta de anúncios')} · login: ${escapeHtml(c.login)}</div></div>
         <button class="btn-remove" onclick="removeExtraClient('${escapeJsString(c.login)}','${escapeJsString(c.name)}')">Excluir</button>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   } catch(e) { el.innerHTML = '<div style="font-size:12px;color:#f87171;margin:16px 0 8px;">Erro ao carregar.</div>'; }
 }
 
 function renderAll() { renderSidebar(); renderSavedList(); }
-function openConfig() { document.getElementById('config-panel').classList.add('open'); document.getElementById('overlay').classList.add('open'); renderSavedList(); }
-function closeConfig() { document.getElementById('config-panel').classList.remove('open'); document.getElementById('overlay').classList.remove('open'); }
+function openConfig() { if (typeof isAdmin !== 'undefined' && !isAdmin) return; switchView('cfgclientes'); }
+function closeConfig() { switchView('clientes'); }
 
 function fmt(n, dec=2) { return Number(n).toFixed(dec); }
 function fmtBRL(n) { return 'R$\u00a0' + Number(n).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
@@ -6899,6 +6952,11 @@ function switchView(view) {
   const clientesView = document.getElementById('clientes-view');
   if (clientesView) clientesView.style.display = view === 'clientes' ? 'block' : 'none';
   if (view === 'clientes') renderClientesView();
+  const cfgcView = document.getElementById('cfgclientes-view');
+  if (cfgcView) cfgcView.style.display = view === 'cfgclientes' ? 'block' : 'none';
+  if (view === 'cfgclientes') renderSavedList();
+  const cfgBtn = document.getElementById('btn-config');
+  if (cfgBtn) cfgBtn.classList.toggle('active', view === 'cfgclientes');
   closeClientSwitcher();
   const integView = document.getElementById('integracoes-view');
   if (integView) integView.style.display = view === 'integracoes' ? 'block' : 'none';
@@ -9854,7 +9912,7 @@ function renderProsResult() {
   const act = flowAct();
   box.innerHTML = `
     <div class="pr-bar">
-      <label class="integ-toggle"><input type="checkbox" ${allSel ? 'checked' : ''} onchange="prosToggleAll(this.checked)"> Selecionar todas</label>
+      <label class="integ-toggle plain"><input type="checkbox" ${allSel ? 'checked' : ''} onchange="prosToggleAll(this.checked)"> Selecionar todas</label>
       <select class="field-input" style="width:auto;padding:4px 8px;font-size:12px;" onchange="prosSelectFirst(this.value)" aria-label="Selecionar as primeiras">
         <option value="">Selecionar as primeiras...</option>
         ${[100, 200, 300, 400, 500].map(n => `<option value="${n}">${n} primeiras</option>`).join('')}
@@ -13505,7 +13563,7 @@ function renderAdminWhatsAppList() {
       </div>
       <div class="wa-lines" data-wa-lines="${escapeHtml(c.act)}"></div>
       <div class="wa-card-stats">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><span style="flex:1;">1ª mensagem automática no "Novo lead"</span><input type="checkbox" onchange="toggleWhatsAppAuto('${jsLogin}', this)" ${s.autoFirstMessage ? 'checked' : ''}></label>
+        <label class="sw-row" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><span style="flex:1;">1ª mensagem automática no "Novo lead"</span><input type="checkbox" onchange="toggleWhatsAppAuto('${jsLogin}', this)" ${s.autoFirstMessage ? 'checked' : ''}></label>
         <div style="display:flex;"><span style="flex:1;">Captura de leads pelo WhatsApp</span><b>${capture ? (rules ? rules + (rules > 1 ? ' regras' : ' regra') : 'Ligada') : 'Desligada'}</b></div>
         <div style="display:flex;"><span style="flex:1;">Atendente com IA</span><b>${s.aiAgent && s.aiAgent.enabled ? 'Ligado' : 'Desligado'}</b></div>
         <div style="display:flex;"><span style="flex:1;">Enviadas hoje</span><b>${sentToday}</b></div>
