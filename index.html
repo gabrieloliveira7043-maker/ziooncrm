@@ -2516,7 +2516,7 @@ td { font-family: var(--font); font-size: 13px; }
     <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); switchView('clientes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16M9 7h2M13 7h2M9 11h2M13 11h2"/></svg><span>Clientes</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('automacoes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM19 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM5 7v4a4 4 0 0 0 4 4h6a4 4 0 0 1 4 4M19 3v6M16 6h6"/></svg><span>Automações</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('prospeccao'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6M11 8v6"/></svg><span>Prospecção</span></button>
-    <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); openAiAgentFromNav()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 4h6M9 14h.01M15 14h.01M2 14h2M20 14h2"/></svg><span>Agente de IA</span></button>
+    <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); switchView('agenteia'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 4h6M9 14h.01M15 14h.01M2 14h2M20 14h2"/></svg><span>Agente de IA</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('cadencia'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM16 2v4M8 2v4M3 10h18"/></svg><span>Cadência</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('whatsapp'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/></svg><span>Conexões</span></button>
     <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); switchView('integracoes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>Integrações</span></button>
@@ -2622,7 +2622,7 @@ td { font-family: var(--font); font-size: 13px; }
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/></svg>
           Conexões
         </div>
-        <div class="nav-item" id="nav-agente-ia" onclick="openAiAgentFromNav()" style="display:none;">
+        <div class="nav-item" id="nav-agenteia" onclick="switchView('agenteia')" style="display:none;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 4h6M9 14h.01M15 14h.01M2 14h2M20 14h2"/></svg>
           Agente de IA
         </div>
@@ -3539,6 +3539,9 @@ td { font-family: var(--font); font-size: 13px; }
 
     <!-- Automações View -->
     <div id="automacoes-view" class="huv-view" style="display:none;"><div id="automacoes-body"></div></div>
+
+    <!-- Agente de IA (card do agente do cliente) -->
+    <div id="agenteia-view" class="huv-view" style="display:none;"><div id="agenteia-body"></div></div>
 
     <!-- Prospecção View -->
     <div id="prospeccao-view" class="huv-view" style="display:none;"><div id="prospeccao-body"></div></div>
@@ -6862,7 +6865,7 @@ function switchView(view) {
     showToast('Seu login não tem acesso a esta área.', 'warning');
     view = firstAllowedView();
   }
-  ['report','analise','clientes','automacoes','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes'].forEach(v => {
+  ['report','analise','clientes','automacoes','agenteia','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes'].forEach(v => {
     const el = document.getElementById('nav-' + v);
     if (el) el.classList.toggle('active', v === view);
   });
@@ -6884,6 +6887,9 @@ function switchView(view) {
   const automacoesView = document.getElementById('automacoes-view');
   if (automacoesView) automacoesView.style.display = view === 'automacoes' ? 'block' : 'none';
   if (view === 'automacoes') renderAutomacoesView();
+  const agenteView = document.getElementById('agenteia-view');
+  if (agenteView) agenteView.style.display = view === 'agenteia' ? 'block' : 'none';
+  if (view === 'agenteia') renderAgenteIaView();
   const prospeccaoView = document.getElementById('prospeccao-view');
   if (prospeccaoView) prospeccaoView.style.display = view === 'prospeccao' ? 'block' : 'none';
   if (view === 'prospeccao') renderProspeccaoView();
@@ -13570,18 +13576,14 @@ function aiChecks(items, selected, cls) {
     `<label class="sub-view"><input type="checkbox" value="${escapeHtml(String(v))}" ${selected.map(String).includes(String(v)) ? 'checked' : ''}><span class="sub-box"></span>${escapeHtml(label)}</label>`).join('')}</div>`;
 }
 
-function openAiAgentFromNav() {
-  const act = flowAct();
-  if (!act) { showToast('Escolha o cliente no topo do menu para programar o agente de IA dele.', 'warning'); return; }
-  openAiAgent('', act);
-}
+function openAiAgentFromNav() { switchView('agenteia'); }
 window.openAiAgentFromNav = openAiAgentFromNav;
 
 function openAiAgent(login, actDirect) {
   const act = actDirect || (CREDENTIALS[login] && CREDENTIALS[login].act);
   if (!act) return;
   _aiAct = act;
-  _aiSimView = []; _aiSim = []; _aiSimBusy = false; _aiSimDone = false; _aiSimN = 0;
+  _aiSimView = []; _aiSim = []; _aiSimBusy = false; _aiSimDone = false; _aiSimN = 0; _aiSimSource = 'form';
   const a = aiAgentOf(act);
   const stages = getStages(act).map(st => [st.id, st.label]);
   let ov = document.getElementById('ai-agent-modal');
@@ -13657,12 +13659,7 @@ function openAiAgent(login, actDirect) {
 
     <div class="ai-sec"><div class="ai-t">Testar a conversa</div>
       <div class="ai-h">Simulador no estilo WhatsApp: você faz o papel do lead e a IA responde com as regras que estão na tela agora (mesmo sem salvar). Nada é enviado a ninguém. Converse como o lead conversaria, várias mensagens seguidas, para ver o fluxo inteiro.</div>
-      <div class="wa-sim">
-        <div class="wa-top"><div class="wa-av" id="ai-sim-av">A</div><div><div class="wa-nm" id="ai-sim-name">Atendente</div><div class="wa-st">online</div></div></div>
-        <div class="wa-msgs" id="ai-sim-msgs"></div>
-        <div class="wa-bar"><textarea id="ai-sim-in" rows="1" placeholder="Escreva como o lead" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAiSim();}"></textarea><button id="ai-sim-send" onclick="sendAiSim()" title="Enviar"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg></button></div>
-      </div>
-      <div class="wa-foot"><span id="ai-sim-count"></span><button class="integ-btn" type="button" onclick="resetAiSim()">Reiniciar conversa</button></div>
+      ${aiSimHtml()}
     </div>
 
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap;">
@@ -13678,7 +13675,7 @@ function openAiAgent(login, actDirect) {
 }
 function closeAiAgent() {
   const ov = document.getElementById('ai-agent-modal');
-  if (ov) { ov.classList.remove('open'); ov.style.display = 'none'; }
+  if (ov) ov.remove();
 }
 function readAiAgent() {
   const ov = document.getElementById('ai-agent-modal');
@@ -13717,8 +13714,120 @@ async function saveAiAgent(btn) {
     showToast(a.enabled ? 'Atendente com IA ligado.' : 'Configuração salva (atendente desligado).', 'success');
     closeAiAgent();
     renderAdminWhatsAppList();
+    if (typeof renderAgenteIaView === 'function' && document.getElementById('agenteia-body')) renderAgenteIaView();
   } catch (e) { btn.disabled = false; say('Erro: ' + e.message, false); }
 }
+// ===== PÁGINA "AGENTE DE IA": card do agente do cliente (editar, pausar/iniciar, conversa de teste) =====
+function aiAgentConfigured(act) {
+  const a = ((WHATSAPP_SETTINGS[act] || {}).aiAgent) || null;
+  return !!(a && (a.business || a.name));
+}
+
+function renderAgenteIaView() {
+  const box = document.getElementById('agenteia-body');
+  if (!box) return;
+  const act = flowAct();
+  if (!act) { box.innerHTML = '<div class="integ-empty">Escolha o cliente no topo do menu para ver e programar o agente de IA dele.</div>'; return; }
+  const client = escapeHtml(getClientDisplayName(act) || act);
+  const head = `<div class="huv-header" style="margin-bottom:14px;">
+      <div style="flex:1;min-width:220px;">
+        <div class="huv-crumb">${client}  /  WhatsApp</div>
+        <div class="huv-page-title" style="color:var(--text);">Agente de IA</div>
+        <div class="integ-muted" style="margin-top:4px;">Atendente que responde os leads no WhatsApp com as regras do cliente, qualifica a conversa, passa para a equipe e marca a call na agenda.</div>
+      </div>
+      ${aiAgentConfigured(act) ? '' : '<div style="display:flex;gap:8px;"><button class="btn-add-lead" style="height:40px;padding:0 16px;" onclick="openAiAgentForNav()">+ Configurar agente</button></div>'}
+    </div>`;
+  if (!aiAgentConfigured(act)) {
+    box.innerHTML = head + '<div class="huv-grid"><div class="integ-empty" style="grid-column:1/-1;">Nenhum agente configurado para este cliente ainda. Clique em "+ Configurar agente" para dizer quem ele é, o que sabe sobre a empresa e como deve conduzir a conversa.</div></div>';
+    return;
+  }
+  const a = aiAgentOf(act);
+  const stageNames = (a.stages || []).map(id => autoStageLabel(act, id)).filter(Boolean);
+  const leads = (_leadsCache || []).filter(l => leadMatchesClient(l, act));
+  const served = leads.filter(l => (l.aiReplies || 0) > 0).length;
+  const calls = leads.filter(l => l.callAt).length;
+  const state = a.enabled ? 'Ligado' : 'Pausado';
+  box.innerHTML = head + `<div class="huv-grid">
+    <article class="huv-card">
+      <div class="huv-card-head">
+        <div class="huv-avatar" style="background:var(--amber-dim);color:var(--amber);font-size:20px;">🤖</div>
+        <div style="flex:1;min-width:0;"><div class="huv-name">${escapeHtml(a.name || 'Atendente IA')}</div><div class="huv-sub">Responde em: ${escapeHtml(stageNames.join(', ') || 'nenhuma coluna')}</div></div>
+        <span style="font-weight:700;font-size:13px;color:${a.enabled ? 'var(--green)' : 'var(--muted)'};">${a.enabled ? '● ' : '⏸ '}${state}</span>
+      </div>
+      <div class="huv-stats">
+        <div><div class="huv-stat-label">Leads atendidos</div><div class="huv-stat-value">${served}</div></div>
+        <div><div class="huv-stat-label">Calls marcadas</div><div class="huv-stat-value">${a.calendar && a.calendar.enabled ? calls : '–'}</div></div>
+        <div><div class="huv-stat-label">Horário</div><div class="huv-stat-value" style="font-size:13px;">${a.hoursOn ? escapeHtml(a.from + ' às ' + a.to) : '24 horas'}</div></div>
+      </div>
+      <div class="huv-actions">
+        <button class="huv-btn primary" onclick="openAiAgentForNav()">Editar</button>
+        <button class="huv-btn" onclick="toggleAiAgentRun()">${a.enabled ? '⏸ Pausar' : '▶ Iniciar'}</button>
+        <button class="huv-btn" onclick="openAiSimPopup()">💬 Conversa teste</button>
+      </div>
+    </article>
+  </div>`;
+}
+
+function openAiAgentForNav() {
+  const act = flowAct();
+  if (!act) return;
+  openAiAgent('', act);
+}
+
+// Pausar / iniciar sem abrir a tela de edição. Para iniciar, a configuração precisa estar completa.
+async function toggleAiAgentRun() {
+  const act = flowAct();
+  if (!act) return;
+  const a = aiAgentOf(act);
+  const next = !a.enabled;
+  if (next && (String(a.business || '').length < 30 || !(a.stages || []).length)) {
+    showToast('Complete a descrição da empresa e marque as colunas antes de iniciar.', 'warning', 6000);
+    openAiAgent('', act);
+    return;
+  }
+  try {
+    const updated = { ...a, enabled: next };
+    await window._fb.saveWhatsAppSettings(act, { aiAgent: updated });
+    WHATSAPP_SETTINGS[act] = { ...(WHATSAPP_SETTINGS[act] || {}), aiAgent: updated };
+    showToast(next ? 'Agente de IA iniciado: ele já responde os leads novos.' : 'Agente de IA pausado: não responde mais ninguém até você iniciar.', 'success');
+  } catch (e) { showToast('Erro: ' + e.message, 'error'); }
+  renderAgenteIaView();
+}
+
+// Conversa de teste em popup, com a configuração já salva do agente.
+function openAiSimPopup() {
+  const act = flowAct();
+  if (!act) return;
+  _aiAct = act;
+  _aiSimSource = 'saved';
+  _aiSimView = []; _aiSim = []; _aiSimBusy = false; _aiSimDone = false; _aiSimN = 0;
+  let ov = document.getElementById('ai-sim-modal');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'ai-sim-modal';
+    ov.className = 'modal-overlay stages-modal';
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = `<div class="modal-box ai-modal-box" style="max-width:460px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;">
+      <div class="modal-title" style="margin-bottom:0;">Conversa teste</div>
+      <button class="btn-close-panel" onclick="closeAiSimPopup()">×</button>
+    </div>
+    <div class="ai-h" style="margin-bottom:10px;">Você faz o papel do lead e a IA responde com as regras salvas. Nada é enviado a ninguém.</div>
+    ${aiSimHtml()}
+  </div>`;
+  ov.style.display = 'flex';
+  ov.classList.add('open');
+  aiSimRender();
+}
+function closeAiSimPopup() {
+  const ov = document.getElementById('ai-sim-modal');
+  if (ov) ov.remove();
+  _aiSimSource = 'form';
+}
+window.renderAgenteIaView = renderAgenteIaView; window.openAiAgentForNav = openAiAgentForNav;
+window.toggleAiAgentRun = toggleAiAgentRun; window.openAiSimPopup = openAiSimPopup; window.closeAiSimPopup = closeAiSimPopup;
+
 // Google Agenda do cliente: estado da conexão e botões Conectar / Desconectar.
 let _aiGcal = { connected: false, email: '', configured: true, loaded: false };
 async function refreshAiGcal() {
@@ -13762,13 +13871,23 @@ async function disconnectAiGcal() {
 }
 window.connectAiGcal = connectAiGcal; window.disconnectAiGcal = disconnectAiGcal;
 
+function aiSimHtml() {
+  return `<div class="wa-sim">
+  <div class="wa-top"><div class="wa-av" id="ai-sim-av">A</div><div><div class="wa-nm" id="ai-sim-name">Atendente</div><div class="wa-st">online</div></div></div>
+  <div class="wa-msgs" id="ai-sim-msgs"></div>
+  <div class="wa-bar"><textarea id="ai-sim-in" rows="1" placeholder="Escreva como o lead" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAiSim();}"></textarea><button id="ai-sim-send" onclick="sendAiSim()" title="Enviar"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg></button></div>
+</div>
+<div class="wa-foot"><span id="ai-sim-count"></span><button class="integ-btn" type="button" onclick="resetAiSim()">Reiniciar conversa</button></div>`;
+}
+let _aiSimSource = 'form';
+function aiSimAgent() { return _aiSimSource === 'saved' ? aiAgentOf(_aiAct) : readAiAgent(); }
 // Simulador de conversa (estilo WhatsApp) para testar a IA com as regras da tela, sem enviar nada a ninguém.
 let _aiSimView = [], _aiSim = [], _aiSimBusy = false, _aiSimDone = false, _aiSimN = 0;
 function aiSimTime() { return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
 function aiSimRender() {
   const box = document.getElementById('ai-sim-msgs');
   if (!box) return;
-  const a = readAiAgent();
+  const a = aiSimAgent();
   const nm = document.getElementById('ai-sim-name'), av = document.getElementById('ai-sim-av');
   if (nm) nm.textContent = a.name || 'Atendente';
   if (av) av.textContent = (a.name || 'A').trim().charAt(0).toUpperCase();
@@ -13794,7 +13913,7 @@ async function sendAiSim() {
   _aiSimView.push({ who: 'me', text, time: aiSimTime() });
   _aiSim.push({ role: 'user', content: text });
   _aiSimBusy = true; aiSimRender();
-  const agent = readAiAgent();
+  const agent = aiSimAgent();
   try {
     const r = await window._fb.whatsapp('/ai/test', _aiAct, { agent, messages: _aiSim.slice(-12) });
     const reply = (r.reply || '').trim();
@@ -16382,7 +16501,7 @@ function updateSidebarForUser() {
   if (integNav) integNav.style.display = isAdmin ? 'flex' : 'none';
   const clientesNav = document.getElementById('nav-clientes');
   if (clientesNav) clientesNav.style.display = isAdmin ? 'flex' : 'none';
-  const agenteNav = document.getElementById('nav-agente-ia');
+  const agenteNav = document.getElementById('nav-agenteia');
   if (agenteNav) agenteNav.style.display = isAdmin ? 'flex' : 'none';
   renderClientSwitch();
   const camposBtn = document.getElementById('btn-cfg-campos');
