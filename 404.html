@@ -9379,9 +9379,10 @@ const FLOW_ICONS = {
   video: 'M23 7l-7 5 7 5zM1 5h15v14H1z',
   audio: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3',
   move: 'M5 12h14M13 6l6 6-6 6',
-  condition: 'M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9'
+  condition: 'M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9',
+  ai: 'M4 8a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3zM12 5V2M9 12h.01M15 12h.01M9.5 16h5'
 };
-const FLOW_COLORS = { trigger: '#C9A24A', wait: '#2F6FDB', message: '#1FA855', move: '#7A5AF8', condition: '#E08A1E' };
+const FLOW_COLORS = { trigger: '#C9A24A', wait: '#2F6FDB', message: '#1FA855', move: '#7A5AF8', condition: '#E08A1E', ai: '#0E9F9F' };
 
 function flowAct() {
   if (!isAdmin) return window._fb && window._fb.getProfile() ? normalizeActValue(window._fb.getProfile().act) : '';
@@ -10576,6 +10577,7 @@ function renderFlowEditor() {
           ${add('message', 'audio', 'Áudio (voz)')}
           ${add('move', 'move', 'Mover card')}
           ${add('condition', 'condition', 'Respondeu?')}
+          ${add('ai', 'ai', 'Agente de IA entra')}
           <div class="ci-label" style="margin-top:16px;">Regras do fluxo</div>
           <label class="integ-toggle" style="align-items:flex-start;"><input type="checkbox" ${_flow.stopOnReply !== false ? 'checked' : ''} onchange="_flow.stopOnReply = this.checked; _flow._dirty = true; renderFlowEditor()"> Parar quando o lead responder</label>
           ${_flow.stopOnReply !== false ? `<label class="auto-label" style="display:block;margin-top:6px;">e mover para<select class="field-input" style="margin-top:4px;" onchange="_flow.onReply = { moveTo: this.value }; _flow._dirty = true">${autoStageOptions(act, (_flow.onReply || {}).moveTo, 'Não mover')}</select></label>` : '<div class="integ-muted" style="margin-top:6px;">Use o bloco "Respondeu?" para decidir o caminho.</div>'}
@@ -10622,6 +10624,7 @@ function flowNodeSummary(n) {
   if (n.type === 'wait') return `Esperar <b>${Number(d.amount) || 0} ${FLOW_UNITS[d.unit] || 'horas'}</b>`;
   if (n.type === 'move') return d.stage ? `Mover para <b>${escapeHtml(autoStageLabel(act, d.stage))}</b>` : '<span style="color:var(--red);">Escolha a coluna</span>';
   if (n.type === 'condition') return 'O lead respondeu no WhatsApp desde que entrou no fluxo?';
+  if (n.type === 'ai') return 'A IA assume a conversa, qualifica e marca a reunião.';
   const kind = d.kind || 'text';
   const txt = (d.templates || []).find(Boolean) || '';
   const file = d.media && d.media.fileName ? `<div class="flow-file">📎 ${escapeHtml(limitText(d.media.fileName, 28))}</div>` : (kind !== 'text' ? '<div class="flow-file" style="color:var(--red);">Falta o arquivo</div>' : '');
@@ -10630,7 +10633,7 @@ function flowNodeSummary(n) {
 
 function flowNodeTitle(n) {
   if (n.type === 'message') return FLOW_MEDIA[(n.data || {}).kind || 'text'] === 'Texto' ? 'Mensagem' : FLOW_MEDIA[(n.data || {}).kind];
-  return { trigger: 'Gatilho', wait: 'Esperar', move: 'Mover card', condition: 'Respondeu?' }[n.type] || n.type;
+  return { trigger: 'Gatilho', wait: 'Esperar', move: 'Mover card', condition: 'Respondeu?', ai: 'Agente de IA' }[n.type] || n.type;
 }
 
 function renderFlowNodes() {
@@ -10641,7 +10644,7 @@ function renderFlowNodes() {
     const iconKey = n.type === 'message' ? ((n.data || {}).kind || 'text') : n.type;
     const ports = n.type === 'condition'
       ? `<span class="flow-port out yes" data-node="${n.id}" data-port="yes" title="Sim"></span><span class="flow-port-label yes">Sim</span><span class="flow-port out no" data-node="${n.id}" data-port="no" title="Não"></span><span class="flow-port-label no">Não</span>`
-      : `<span class="flow-port out" data-node="${n.id}" data-port="out"></span>`;
+      : n.type === 'ai' ? '' : `<span class="flow-port out" data-node="${n.id}" data-port="out"></span>`;
     return `<div class="flow-node ${_flowSel === n.id ? 'selected' : ''}" data-node="${n.id}" style="left:${n.x}px;top:${n.y}px;">
       ${n.type !== 'trigger' ? `<span class="flow-port in" data-node="${n.id}"></span>` : ''}
       <div class="flow-node-head" style="border-color:${color};"><span class="flow-node-icon" style="background:${color}22;">${flowIcon(iconKey, color)}</span><span>${escapeHtml(flowNodeTitle(n))}</span></div>
@@ -10759,7 +10762,7 @@ function addFlowNode(type, kind) {
   // Liga sozinho depois do bloco selecionado, se ele ainda não tiver saída.
   if (_flowSel && _flowSel !== n.id) {
     const sel = _flow.nodes.find(x => x.id === _flowSel);
-    if (sel && sel.type !== 'condition' && !_flow.edges.some(e => e.from === sel.id)) {
+    if (sel && sel.type !== 'condition' && sel.type !== 'ai' && !_flow.edges.some(e => e.from === sel.id)) {
       _flow.edges.push({ from: sel.id, port: 'out', to: n.id });
       n.x = sel.x + 290; n.y = sel.y;
     }
@@ -10868,6 +10871,12 @@ function renderFlowInspector() {
   } else if (n.type === 'move') {
     html += `<label class="auto-label">Mover o card para<select class="field-input" onchange="setFlowData('stage', this.value)">${autoStageOptions(act, d.stage, 'Escolha a coluna')}</select></label>
       <div class="integ-muted" style="margin-top:8px;">Se essa coluna tiver a própria automação, ela começa quando este fluxo terminar.</div>`;
+  } else if (n.type === 'ai') {
+    const ag = aiAgentOf(act);
+    html += `<div class="integ-muted">Neste ponto o <b>Agente de IA</b> assume a conversa: ele responde o lead no WhatsApp, qualifica e marca a reunião, usando as regras da página Agente de IA deste cliente.</div>
+      <div class="integ-muted" style="margin-top:8px;">Se o lead responder <b>antes</b> de o fluxo chegar aqui, a IA assume na hora. Se ele ainda não respondeu quando o fluxo chegar aqui, a IA passa a responder a primeira mensagem dele.</div>
+      <div class="integ-muted" style="margin-top:8px;">Este bloco encerra o fluxo: não precisa ligar nada na saída.</div>
+      ${ag.enabled ? '' : '<div class="integ-muted" style="margin-top:8px;color:var(--amber);">Atenção: o Agente de IA deste cliente está pausado ou não foi configurado. Ligue na página Agente de IA, senão ninguém responde.</div>'}`;
   } else if (n.type === 'condition') {
     html += `<div class="integ-muted">Confere se o lead mandou alguma mensagem no WhatsApp desde que entrou neste fluxo. Ligue a saída <b style="color:#1FA855;">Sim</b> e a saída <b style="color:#D5563F;">Não</b> aos próximos blocos.</div>
       ${_flow.stopOnReply !== false ? '<div class="integ-muted" style="margin-top:8px;color:var(--amber);">Atenção: com "Parar quando o lead responder" ligado, o fluxo para antes de chegar aqui quando ele responde. Desligue essa regra à esquerda para usar o caminho "Sim".</div>' : ''}`;
