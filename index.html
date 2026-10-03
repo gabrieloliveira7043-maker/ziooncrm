@@ -13561,7 +13561,7 @@ function toggleWhatsAppSettings(login) {
 const AI_AGENT_DEFAULTS = {
   enabled: false, name: '', business: '', tone: '', goal: '', rules: '',
   stages: ['novo'], stopOnHuman: true, hoursOn: false, from: '08:00', to: '18:00', days: [1, 2, 3, 4, 5],
-  maxReplies: 6, delaySec: 10, qualifiedStage: '',
+  maxReplies: 6, delaySec: 10, qualifiedStage: '', handoffOn: true,
   calendar: { enabled: false, minutes: 30, days: [1, 2, 3, 4, 5], from: '09:00', to: '18:00', daysAhead: 7, noticeHours: 4, meet: true, title: 'Call de apresentação' },
   handoffMessage: 'Vou pedir para um atendente da equipe continuar com você por aqui, tudo bem?'
 };
@@ -13643,6 +13643,8 @@ function openAiAgent(login, actDirect) {
       ${aiChecks(stages, a.stages, 'ai-stages')}</div>
 
     <div class="ai-sec"><div class="ai-t">Quando passar para a equipe</div>
+      <label class="ai-switch"><span>Permitir que a IA passe a conversa para a equipe</span><input type="checkbox" id="ai-handoff-on" ${a.handoffOn !== false ? 'checked' : ''} onchange="aiHandoffToggle()"></label>
+      <div class="ai-h" style="margin-top:6px;">Desligado: a IA nunca transfere nem diz que vai chamar alguém. Ela resolve sozinha e, se não souber algo, diz que não tem essa informação.</div>
       <div class="ai-row">
         <label>Ao qualificar, mover o card para<select class="field-input" id="ai-qstage"><option value="">Não mover</option>${stages.map(([id, l]) => `<option value="${escapeHtml(id)}" ${a.qualifiedStage === id ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select></label>
         <label>Limite de respostas da IA por lead (trava de segurança)<input class="field-input" id="ai-max" type="number" min="1" max="100" value="${Number(a.maxReplies) || 6}"></label>
@@ -13650,7 +13652,7 @@ function openAiAgent(login, actDirect) {
       </div>
       <label class="ai-switch" style="margin-top:8px;"><span>Parar quando alguém da equipe responder na conversa</span><input type="checkbox" id="ai-stop" ${a.stopOnHuman ? 'checked' : ''}></label>
       <div class="ai-h" style="margin-top:6px;">O lead pode mandar quantas mensagens quiser. O limite conta só as respostas que a IA dá: ao chegar nele, ela para de responder aquele lead e deixa para a equipe. Serve para a IA não conversar para sempre nem gastar cota à toa. Para uma qualificação completa, use 12 ou mais.</div>
-      <div class="ai-row" style="margin-top:8px;"><label style="flex-basis:100%;">Mensagem ao passar para a equipe<textarea class="field-input" id="ai-handoff" rows="2">${escapeHtml(a.handoffMessage)}</textarea></label></div></div>
+      <div class="ai-row" id="ai-handoff-row" style="margin-top:8px;"><label style="flex-basis:100%;">Mensagem ao passar para a equipe<textarea class="field-input" id="ai-handoff" rows="2">${escapeHtml(a.handoffMessage)}</textarea></label></div></div>
 
     <div class="ai-sec"><div class="ai-t">Horário de atendimento da IA</div>
       <label class="ai-switch"><span>Responder só dentro de um horário</span><input type="checkbox" id="ai-hours" ${a.hoursOn ? 'checked' : ''}></label>
@@ -13672,7 +13674,15 @@ function openAiAgent(login, actDirect) {
   ov.classList.add('open');
   aiSimRender();
   refreshAiGcal();
+  aiHandoffToggle();
 }
+function aiHandoffToggle() {
+  const on = document.getElementById('ai-handoff-on'), row = document.getElementById('ai-handoff-row');
+  if (!on || !row) return;
+  row.style.opacity = on.checked ? '1' : '.45';
+  row.querySelectorAll('textarea').forEach(t => { t.disabled = !on.checked; });
+}
+window.aiHandoffToggle = aiHandoffToggle;
 function closeAiAgent() {
   const ov = document.getElementById('ai-agent-modal');
   if (ov) ov.remove();
@@ -13694,6 +13704,7 @@ function readAiAgent() {
       noticeHours: Math.min(72, Math.max(0, v('ai-cal-notice') === '' ? 4 : Number(v('ai-cal-notice')))),
       meet: ov.querySelector('#ai-cal-meet').checked, title: v('ai-cal-title').trim() || 'Call de apresentação'
     },
+    handoffOn: ov.querySelector('#ai-handoff-on').checked,
     qualifiedStage: v('ai-qstage'), handoffMessage: v('ai-handoff').trim() || AI_AGENT_DEFAULTS.handoffMessage
   };
 }
