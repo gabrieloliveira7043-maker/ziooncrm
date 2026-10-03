@@ -735,6 +735,16 @@ tr:hover td { background: var(--surface2); }
       background: var(--surface); border-top: 1px solid var(--border);
       padding: 8px 0 12px;
     }
+    .sublogin-box { border-top: 1px dashed var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .sub-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 600; color: var(--text); }
+    .sub-new, .sub-item { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+    .sub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-bottom: 8px; }
+    .sub-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .sub-views { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+    .sub-view { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text); cursor: pointer; }
+    .sub-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    .sub-id { font-size: 12px; color: var(--muted); }
+    .sub-msg { font-size: 12px; }
     .mobile-nav-item {
       flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px;
       cursor: pointer; color: var(--muted2); font-size: 9px; font-weight: 500;
@@ -1016,6 +1026,84 @@ html[data-theme="light"] .login-overlay { background: var(--paper); }
 .help-demo-dashboard .help-demo-card:nth-child(3) { left:182px; animation:helpMetricPop 2.6s ease-in-out .4s infinite; }
 .help-demo-dashboard .help-demo-pointer { left:172px; top:18px; animation:helpClickPointer 2.6s ease-in-out infinite; }
 .help-demo-import .help-demo-card { animation:helpImportCard 2.8s ease-in-out infinite; }
+
+.help-sec { font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:22px 0 10px; }
+.help-chips { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 14px; }
+.help-chip { border:1px solid var(--border); background:var(--surface); color:var(--text); border-radius:999px; padding:6px 12px; font:600 12px 'Manrope', sans-serif; cursor:pointer; }
+.help-chip:hover { border-color:var(--gold); }
+.help-card.help-wide { grid-column:1 / -1; }
+.help-card code { background:var(--surface2); border:1px solid var(--border); border-radius:5px; padding:1px 5px; font-size:12px; color:var(--text); }
+.hs { height:108px; overflow:hidden; }
+.hs > * { position:absolute; box-sizing:border-box; font-size:11px; color:var(--text); }
+.hs-tip { left:50%; bottom:8px; transform:translateX(-50%); white-space:nowrap; padding:3px 9px; border-radius:999px; background:var(--gold); color:#111 !important; font-weight:800; font-size:10px; }
+.hs-b { max-width:70%; padding:6px 10px; border-radius:12px; background:var(--surface2); border:1px solid var(--border2); opacity:0; white-space:nowrap; }
+.hs-b.in { left:14px; } .hs-b.out { right:14px; background:rgba(212,175,55,.18); border-color:rgba(212,175,55,.45); }
+.hs-chat .b1 { top:10px; animation:hsPop 6s ease infinite; } .hs-chat .b2 { top:42px; animation:hsPop 6s ease 1.2s infinite; } .hs-chat .b3 { top:74px; animation:hsPop 6s ease 2.6s infinite; }
+.hs-b u { display:inline-block; width:5px; height:5px; margin:0 2px; border-radius:50%; background:var(--muted); animation:hsDot 1s ease infinite; } .hs-b u:nth-child(2) { animation-delay:.15s; } .hs-b u:nth-child(3) { animation-delay:.3s; }
+.hs-col { top:10px; width:100px; height:88px; border:1px dashed var(--border2); border-radius:8px; }
+.hs-col b { position:absolute; left:8px; top:5px; font-size:10px; color:var(--muted); }
+.hs-col.c1 { left:16px; } .hs-col.c2 { left:150px; }
+.hs-col i { position:absolute; left:8px; width:84px; height:14px; border-radius:5px; background:var(--surface2); border:1px solid var(--border2); }
+.hs-col.c1 i:nth-of-type(1) { top:24px; } .hs-col.c1 i:nth-of-type(2) { top:44px; } .hs-col.c1 i:nth-of-type(3) { top:64px; }
+.hs-col.c2 i { top:24px; }
+.hs-col i.mv { border-color:var(--gold); background:rgba(212,175,55,.2); animation:hsMove 5s ease-in-out infinite; } .hs-col i.m2 { animation-delay:.15s; }
+.hs-bulk .hs-tip { left:auto; right:12px; transform:none; bottom:8px; }
+.hs-n { z-index:1; top:36px; width:62px; padding:8px 4px; text-align:center; border:1px solid var(--border2); background:var(--surface2); border-radius:8px; font-weight:700; animation:hsNode 5s ease infinite; }
+.hs-n.n1 { left:10px; } .hs-n.n2 { left:88px; animation-delay:1s; } .hs-n.n3 { left:166px; animation-delay:2s; } .hs-n.n4 { left:244px; animation-delay:3s; }
+.hs-line { left:40px; top:53px; width:240px; height:2px; background:var(--border2); z-index:0; }
+.hs-dot { left:10px; top:48px; width:12px; height:12px; border-radius:50%; background:var(--gold); animation:hsTravel 5s linear infinite; z-index:2; }
+.hs-row { left:14px; right:14px; height:14px; border-radius:5px; background:var(--surface2); border:1px solid var(--border2); transform-origin:left; animation:hsRow 4s ease infinite; }
+.hs-row.r1 { top:8px; } .hs-row.r2 { top:26px; animation-delay:.3s; } .hs-row.r3 { top:44px; animation-delay:.6s; } .hs-row.r4 { top:62px; animation-delay:.9s; }
+.hs-prog { left:14px; right:14px; bottom:12px; height:6px; border-radius:6px; background:var(--surface2); overflow:hidden; } .hs-prog.top { top:16px; bottom:auto; }
+.hs-prog span { display:block; height:100%; background:var(--gold); animation:hsFill 4s ease infinite; }
+.hs-pros .hs-tip { bottom:22px; }
+.hs-fly { top:42px; left:14px; font-size:18px !important; opacity:0; animation:hsFly 3s ease-in infinite; } .hs-fly.f2 { animation-delay:.9s; } .hs-fly.f3 { animation-delay:1.8s; }
+.hs-btn { left:14px; top:12px; padding:7px 14px; border-radius:8px; background:#1877f2; color:#fff !important; font-weight:800; animation:helpButtonPulse 3s ease-in-out infinite; }
+.hs-pg { left:14px; right:14px; height:22px; padding:3px 10px 0 30px; border:1px solid var(--border2); border-radius:7px; background:var(--surface2); line-height:15px; }
+.hs-pg.p1 { top:42px; } .hs-pg.p2 { top:70px; }
+.hs-pg i { position:absolute; left:8px; top:4px; width:14px; height:14px; border-radius:50%; background:var(--border2); }
+.hs-tg { position:absolute; right:8px; top:4px; width:28px; height:13px; border-radius:20px; background:var(--border2); animation:hsTgBg 4s ease infinite; }
+.hs-tg::after { content:''; position:absolute; left:2px; top:2px; width:9px; height:9px; border-radius:50%; background:#fff; animation:hsTgKnob 4s ease infinite; }
+.hs-pg.p2 .hs-tg, .hs-pg.p2 .hs-tg::after { animation-delay:.8s; }
+.hs-stat { top:16px; width:88px; height:68px; padding:12px 4px; text-align:center; border:1px solid var(--border2); border-radius:9px; background:var(--surface2); line-height:1.35; color:var(--muted); white-space:nowrap; font-size:10px !important; }
+.hs-stat b { display:block; font-size:16px; color:var(--text); }
+.hs-stat.s1 { left:12px; } .hs-stat.s2 { left:110px; } .hs-stat.s3 { left:208px; }
+.hs-stat.alert { border-color:var(--red); animation:hsAlert 2s ease infinite; } .hs-stat.alert b { color:var(--red); }
+.hs-ct { left:14px; right:14px; height:22px; padding:3px 10px 0 30px; border:1px solid var(--border2); border-radius:7px; background:var(--surface2); }
+.hs-ct:nth-child(1) { top:8px; } .hs-ct:nth-child(2) { top:34px; } .hs-ct:nth-child(3) { top:60px; }
+.hs-ct i { position:absolute; left:8px; top:4px; width:14px; height:14px; border-radius:50%; background:var(--border2); }
+.hs-ct em { position:absolute; right:8px; top:3px; font-style:normal; padding:1px 8px; border-radius:20px; background:rgba(212,175,55,.2); border:1px solid rgba(212,175,55,.5); font-size:10px; animation:hsTag 4s ease infinite; }
+.hs-ct em.t2 { animation-delay:.6s; } .hs-ct em.t3 { animation-delay:1.2s; }
+.hs-ck { left:18px; padding-left:24px; width:130px; height:18px; line-height:18px; }
+.hs-ck::before { content:''; position:absolute; left:0; top:2px; width:14px; height:14px; border-radius:4px; border:1.5px solid var(--border2); }
+.hs-ck::after { content:'✓'; position:absolute; left:2px; top:0; color:var(--green); font-weight:900; opacity:0; animation:hsTick 5s ease infinite; }
+.hs-ck.k1 { top:8px; } .hs-ck.k2 { top:30px; } .hs-ck.k2::after { animation-delay:.6s; } .hs-ck.k3 { top:52px; } .hs-ck.k3::after { animation-delay:1.2s; } .hs-ck.k4 { top:74px; color:var(--muted); } .hs-ck.k4::after { content:'🔒'; font-size:10px; animation:none; opacity:.8; }
+.hs-perm::after { content:'Cliente vê só o liberado'; position:absolute; right:14px; top:40px; padding:4px 10px; border-radius:8px; background:var(--surface2); border:1px solid var(--border2); font-size:10px; color:var(--muted); }
+.hs-qr { left:50%; top:10px; width:88px; height:88px; margin-left:-44px; border-radius:6px; background:conic-gradient(var(--text) 25%, transparent 0 50%, var(--text) 0 75%, transparent 0) 0 0 / 14px 14px, var(--surface2); border:6px solid var(--surface2); animation:hsQr 4s ease infinite; }
+.hs-ok { left:50%; top:30px; width:48px; height:48px; margin-left:-24px; border-radius:50%; background:var(--green); color:#fff !important; font-size:28px !important; font-weight:900; text-align:center; line-height:48px; opacity:0; animation:hsOk 4s ease infinite; }
+.hs-clock { left:24px; top:22px; width:60px; height:60px; border-radius:50%; border:3px solid var(--border2); }
+.hs-clock span { position:absolute; left:50%; top:6px; width:3px; height:24px; margin-left:-1.5px; background:var(--gold); border-radius:3px; transform-origin:50% 100%; animation:hsHand 4s linear infinite; }
+.hs-cad .b2 { top:34px; right:12px; animation:hsPop 4s ease 1.6s infinite; }
+.hs-first .hs-b { right:auto; left:50%; top:38px; transform:translateX(-50%); animation:hsCycle 6s ease infinite; } .hs-first .v2 { animation-delay:2s; } .hs-first .v3 { animation-delay:4s; }
+@keyframes hsPop { 0%,8% { opacity:0; transform:translateY(8px); } 14%,78% { opacity:1; transform:none; } 90%,100% { opacity:0; } }
+@keyframes hsDot { 0%,100% { opacity:.3; } 50% { opacity:1; } }
+@keyframes hsMove { 0%,25% { transform:none; } 45%,80% { transform:translate(134px,-20px); } 95%,100% { transform:none; } }
+@keyframes hsNode { 0%,12% { border-color:var(--gold); background:rgba(212,175,55,.18); } 24%,100% { border-color:var(--border2); background:var(--surface2); } }
+@keyframes hsTravel { 0% { left:10px; } 100% { left:286px; } }
+@keyframes hsRow { 0%,6% { transform:scaleX(0); opacity:0; } 20%,80% { transform:none; opacity:1; } 100% { opacity:0; } }
+@keyframes hsFill { 0% { width:0; } 80%,100% { width:100%; } }
+@keyframes hsFly { 0% { opacity:0; transform:translateX(0); } 15% { opacity:1; } 100% { opacity:0; transform:translateX(250px); } }
+@keyframes hsTgBg { 0%,25% { background:var(--border2); } 40%,85% { background:var(--green); } 100% { background:var(--border2); } }
+@keyframes hsTgKnob { 0%,25% { transform:none; } 40%,85% { transform:translateX(15px); } 100% { transform:none; } }
+@keyframes hsAlert { 0%,100% { box-shadow:0 0 0 0 rgba(239,68,68,.45); } 50% { box-shadow:0 0 0 8px rgba(239,68,68,0); } }
+@keyframes hsTag { 0%,15% { opacity:0; transform:scale(.6); } 30%,85% { opacity:1; transform:none; } 100% { opacity:0; } }
+@keyframes hsTick { 0%,10% { opacity:0; } 20%,88% { opacity:1; } 100% { opacity:0; } }
+@keyframes hsQr { 0%,45% { opacity:1; } 60%,100% { opacity:.12; } }
+@keyframes hsOk { 0%,50% { opacity:0; transform:scale(.4); } 65%,92% { opacity:1; transform:none; } 100% { opacity:0; } }
+@keyframes hsHand { to { transform:rotate(360deg); } }
+@keyframes hsCycle { 0%,4% { opacity:0; } 10%,30% { opacity:1; } 36%,100% { opacity:0; } }
+@media (max-width:768px) { .help-card.help-wide { grid-column:auto; } .hs { height:112px; } .hs-stat { width:30%; } .hs-stat.s1 { left:3%; } .hs-stat.s2 { left:35%; } .hs-stat.s3 { left:67%; } .hs-col.c2 { left:46%; } .hs-n { width:20%; } .hs-n.n1 { left:3%; } .hs-n.n2 { left:27%; } .hs-n.n3 { left:51%; } .hs-n.n4 { left:75%; } .hs-line { left:12%; width:76%; } }
+@media (prefers-reduced-motion: reduce) { .hs *, .hs *::before, .hs *::after, .hs { animation:none !important; } .hs-b, .hs-row, .hs-ct em, .hs-ck::after { opacity:1 !important; } }
 .help-demo-import .help-demo-pointer { right:62px; top:50px; animation:helpClickPointer 2.8s ease-in-out infinite; }
 @keyframes helpClickPointer { 0%,100% { transform:translate(18px,14px) rotate(-18deg); opacity:.25; } 38% { transform:translate(0,0) rotate(-18deg); opacity:1; } 52% { transform:translate(0,0) scale(.86) rotate(-18deg); opacity:1; } 70% { transform:translate(4px,4px) rotate(-18deg); opacity:.75; } }
 @keyframes helpButtonPulse { 0%,44%,100% { transform:scale(1); box-shadow:none; } 52% { transform:scale(.96); box-shadow:0 0 0 6px rgba(212,175,55,.2); } }
@@ -2290,6 +2378,32 @@ td { font-family: var(--font); font-size: 13px; }
       }
       await deleteDoc(doc(db, 'extra_clients', login));
       await deleteDoc(doc(db, 'admin_vault', login)).catch(() => {});
+    },
+    // Logins extras de um cliente (só admin): mesma conta e mesmos leads, mas cada login só enxerga as áreas liberadas em perms.views.
+    async createSubLogin(parent, login, personName, pass, perms) {
+      if (await findUidByLogin(login)) throw new Error('Esse login já existe. Escolha outro.');
+      const act = normalizeAct(parent.act);
+      const adAccount = parent.adAccount || '';
+      const layout = parent.layout || 'default';
+      const secondary = initializeApp(firebaseConfig, 'huven-sub-' + Date.now());
+      let uid;
+      try {
+        const secondaryAuth = getAuth(secondary);
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, loginToEmail(login), pass);
+        uid = cred.user.uid;
+        await signOut(secondaryAuth);
+      } finally {
+        await deleteApp(secondary);
+      }
+      await setDoc(doc(db, 'users', uid), { login, act, adAccount, role: 'client', name: parent.name, personName, layout, parentLogin: parent.login, perms });
+      await setDoc(doc(db, 'extra_clients', login), { name: personName, act, adAccount, layout, uid, parentLogin: parent.login, perms });
+      await saveToVault(login, pass);
+    },
+    async updateSubLogin(login, personName, perms) {
+      const uid = await findUidByLogin(login);
+      if (!uid) throw new Error('Login não encontrado.');
+      await updateDoc(doc(db, 'users', uid), { personName, perms });
+      await updateDoc(doc(db, 'extra_clients', login), { name: personName, perms });
     }
   };
   window._fbReady = true;
@@ -3126,13 +3240,14 @@ td { font-family: var(--font); font-size: 13px; }
     <div id="ajuda-view" class="help-view">
       <div class="help-wrap">
         <div class="help-title">Ajuda do CRM</div>
-        <div class="help-subtitle">Guia rápido para usar o painel Zioon no dia a dia: acompanhar resultados, organizar leads, importar contatos e manter o funil atualizado.</div>
+        <div class="help-subtitle">Guia completo do painel: do dashboard ao funil, chat, automações, prospecção, campanhas e conexões. Cada tópico traz uma animação mostrando o caminho. Use a busca ou os atalhos abaixo.</div>
         <label class="help-search" for="help-search-input">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          <input id="help-search-input" type="search" placeholder="Buscar dúvida: novo lead, dashboard, importar, mover card..." oninput="filterHelpCards(this.value)">
+          <input id="help-search-input" type="search" placeholder="Buscar dúvida: automação, prospecção, facebook, chat, logins..." oninput="filterHelpCards(this.value)">
         </label>
         <div class="help-empty" id="help-empty">Nenhum tópico encontrado. Tente buscar por CRM, lead, dashboard, importar, exportar ou WhatsApp.</div>
 
+        <div class="help-sec">Primeiros passos</div>
         <div class="help-grid">
           <section class="help-card">
             <div class="help-tag">Dashboard</div>
@@ -3236,6 +3351,83 @@ td { font-family: var(--font); font-size: 13px; }
               <li>No CRM, role a página para escolher a coluna desejada.</li>
               <li>Dentro da coluna, role a lista para encontrar leads sem sair do Kanban.</li>
             </ul>
+          </section>
+        </div>
+
+        <div class="help-sec">Por área do CRM</div>
+        <div class="help-chips"><button type="button" class="help-chip" onclick="helpJump('Atendimento')">Atendimento</button><button type="button" class="help-chip" onclick="helpJump('Funil')">Funil</button><button type="button" class="help-chip" onclick="helpJump('Chat')">Chat</button><button type="button" class="help-chip" onclick="helpJump('Contatos')">Contatos</button><button type="button" class="help-chip" onclick="helpJump('Automações')">Automações</button><button type="button" class="help-chip" onclick="helpJump('Mensagem')">Mensagem</button><button type="button" class="help-chip" onclick="helpJump('Prospecção')">Prospecção</button><button type="button" class="help-chip" onclick="helpJump('Campanhas')">Campanhas</button><button type="button" class="help-chip" onclick="helpJump('Cadência')">Cadência</button><button type="button" class="help-chip" onclick="helpJump('Conexões')">Conexões</button><button type="button" class="help-chip" onclick="helpJump('Facebook')">Facebook</button><button type="button" class="help-chip" onclick="helpJump('Acessos')">Acessos</button></div>
+        <div class="help-grid">
+          <section class="help-card" data-view="analise">
+            <div class="help-tag">Atendimento</div>
+            <div class="help-demo hs hs-atend" aria-hidden="true"><div class="hs-stat s1"><b>3 min</b>1º contato</div><div class="hs-stat s2 alert"><b>6</b>sem resposta</div><div class="hs-stat s3"><b>39 min</b>com espera</div></div>
+            <h3>Tempo de resposta e leads sem resposta</h3>
+            <ol><li>Abra <b>Atendimento</b> no menu e clique em <b>Analisar</b>.</li><li>O cartão <b>Tempo até o 1º contato</b> mostra a média (e a mediana) só de quem já foi respondido.</li><li>O cartão vermelho <b>Sem resposta da equipe</b> mostra quantos leads com conversa ninguém respondeu e há quanto tempo o mais antigo espera.</li><li><b>Tempo incluindo quem espera</b> conta também os leads ainda sem resposta: é o retrato mais fiel do atendimento.</li></ol>
+          </section>
+          <section class="help-card" data-view="crm">
+            <div class="help-tag">Funil</div>
+            <div class="help-demo hs hs-bulk" aria-hidden="true"><div class="hs-col c1"><b>Novo lead</b><i></i><i class="mv m1"></i><i class="mv m2"></i></div><div class="hs-col c2"><b>Proposta</b><i></i></div><div class="hs-tip">3 selecionados → Proposta</div></div>
+            <h3>Mover vários leads de uma vez</h3>
+            <ol><li>No Funil, clique no botão <b>⇄</b> no topo da coluna.</li><li>Marque os leads (ou use <b>todos</b>) e escolha a coluna ou o funil de destino.</li><li>Confirme: todos mudam de etapa juntos.</li><li>Use o botão <b>▶ Começar</b> da coluna para iniciar a automação nos leads que já estão lá.</li></ol>
+          </section>
+          <section class="help-card" data-view="chat">
+            <div class="help-tag">Chat</div>
+            <div class="help-demo hs hs-chat" aria-hidden="true"><div class="hs-b in b1">Oi, vi o anúncio</div><div class="hs-b out b2">Olá! Posso te ajudar? 😊</div><div class="hs-b in b3"><u></u><u></u><u></u></div></div>
+            <h3>Conversar com os leads pelo WhatsApp</h3>
+            <ul><li>Escolha a conversa à esquerda ou clique em <b>+ Nova</b> para falar com um número novo.</li><li>Envie texto, imagem, vídeo, áudio, figurinha e cartão de contato; também dá para editar, apagar e agendar mensagens.</li><li>As mensagens do lead aparecem aqui na hora e o histórico fica guardado.</li><li>Quando a equipe responde, o lead sai da lista de “sem resposta” do Atendimento.</li></ul>
+          </section>
+          <section class="help-card" data-view="contatos">
+            <div class="help-tag">Contatos</div>
+            <div class="help-demo hs hs-tags" aria-hidden="true"><div class="hs-ct"><i></i>Maria<em class="t1">quente</em></div><div class="hs-ct"><i></i>João<em class="t2">orçamento</em></div><div class="hs-ct"><i></i>Ana<em class="t3">cliente</em></div></div>
+            <h3>Buscar, etiquetar e mandar para o funil</h3>
+            <ul><li>Busque por nome ou telefone e filtre por <b>origem</b> e pela <b>data de entrada</b>.</li><li>Crie <b>🏷️ etiquetas</b> e marque os contatos para organizar listas.</li><li>Use <b>Selecionar todos</b> para aplicar uma etiqueta ou enviar vários contatos ao funil de uma vez.</li><li>Escolha o cliente no topo do menu antes de enviar ao funil.</li></ul>
+          </section>
+          <section class="help-card help-wide" data-view="automacoes">
+            <div class="help-tag">Automações</div>
+            <div class="help-demo hs hs-flow" aria-hidden="true"><div class="hs-n n1">Entrou</div><div class="hs-n n2">Espera</div><div class="hs-n n3">Mensagem</div><div class="hs-n n4">Respondeu?</div><div class="hs-line"></div><div class="hs-dot"></div></div>
+            <h3>Fluxos que rodam sozinhos</h3>
+            <ol><li>Em <b>Automações</b>, clique em <b>+ Nova automação</b> ou em <b>✨ Criar com IA</b>.</li><li>Escolha a coluna do funil que dispara o fluxo (“quando o lead entrar em…”).</li><li>Monte os blocos: esperar, mandar mensagem, imagem, vídeo ou áudio, conferir se respondeu e mover o card.</li><li>Defina o que acontece se o lead responder (parar ou seguir) e ligue a automação.</li><li>Acompanhe quantos leads estão no fluxo e pause quando quiser. O CRM já protege o número contra bloqueio.</li></ol>
+          </section>
+          <section class="help-card" data-view="whatsapp">
+            <div class="help-tag">Primeira mensagem</div>
+            <div class="help-demo hs hs-first" aria-hidden="true"><div class="hs-b out v1">Olá {primeiro_nome}, tudo bem?</div><div class="hs-b out v2">Oi {primeiro_nome}! Vi seu cadastro.</div><div class="hs-b out v3">{primeiro_nome}, posso te ajudar?</div></div>
+            <h3>Mensagem automática para leads novos</h3>
+            <ol><li>Abra <b>Conexões</b> e vá em <b>Primeira mensagem</b>.</li><li>Cadastre várias versões do texto: a cada envio uma é sorteada, o que ajuda a evitar bloqueio.</li><li>Use as variáveis <code>{primeiro_nome}</code>, <code>{nome}</code>, <code>{rede_social}</code> e <code>{origem}</code>.</li><li>Salve. Vale para todo lead novo que chegar com WhatsApp ativo.</li></ol>
+          </section>
+          <section class="help-card" data-view="prospeccao">
+            <div class="help-tag">Prospecção</div>
+            <div class="help-demo hs hs-pros" aria-hidden="true"><div class="hs-row r1"></div><div class="hs-row r2"></div><div class="hs-row r3"></div><div class="hs-row r4"></div><div class="hs-prog"><span></span></div><div class="hs-tip">100 empresas → funil</div></div>
+            <h3>Achar empresas e levar para o funil</h3>
+            <ol><li>Em <b>Prospecção</b> escolha <b>Estado</b>, <b>Atividade (CNAE)</b>, cidade, bairro e porte.</li><li>Marque “só com telefone”, “só celular”, “só com e-mail” ou “só matriz” e clique em <b>Buscar empresas</b>.</li><li>Selecione as empresas (de 100 a 500 de uma vez) e envie ao funil.</li><li>Empresas repetidas (mesmo CNPJ ou telefone) não entram duas vezes.</li><li>Para uma empresa específica, use a aba <b>CNPJ ou nome</b>.</li></ol>
+          </section>
+          <section class="help-card" data-view="campanhas">
+            <div class="help-tag">Campanhas</div>
+            <div class="help-demo hs hs-camp" aria-hidden="true"><div class="hs-prog top"><span></span></div><div class="hs-fly f1">✉</div><div class="hs-fly f2">✉</div><div class="hs-fly f3">✉</div><div class="hs-tip">no ritmo seguro do número</div></div>
+            <h3>Disparos de WhatsApp em lista</h3>
+            <ol><li>Em <b>Campanhas</b>, clique em <b>+ Nova campanha</b>.</li><li>Escolha a lista de contatos e escreva a mensagem.</li><li>O envio sai aos poucos, no ritmo seguro do seu número, e você acompanha o andamento.</li><li>Pause ou retome quando precisar.</li></ol>
+          </section>
+          <section class="help-card" data-view="cadencia">
+            <div class="help-tag">Cadência</div>
+            <div class="help-demo hs hs-cad" aria-hidden="true"><div class="hs-clock"><span></span></div><div class="hs-b out b2">Bom dia, grupo! Promoção de hoje 🎉</div></div>
+            <h3>Mensagens programadas nos grupos</h3>
+            <ol><li>Em <b>Cadência</b>, clique em <b>+ Programar envio</b>.</li><li>Escolha o grupo do WhatsApp e o conteúdo: texto, imagem, vídeo ou áudio.</li><li>Defina o dia e a hora. O CRM envia sozinho no horário.</li></ol>
+          </section>
+          <section class="help-card" data-view="whatsapp">
+            <div class="help-tag">WhatsApp</div>
+            <div class="help-demo hs hs-wa" aria-hidden="true"><div class="hs-qr"></div><div class="hs-ok">✓</div></div>
+            <h3>Conectar o número</h3>
+            <ol><li>Abra <b>Conexões</b>.</li><li>Clique em conectar e leia o QR Code com o WhatsApp do celular (Aparelhos conectados).</li><li>Quando aparecer “conectado”, o Chat, as automações e as campanhas já funcionam.</li><li>Se cair a conexão, repita a leitura do QR Code.</li></ol>
+          </section>
+          <section class="help-card help-wide" data-view="whatsapp">
+            <div class="help-tag">Facebook e formulários de anúncio</div>
+            <div class="help-demo hs hs-fb" aria-hidden="true"><div class="hs-btn">Conectar Facebook</div><div class="hs-pg p1"><i></i>Página A<span class="hs-tg"></span></div><div class="hs-pg p2"><i></i>Página B<span class="hs-tg"></span></div></div>
+            <h3>Receber os leads dos anúncios sozinho</h3>
+            <ol><li>Em <b>Conexões</b>, na caixa <b>Facebook e formulários de anúncio</b>, clique em <b>Conectar Facebook</b>.</li><li>Entre com o seu login do Facebook e autorize.</li><li>Marque as páginas que são desta empresa e clique em <b>Ligar selecionadas</b>.</li><li>Escolha a coluna onde o lead entra e quais formulários valem. Quem preencher cai direto no funil, sem planilha.</li><li>Para parar de receber, use <b>Pausar</b> ou <b>Desconectar</b>.</li></ol>
+          </section>
+          <section class="help-card" data-admin="1">
+            <div class="help-tag">Logins extras</div>
+            <div class="help-demo hs hs-perm" aria-hidden="true"><div class="hs-ck k1">Dashboard</div><div class="hs-ck k2">Funil</div><div class="hs-ck k3">Chat</div><div class="hs-ck k4 off">Prospecção</div></div>
+            <h3>Dar acesso à equipe do cliente</h3>
+            <ol><li>Em <b>Conta</b>, no cartão do cliente, clique em <b>+ Novo login</b>.</li><li>Informe o nome da pessoa, o login e a senha.</li><li>Marque as áreas que esse login pode abrir (Conta e Ajuda ficam sempre liberadas).</li><li>Depois é possível mudar os acessos, trocar a senha ou excluir o login. A mudança vale no próximo acesso da pessoa.</li><li>Todos os logins do cliente enxergam os mesmos leads.</li></ol>
           </section>
         </div>
       </div>
@@ -3684,7 +3876,7 @@ async function renderSavedList() {
   el.innerHTML = '<div style="font-size:12px;color:var(--muted);margin:16px 0 8px;">Carregando...</div>';
   try {
     // Documentos "fixed" só guardam edições dos clientes que vêm do código; não entram nesta lista.
-    const extras = (await window._fb.getExtraClients()).filter(c => !c.fixed && !FIXED_CLIENT_LOGINS.includes(c.login));
+    const extras = (await window._fb.getExtraClients()).filter(c => !c.fixed && !c.parentLogin && !FIXED_CLIENT_LOGINS.includes(c.login));
     if (!extras.length) {
       el.innerHTML = '<div style="font-size:12px;color:var(--muted);margin:16px 0 8px;">Nenhum cliente extra adicionado.</div>';
       return;
@@ -6613,6 +6805,10 @@ function renderAtendimento() {
 }
 
 function switchView(view) {
+  if (!userCanView(view)) {
+    showToast('Seu login não tem acesso a esta área.', 'warning');
+    view = firstAllowedView();
+  }
   ['report','analise','clientes','automacoes','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes'].forEach(v => {
     const el = document.getElementById('nav-' + v);
     if (el) el.classList.toggle('active', v === view);
@@ -6622,6 +6818,7 @@ function switchView(view) {
   document.getElementById('crm-view').style.display = view === 'crm' ? 'block' : 'none';
   const ajudaView = document.getElementById('ajuda-view');
   if (ajudaView) ajudaView.style.display = view === 'ajuda' ? 'block' : 'none';
+  if (view === 'ajuda') filterHelpCards((document.getElementById('help-search-input') || {}).value || '');
   document.getElementById('conta-view').style.display = view === 'conta' ? 'block' : 'none';
   const whatsappView = document.getElementById('whatsapp-view');
   if (whatsappView) whatsappView.style.display = view === 'whatsapp' ? 'block' : 'none';
@@ -6679,11 +6876,23 @@ function filterHelpCards(query) {
   let visible = 0;
   cards.forEach(card => {
     const text = card.textContent.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const match = !term || text.includes(term);
+    const blocked = (card.dataset.admin === '1' && !isAdmin) || (card.dataset.view && !userCanView(card.dataset.view));
+    const match = !blocked && (!term || text.includes(term));
     card.style.display = match ? '' : 'none';
     if (match) visible += 1;
   });
   if (empty) empty.style.display = visible ? 'none' : 'block';
+  document.querySelectorAll('#ajuda-view .help-sec').forEach(h => {
+    const grid = h.nextElementSibling && h.nextElementSibling.classList.contains('help-chips') ? h.nextElementSibling.nextElementSibling : h.nextElementSibling;
+    h.style.display = grid && Array.from(grid.querySelectorAll('.help-card')).some(c => c.style.display !== 'none') ? '' : 'none';
+  });
+}
+function helpJump(term) {
+  const input = document.getElementById('help-search-input');
+  if (input) input.value = term;
+  filterHelpCards(term);
+  const grid = document.querySelector('#ajuda-view .help-grid:last-of-type');
+  if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function renderAdminLogins() {
@@ -6696,7 +6905,7 @@ async function renderAdminLogins() {
   // Garante que clientes criados pelo painel e edições já salvas estejam carregados.
   await loadExtraClients();
   let vault = {};
-  try { vault = await window._fb.getVault(); } catch(e) { console.warn('Cofre de senhas indisponível:', e); }
+  try { vault = await window._fb.getVault(); _subVault = vault; } catch(e) { console.warn('Cofre de senhas indisponível:', e); }
 
   const todos = Object.entries(CREDENTIALS)
     .filter(([login, cred]) => login !== 'admin' && cred && cred.act)
@@ -6752,8 +6961,127 @@ async function renderAdminLogins() {
         <button onclick="saveClientCredential('${jsLogin}')" style="${buttonStyle}">Trocar senha</button>
         <span id="login-feedback-${id}" style="font-size:11px;display:none;"></span>
       </div>
+      <div class="sublogin-box" data-parent="${id}">${subLoginsHtml(c.login)}</div>
     </div>`;
   }).join('');
+}
+
+function subViewChecks(selected) {
+  return `<div class="sub-views">${SUB_LOGIN_VIEWS.map(([v, label]) =>
+    `<label class="sub-view"><input type="checkbox" value="${v}" ${!selected || selected.includes(v) ? 'checked' : ''}> ${escapeHtml(label)}</label>`).join('')}</div>`;
+}
+
+function subLoginsHtml(parentLogin) {
+  const subs = SUB_LOGINS.filter(x => x.parentLogin === parentLogin).sort((a, b) => String(a.name).localeCompare(String(b.name), 'pt-BR'));
+  const pj = escapeJsString(parentLogin);
+  return `<div class="sub-head"><span>Logins extras deste cliente (${subs.length})</span>
+      <button class="integ-btn" onclick="toggleSubLoginForm('${pj}', this)">+ Novo login</button></div>
+    <div class="sub-new" style="display:none;">
+      <div class="sub-grid">
+        <input class="field-input sub-name" placeholder="Nome da pessoa (ex.: Maria, vendedora)">
+        <input class="field-input sub-login mono" placeholder="Login (ex.: maria.petland)" autocomplete="off">
+        <input class="field-input sub-pass mono" placeholder="Senha (mín. 6)" autocomplete="off">
+      </div>
+      <div class="sub-label">Áreas que este login pode abrir (Conta e Ajuda ficam sempre liberadas)</div>
+      ${subViewChecks(null)}
+      <div class="integ-row" style="margin-top:8px;"><button class="integ-btn primary" onclick="createSubLogin('${pj}', this)">Criar login</button><span class="sub-msg"></span></div>
+    </div>
+    ${subs.map(sl => {
+      const lj = escapeJsString(sl.login);
+      const views = sl.perms && Array.isArray(sl.perms.views) ? sl.perms.views : null;
+      const pass = _subVault[sl.login] || '';
+      return `<div class="sub-item" data-sublogin="${escapeHtml(sl.login)}">
+        <div class="sub-row"><input class="field-input sub-name" value="${escapeHtml(sl.name)}" style="flex:1;min-width:140px;">
+          <span class="mono sub-id">${escapeHtml(sl.login)}</span>
+          ${pass ? `<button class="integ-btn" onclick="copyText(_subVault['${lj}'], 'Senha copiada')">Copiar senha</button>` : ''}</div>
+        ${subViewChecks(views)}
+        <div class="integ-row" style="margin-top:8px;">
+          <button class="integ-btn primary" onclick="saveSubLogin('${lj}', this)">Salvar acessos</button>
+          <input class="field-input sub-newpass mono" placeholder="Nova senha" style="width:140px;" autocomplete="off">
+          <button class="integ-btn" onclick="resetSubLoginPass('${lj}', this)">Trocar senha</button>
+          <button class="integ-btn" style="color:var(--red);" onclick="deleteSubLogin('${lj}', this)">Excluir login</button>
+          <span class="sub-msg"></span>
+        </div>
+      </div>`;
+    }).join('')}`;
+}
+
+function subMsg(el, text, ok) {
+  const m = el && el.closest('.sub-item, .sub-new') && el.closest('.sub-item, .sub-new').querySelector('.sub-msg');
+  if (m) { m.textContent = text; m.style.color = ok ? 'var(--green)' : 'var(--red)'; }
+  else showToast(text, ok ? 'success' : 'warning');
+}
+function readSubViews(box) { return [...box.querySelectorAll('.sub-views input:checked')].map(i => i.value); }
+function refreshSubBox(parentLogin) {
+  const box = [...document.querySelectorAll('.sublogin-box')].find(b => b.dataset.parent === parentLogin);
+  if (box) box.innerHTML = subLoginsHtml(parentLogin);
+}
+function toggleSubLoginForm(parentLogin, btn) {
+  const f = btn.closest('.sublogin-box').querySelector('.sub-new');
+  f.style.display = f.style.display === 'none' ? 'block' : 'none';
+}
+
+async function createSubLogin(parentLogin, btn) {
+  const box = btn.closest('.sub-new');
+  const name = box.querySelector('.sub-name').value.trim();
+  const login = box.querySelector('.sub-login').value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9._-]/g, '');
+  const pass = box.querySelector('.sub-pass').value;
+  const views = readSubViews(box);
+  if (!name) return subMsg(btn, 'Informe o nome da pessoa.', false);
+  if (!login) return subMsg(btn, 'Informe o login (letras, números, ponto ou traço).', false);
+  if (pass.length < 6) return subMsg(btn, 'A senha precisa ter pelo menos 6 caracteres.', false);
+  if (!views.length) return subMsg(btn, 'Marque pelo menos uma área.', false);
+  if (CREDENTIALS[login] || SUB_LOGINS.some(x => x.login === login)) return subMsg(btn, 'Esse login já existe.', false);
+  const cred = CREDENTIALS[parentLogin];
+  if (!cred) return subMsg(btn, 'Cliente não encontrado.', false);
+  btn.disabled = true; subMsg(btn, 'Criando...', true);
+  try {
+    await window._fb.createSubLogin(
+      { login: parentLogin, act: cred.act, adAccount: getAdAccountFor(cred.act), name: getClientDisplayName(cred.act), layout: CLINICA_ACTS.includes(cred.act) ? 'clinica' : 'default' },
+      login, name, pass, { views });
+    SUB_LOGINS.push({ login, name, act: cred.act, parentLogin, perms: { views } });
+    _subVault[login] = pass;
+    showToast(`Login "${login}" criado para ${name}.`, 'success');
+    refreshSubBox(parentLogin);
+  } catch (e) { btn.disabled = false; subMsg(btn, 'Erro: ' + e.message, false); }
+}
+
+async function saveSubLogin(login, btn) {
+  const item = btn.closest('.sub-item');
+  const name = item.querySelector('.sub-name').value.trim();
+  const views = readSubViews(item);
+  if (!name) return subMsg(btn, 'Informe o nome.', false);
+  if (!views.length) return subMsg(btn, 'Marque pelo menos uma área.', false);
+  try {
+    await window._fb.updateSubLogin(login, name, { views });
+    const sl = SUB_LOGINS.find(x => x.login === login);
+    if (sl) { sl.name = name; sl.perms = { views }; }
+    subMsg(btn, 'Salvo ✓ (vale no próximo acesso dessa pessoa)', true);
+  } catch (e) { subMsg(btn, 'Erro: ' + e.message, false); }
+}
+
+async function resetSubLoginPass(login, btn) {
+  const item = btn.closest('.sub-item');
+  const pass = item.querySelector('.sub-newpass').value;
+  if (pass.length < 6) return subMsg(btn, 'A senha precisa ter pelo menos 6 caracteres.', false);
+  try {
+    await window._fb.adminSetPassword(login, pass);
+    _subVault[login] = pass;
+    subMsg(btn, 'Senha trocada ✓', true);
+    item.querySelector('.sub-newpass').value = '';
+  } catch (e) { subMsg(btn, 'Erro: ' + e.message, false); }
+}
+
+async function deleteSubLogin(login, btn) {
+  if (!await showConfirm(`O login "${login}" deixa de entrar no CRM. Os leads e dados do cliente não são apagados.`, 'Excluir login', 'Excluir', true)) return;
+  const parent = (SUB_LOGINS.find(x => x.login === login) || {}).parentLogin;
+  try {
+    await window._fb.deleteExtraClient(login);
+    SUB_LOGINS = SUB_LOGINS.filter(x => x.login !== login);
+    delete _subVault[login];
+    showToast('Login excluído.', 'success');
+    if (parent) refreshSubBox(parent);
+  } catch (e) { subMsg(btn, 'Erro: ' + e.message, false); }
 }
 
 async function saveClientInfo(login) {
@@ -11248,7 +11576,7 @@ function chatAct() {
 
 function chatMe() {
   const p = window._fb && window._fb.getProfile ? window._fb.getProfile() : null;
-  return p ? { uid: p.uid, name: p.name || p.login || 'Eu' } : { uid: '', name: 'Eu' };
+  return p ? { uid: p.uid, name: p.personName || p.name || p.login || 'Eu' } : { uid: '', name: 'Eu' };
 }
 
 // Mesma chave do Worker: número com 55 e sem o 9 extra do celular.
@@ -15739,6 +16067,7 @@ function updateSidebarForUser() {
   // Garantir mobile-nav visível com botão Sair
   const mobileNav = document.getElementById('mobile-nav');
   if (mobileNav) mobileNav.style.display = 'flex';
+  applyViewPermissions();
 }
 
 function onMobileClientChange() {
@@ -15754,11 +16083,53 @@ function onMobileClientChange() {
 }
 
 
+// ===== Logins extras do cliente: o admin escolhe quais áreas cada login enxerga =====
+const SUB_LOGIN_VIEWS = [
+  ['report', 'Dashboard'], ['analise', 'Atendimento'], ['crm', 'Funil de vendas'], ['chat', 'Chat'], ['contatos', 'Contatos'],
+  ['automacoes', 'Automações'], ['prospeccao', 'Prospecção'], ['campanhas', 'Campanhas'], ['cadencia', 'Cadência'], ['whatsapp', 'Conexões']
+];
+let SUB_LOGINS = [];
+let _subVault = {};
+
+// null = sem restrição (admin e logins principais). Conta e Ajuda ficam sempre liberadas.
+function userAllowedViews() {
+  if (isAdmin) return null;
+  const p = window._fb && window._fb.getProfile && window._fb.getProfile();
+  return p && p.perms && Array.isArray(p.perms.views) ? p.perms.views : null;
+}
+function userCanView(view) {
+  if (view === 'ajuda' || view === 'conta') return true;
+  const v = userAllowedViews();
+  return !v || v.includes(view);
+}
+function firstAllowedView() {
+  const v = userAllowedViews();
+  return !v ? 'report' : (SUB_LOGIN_VIEWS.map(x => x[0]).find(x => v.includes(x)) || 'ajuda');
+}
+function applyViewPermissions() {
+  if (!userAllowedViews()) return;
+  SUB_LOGIN_VIEWS.forEach(([v]) => {
+    const ok = userCanView(v);
+    const n = document.getElementById('nav-' + v);
+    if (n && !ok) n.style.display = 'none';
+    const m = document.getElementById('mnav-' + v);
+    if (m && !ok) m.style.display = 'none';
+  });
+  document.querySelectorAll('.mnav-sheet-item').forEach(b => {
+    const mt = /switchView\('([a-z]+)'\)/.exec(b.getAttribute('onclick') || '');
+    if (mt && !userCanView(mt[1])) b.style.display = 'none';
+  });
+  const activeNav = document.querySelector('.nav-item.active');
+  const cur = activeNav && activeNav.id.replace('nav-', '');
+  if (cur && !userCanView(cur)) switchView(firstAllowedView());
+}
+
 async function loadExtraClients() {
   if (!window._fbReady) return;
   try {
     const extras = await window._fb.getExtraClients();
-    extras.forEach(c => {
+    SUB_LOGINS = extras.filter(c => c.parentLogin);
+    extras.filter(c => !c.parentLogin).forEach(c => {
       CREDENTIALS[c.login] = { pass: null, act: c.act };
       CLIENT_NAMES[c.act] = c.name;
       if (c.adAccount !== undefined) AD_ACCOUNTS[c.act] = c.adAccount || '';
