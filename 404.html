@@ -14115,7 +14115,7 @@ const IG_TRIGGERS = [
   ['comment_keyword', 'Comentário em uma postagem'],
   ['story_reply', 'Resposta a um story']
 ];
-const IG_SCOPE_LABELS = { instagram_basic: 'Perfil do Instagram', instagram_manage_messages: 'Mensagens do Instagram', pages_messaging: 'Mensagens da página', pages_show_list: 'Lista de páginas', instagram_manage_comments: 'Comentários', instagram_content_publish: 'Publicar postagens' };
+const IG_SCOPE_LABELS = { instagram_business_basic: 'Perfil do Instagram', instagram_business_manage_messages: 'Mensagens do Instagram', instagram_business_manage_comments: 'Comentários', instagram_business_content_publish: 'Publicar postagens', instagram_basic: 'Perfil do Instagram', instagram_manage_messages: 'Mensagens do Instagram', pages_messaging: 'Mensagens da página', pages_show_list: 'Lista de páginas', instagram_manage_comments: 'Comentários', instagram_content_publish: 'Publicar postagens' };
 
 async function renderInstagramView() {
   const box = document.getElementById('instagram-body');
@@ -14125,7 +14125,7 @@ async function renderInstagramView() {
   box.innerHTML = '<div class="integ-muted">Carregando...</div>';
   try {
     const [st, au] = await Promise.all([window._fb.whatsapp('/instagram/status', act, {}), window._fb.whatsapp('/instagram/autos', act, {})]);
-    _ig = { accounts: st.accounts || [], pages: st.pages || [], autos: au.autos || [], webhookUrl: st.webhookUrl || '' };
+    _ig = { accounts: st.accounts || [], pages: st.pages || [], autos: au.autos || [], webhookUrl: st.webhookUrl || '', igLoginReady: !!st.igLoginReady, igRedirect: st.igRedirect || '' };
   } catch (e) { box.innerHTML = `<div class="integ-error">Erro: ${escapeHtml(e.message)}</div>`; return; }
   const client = escapeHtml(getClientDisplayName(act) || act);
   const stages = (typeof getAllStages === 'function' ? getAllStages(act) : getStages(act)) || [];
@@ -14142,26 +14142,36 @@ async function renderInstagramView() {
     <div class="cfgc-grid">
       <section class="cfgc-card">
         <div class="cfgc-card-title">Conexão</div>
-        <div class="cfgc-sub">O Instagram precisa ser uma conta profissional ligada a uma página do Facebook deste cliente.</div>
+        <div class="cfgc-sub">Entre com a conta profissional do Instagram (Empresa ou Criador de conteúdo). Não precisa de Facebook nem de página.</div>
+        <div class="ig-connect"><button class="btn-save" style="width:auto;padding:0 22px;" onclick="igLogin()">Conectar Instagram</button>${!_ig.igLoginReady ? '<div class="ig-warn" style="margin-top:8px;">O servidor ainda não tem o ID e a chave do app do Instagram. Falta rodar o salvar-instagram-app.js (veja a configuração abaixo).</div>' : ''}</div>
         ${_ig.accounts.map(a => `<div class="ig-acc">
-          <div class="ig-acc-head"><b>@${escapeHtml(a.igUsername || a.igId)}</b><span class="integ-muted"> · página ${escapeHtml(a.pageName || a.pageId)}</span></div>
-          ${a.missing && a.missing.length ? `<div class="ig-warn">Faltam permissões no login do Facebook: ${a.missing.map(m => escapeHtml(IG_SCOPE_LABELS[m] || m)).join(', ')}. Reconecte o Facebook abaixo e marque tudo.</div>` : (a.error ? `<div class="ig-warn">Não consegui conferir as permissões: ${escapeHtml(a.error)}</div>` : '<div class="ig-ok">Permissões de mensagens ok</div>')}
+          <div class="ig-acc-head"><b>@${escapeHtml(a.igUsername || a.igId)}</b><span class="integ-muted"> · ${a.authMode === 'instagram' ? 'login do Instagram' : 'página ' + escapeHtml(a.pageName || a.pageId)}</span></div>
+          ${a.missing && a.missing.length ? `<div class="ig-warn">Faltam permissões: ${a.missing.map(m => escapeHtml(IG_SCOPE_LABELS[m] || m)).join(', ')}. Conecte a conta de novo e marque tudo.</div>` : (a.error ? `<div class="ig-warn">Não consegui conferir as permissões: ${escapeHtml(a.error)}</div>` : '<div class="ig-ok">Permissões de mensagens ok</div>')}
           ${a.missingOptional && a.missingOptional.length && !(a.missing && a.missing.length) ? `<div class="integ-muted" style="font-size:12px;">Opcional sem permissão: ${a.missingOptional.map(m => escapeHtml(IG_SCOPE_LABELS[m] || m)).join(', ')}.</div>` : ''}
           <div class="ig-row">
             <label class="integ-toggle" title="Cada pessoa nova que falar com você vira um card no funil"><input type="checkbox" ${a.createLead ? 'checked' : ''} onchange="igAccountSave('${escapeJsString(a.pageId)}', this.checked)"> Criar lead no funil</label>
             <button class="btn-remove" type="button" onclick="igDisconnect('${escapeJsString(a.pageId)}')">Desconectar</button>
           </div>
         </div>`).join('')}
+        <details class="ig-help"><summary>Conectar por uma página do Facebook (alternativa)</summary>
         ${_ig.pages.filter(p => !connected.has(p.id)).map(p => `<div class="ig-acc"><div class="ig-acc-head"><b>${escapeHtml(p.name)}</b><span class="integ-muted"> · página do Facebook</span></div><button class="huv-btn" onclick="igConnect('${escapeJsString(p.id)}', this)">Ligar o Instagram desta página</button></div>`).join('')}
         ${!_ig.pages.length && !_ig.accounts.length ? '<div class="integ-muted">Nenhuma página do Facebook ligada ainda. Conecte o Facebook abaixo.</div>' : ''}
         <div id="ig-fb-msg" style="font-size:13px;margin-top:8px;"></div>
         <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;"><button class="huv-btn" onclick="startFbConnect('${escapeJsString(act)}','ig-fb-box')">Conectar ou reconectar o Facebook</button></div>
         <div id="ig-fb-box" style="margin-top:10px;"></div>
+        </details>
         <details class="ig-help"><summary>Configuração no painel da Meta (uma vez só)</summary>
+          <p><b>Login do Instagram (recomendado)</b></p>
           <ol>
-            <li>No app da Meta, em <b>Login do Facebook para Empresas</b>, adicione estas permissões na configuração: instagram_basic, instagram_manage_messages, instagram_manage_comments, instagram_content_publish, pages_messaging e pages_manage_posts. Depois reconecte o Facebook aqui.</li>
-            <li>Em <b>Webhooks</b>, escolha <b>Instagram</b>, use o <b>mesmo endereço e o mesmo token de verificação</b> que já estão configurados para os leads do Facebook (o CRM que recebe os avisos repassa para os outros), e assine os campos <b>messages</b>, <b>messaging_postbacks</b> e <b>comments</b>.</li>
-            <li>Enquanto o app não passa pela revisão da Meta, só contas com função no app (administrador, desenvolvedor ou testador) recebem e enviam mensagens.</li>
+            <li>No app da Meta, adicione o produto <b>Instagram</b> e abra <b>Configuração da API com login do Instagram</b>. Copie o <b>ID do app do Instagram</b> e a <b>chave secreta</b> e salve no servidor com o script <code>salvar-instagram-app.js</code>.</li>
+            <li>Em <b>Configurar o login de empresas</b>, adicione este endereço nos URIs de redirecionamento: <code>${escapeHtml(_ig.igRedirect)}</code></li>
+            <li>Ainda no produto Instagram, em <b>Webhooks</b>, use o mesmo endereço e o mesmo token de verificação que já estão no app para os leads do Facebook (o CRM que recebe os avisos repassa para os outros) e assine <b>messages</b>, <b>messaging_postbacks</b> e <b>comments</b>.</li>
+            <li>Enquanto o app não passa pela revisão da Meta, adicione as contas como <b>Testadores do Instagram</b> (Funções do app) e aceite o convite no Instagram.</li>
+          </ol>
+          <p><b>Pela página do Facebook (alternativa)</b></p>
+          <ol>
+            <li>Na configuração do Login do Facebook para Empresas, acrescente: instagram_basic, instagram_manage_messages, instagram_manage_comments, instagram_content_publish, pages_messaging e pages_manage_posts. Depois reconecte o Facebook aqui.</li>
+            <li>Em <b>Webhooks</b>, objeto <b>Instagram</b> (do Facebook), assine <b>messages</b>, <b>messaging_postbacks</b> e <b>comments</b>.</li>
           </ol>
         </details>
       </section>
@@ -14187,6 +14197,24 @@ function igAutoCardHtml(a) {
     <div style="display:flex;gap:8px;margin-top:10px;"><button class="huv-btn" onclick="openIgAutoEditor('${escapeJsString(a.id)}')">Editar</button><button class="btn-remove" onclick="igAutoDelete('${escapeJsString(a.id)}')">Excluir</button></div>
   </div>`;
 }
+
+async function igLogin() {
+  try {
+    const me = typeof chatMe === 'function' ? chatMe() : {};
+    const r = await window._fb.whatsapp('/instagram/login-url', flowAct(), { uid: me.uid });
+    const w = window.open(r.url, 'huvenig', 'width=520,height=720');
+    if (!w) { showToast('O navegador bloqueou a janela. Libere pop-ups para o CRM e tente de novo.', 'warning', 7000); return; }
+    const onMsg = ev => {
+      if (!ev.data || ev.data.huvenIg === undefined) return;
+      window.removeEventListener('message', onMsg);
+      showToast(ev.data.msg || (ev.data.huvenIg ? 'Instagram conectado.' : 'Não conectou.'), ev.data.huvenIg ? 'success' : 'warning', 9000);
+      renderInstagramView();
+    };
+    window.addEventListener('message', onMsg);
+    const t = setInterval(() => { if (w.closed) { clearInterval(t); setTimeout(renderInstagramView, 900); } }, 1000);
+  } catch (e) { showToast('Erro: ' + e.message, 'error', 8000); }
+}
+window.igLogin = igLogin;
 
 async function igConnect(pageId, btn) {
   const msg = document.getElementById('ig-fb-msg');
