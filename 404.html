@@ -1277,6 +1277,57 @@ html[data-theme="light"] .login-overlay { background: var(--paper); }
 .integ-form-row { display:grid; grid-template-columns:2fr 1.3fr 1.3fr 1.3fr; gap:8px; align-items:center; padding:6px 0; border-bottom:1px solid var(--border); }
 .integ-form-row .field-input { padding:6px 8px; font-size:12px; }
 .integ-toggle { display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700; color:var(--text); }
+
+/* Instagram e Postagens */
+.ig-acc { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+.ig-acc-head { margin-bottom: 6px; }
+.ig-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.ig-warn { background: rgba(217, 59, 59, .12); color: #D93B3B; border-radius: 10px; padding: 8px 10px; font-size: 12.5px; line-height: 1.45; margin: 6px 0; }
+.ig-ok { color: var(--green); font-size: 12.5px; font-weight: 600; }
+.ig-help { margin-top: 14px; font-size: 13px; color: var(--muted); }
+.ig-help summary { cursor: pointer; font-weight: 600; color: var(--text); }
+.ig-help ol { padding-left: 18px; line-height: 1.6; }
+.ig-help code { background: var(--surface3, rgba(127,127,127,.15)); padding: 1px 6px; border-radius: 6px; word-break: break-all; }
+.ig-auto { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+.ig-media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.ig-media { border: 2px solid var(--border); border-radius: 10px; background: var(--surface); padding: 0; overflow: hidden; cursor: pointer; text-align: left; color: var(--text); }
+.ig-media.sel { border-color: var(--accent, #4C7DFF); }
+.ig-media img { width: 100%; height: 92px; object-fit: cover; display: block; background: #000; }
+.ig-media span { display: block; padding: 4px 6px; font-size: 11px; line-height: 1.3; }
+.posts-tabs { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.posts-tabs button { border: 0; background: transparent; color: var(--text); padding: 9px 14px; font-weight: 600; font-size: 13px; cursor: pointer; }
+.posts-tabs button.on { background: var(--accent-glow, rgba(76,125,255,.18)); }
+.posts-cal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px; }
+.posts-cal-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.posts-cal-head b { flex: 1; text-align: center; font-size: 16px; color: var(--text); display: block; }
+.posts-cal-head b::first-letter { text-transform: uppercase; }
+.posts-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.posts-wd { text-align: center; font-size: 11.5px; font-weight: 700; color: var(--muted); padding: 4px 0; text-transform: uppercase; }
+.posts-day { min-height: 96px; border: 1px solid var(--border); border-radius: 10px; padding: 4px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.posts-day:hover { border-color: var(--accent, #4C7DFF); }
+.posts-day.empty { border: 0; cursor: default; }
+.posts-day.today { background: var(--accent-glow, rgba(76,125,255,.12)); }
+.posts-dn { font-size: 11.5px; font-weight: 700; color: var(--muted); }
+.post-chip { display: block; width: 100%; border: 0; border-left: 4px solid #8A93A8; background: var(--surface3, rgba(127,127,127,.12)); color: var(--text); border-radius: 6px; padding: 3px 6px; font-size: 11.5px; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.post-time { font-weight: 700; color: var(--muted); }
+.posts-nodate { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); font-size: 13px; color: var(--text); }
+.posts-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; color: var(--muted); }
+.posts-legend i, .posts-col-head i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+.posts-board { display: grid; grid-template-columns: repeat(6, minmax(190px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 8px; }
+.posts-col { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 10px; min-height: 220px; }
+.posts-col-head { font-weight: 700; font-size: 13px; color: var(--text); margin-bottom: 10px; display: flex; align-items: center; }
+.posts-col-head span { margin-left: auto; color: var(--muted); font-weight: 600; }
+.post-card { background: var(--surface3, rgba(127,127,127,.1)); border-radius: 10px; padding: 8px; margin-bottom: 8px; cursor: pointer; font-size: 13px; color: var(--text); }
+.post-card img, .post-card video { width: 100%; height: 96px; object-fit: cover; border-radius: 8px; display: block; margin-bottom: 6px; background: #000; }
+.post-ch { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+.post-ch span { font-size: 10.5px; border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; color: var(--muted); }
+.post-media { display: flex; gap: 8px; flex-wrap: wrap; }
+.post-media-item { position: relative; width: 84px; height: 84px; border-radius: 10px; overflow: hidden; background: #000; }
+.post-media-item img, .post-media-item video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.post-media-item button { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(0,0,0,.65); color: #fff; cursor: pointer; line-height: 1; }
+.chat-tag.ig { background: linear-gradient(90deg, #F58529, #DD2A7B, #8134AF); color: #fff; }
+@media (max-width: 700px) { .posts-day { min-height: 64px; } .post-chip .post-time { display: none; } }
+
 /* Conversões Meta */
 .capi-rule { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 12px; padding: 10px; margin-bottom: 8px; }
 .capi-rule .field-input { width: auto; flex: 1; min-width: 120px; padding: 7px 10px; font-size: 12.5px; }
@@ -2566,6 +2617,8 @@ td { font-family: var(--font); font-size: 13px; }
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('prospeccao'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6M11 8v6"/></svg><span>Prospecção</span></button>
     <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); switchView('agenteia'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 4h6M9 14h.01M15 14h.01M2 14h2M20 14h2"/></svg><span>Agente de IA</span></button>
     <button type="button" class="mnav-sheet-item" onclick="closeMobileMore(); switchView('capi'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8M14 7h7v7"/></svg><span>Conversões Meta</span></button>
+    <button type="button" class="mnav-sheet-item" onclick="closeMobileMore(); switchView('instagram'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/></svg><span>Instagram</span></button>
+    <button type="button" class="mnav-sheet-item" onclick="closeMobileMore(); switchView('posts'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span>Postagens</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('cadencia'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM16 2v4M8 2v4M3 10h18"/></svg><span>Cadência</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('whatsapp'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/></svg><span>Conexões</span></button>
     <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); switchView('integracoes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>Integrações</span></button>
@@ -2674,6 +2727,17 @@ td { font-family: var(--font); font-size: 13px; }
         <div class="nav-item" id="nav-agenteia" onclick="switchView('agenteia')" style="display:none;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 4h6M9 14h.01M15 14h.01M2 14h2M20 14h2"/></svg>
           Agente de IA
+        </div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Redes sociais</div>
+        <div class="nav-item" id="nav-instagram" onclick="switchView('instagram')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/></svg>
+          Instagram
+        </div>
+        <div class="nav-item" id="nav-posts" onclick="switchView('posts')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          Postagens
         </div>
       </div>
       <div class="nav-group">
@@ -3654,6 +3718,12 @@ td { font-family: var(--font); font-size: 13px; }
 
     <!-- Conversões Meta (API de Conversões) -->
     <div id="capi-view" class="huv-view" style="display:none;"><div id="capi-body"></div></div>
+
+    <!-- Instagram -->
+    <div id="instagram-view" class="huv-view" style="display:none;"><div id="instagram-body"></div></div>
+
+    <!-- Postagens -->
+    <div id="posts-view" class="huv-view" style="display:none;"><div id="posts-body"></div></div>
 
     <!-- Clientes View (admin) -->
     <div id="clientes-view" class="huv-view" style="display:none;">
@@ -6943,7 +7013,7 @@ function switchView(view) {
     showToast('Seu login não tem acesso a esta área.', 'warning');
     view = firstAllowedView();
   }
-  ['report','analise','clientes','automacoes','agenteia','capi','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes'].forEach(v => {
+  ['report','analise','clientes','automacoes','agenteia','capi','instagram','posts','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes'].forEach(v => {
     const el = document.getElementById('nav-' + v);
     if (el) el.classList.toggle('active', v === view);
   });
@@ -6983,6 +7053,12 @@ function switchView(view) {
   const capiView = document.getElementById('capi-view');
   if (capiView) capiView.style.display = view === 'capi' ? 'block' : 'none';
   if (view === 'capi') renderCapiView();
+  const igView = document.getElementById('instagram-view');
+  if (igView) igView.style.display = view === 'instagram' ? 'block' : 'none';
+  if (view === 'instagram') renderInstagramView();
+  const postsView = document.getElementById('posts-view');
+  if (postsView) postsView.style.display = view === 'posts' ? 'block' : 'none';
+  if (view === 'posts') renderPostsView();
   const cfgBtn = document.getElementById('btn-config');
   if (cfgBtn) cfgBtn.classList.toggle('active', view === 'cfgclientes');
   closeClientSwitcher();
@@ -11760,18 +11836,19 @@ function chatFormatPhone(phone) {
 }
 
 function chatLeadIndex(act) {
-  const byPhone = {}, byJid = {};
+  const byPhone = {}, byJid = {}, byIg = {};
   (_leadsCache || []).forEach(l => {
     if (normalizeActValue(l.act) !== act) return;
     const k = chatPhoneKey(l.phone || l.whatsappPhone);
     if (k) byPhone[k] = l;
     if (l.whatsappJid) byJid[l.whatsappJid] = l;
+    if (l.igsid) byIg[l.igsid] = l;
   });
-  return { byPhone, byJid };
+  return { byPhone, byJid, byIg };
 }
 
 function chatLeadFor(c, index) {
-  return (c.phone && index.byPhone[chatPhoneKey(c.phone)]) || (c.lid && index.byJid[c.lid]) || (c.jid && index.byJid[c.jid]) || null;
+  return (c.igsid && index.byIg && index.byIg[c.igsid]) || (c.phone && index.byPhone[chatPhoneKey(c.phone)]) || (c.lid && index.byJid[c.lid]) || (c.jid && index.byJid[c.jid]) || null;
 }
 
 function chatName(c, lead) {
@@ -12010,7 +12087,8 @@ function renderChatList() {
     if (chatReplied(c)) tags.push('<span class="chat-tag" style="background:var(--green-dim);color:var(--green);">Respondeu</span>');
     else if (chatWaiting(c)) tags.push('<span class="chat-tag" style="background:var(--amber-dim);color:var(--amber);">Aguardando resposta</span>');
     if (c.assignedName) tags.push(`<span class="chat-tag" style="background:var(--blue-dim);color:var(--blue);">${escapeHtml(c.assignedTo === me.uid ? 'Você' : c.assignedName)}</span>`);
-    if (multiLine) tags.push(`<span class="chat-tag" style="background:var(--surface3);color:var(--muted2);">📱 ${escapeHtml(waLineLabel(_chatAct, c.line || waLineOfKey(c.id)))}</span>`);
+    if (c.channel === 'instagram') tags.push('<span class="chat-tag ig">Instagram</span>');
+    if (multiLine && c.channel !== 'instagram') tags.push(`<span class="chat-tag" style="background:var(--surface3);color:var(--muted2);">📱 ${escapeHtml(waLineLabel(_chatAct, c.line || waLineOfKey(c.id)))}</span>`);
     const rem = chatReminderFor(_chatAct, c.id);
     if (rem) tags.push(`<span class="chat-tag" style="background:rgba(224,164,58,.2);color:#B7791F;">🔔 ${new Date(rem.remindAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>`);
     chatTagIds(c, lead, chatContactFor(c, contactIndex)).map(id => tagById[id]).filter(Boolean).forEach(t => tags.push(tagChipHtml(t)));
@@ -12186,7 +12264,7 @@ function renderChatHeader() {
     <div style="flex:1;min-width:160px;">
       <div style="font-size:15px;font-weight:600;color:var(--text);">${escapeHtml(chatName(c, lead))}</div>
       <div style="font-size:12px;color:var(--muted2);display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:2px;">
-        <span>${escapeHtml(chatFormatPhone(c.phone) || 'Número oculto pelo WhatsApp')}</span>
+        <span>${escapeHtml(c.channel === 'instagram' ? 'Instagram' + (c.igUsername ? ' · @' + c.igUsername : '') : (chatFormatPhone(c.phone) || 'Número oculto pelo WhatsApp'))}</span>
         ${waHasMultiple(_chatAct) ? `<span class="chat-tag" style="background:var(--surface3);color:var(--text);">📱 via ${escapeHtml(waLineLabel(_chatAct, c.line || waLineOfKey(c.id)))}</span>` : ''}
         ${stage ? `<span class="chat-tag" style="background:var(--accent-glow);color:var(--text);">Lead · ${escapeHtml(stage)}</span>` : ''}
         ${c.dispatchSource ? `<span class="chat-tag" style="background:var(--surface3);color:var(--muted2);">${escapeHtml(c.dispatchSource)}</span>` : ''}
@@ -12404,7 +12482,9 @@ async function sendChatMessage() {
   const btn = document.getElementById('chat-send-btn');
   _chatSending = true; btn.disabled = true; btn.textContent = 'Enviando...';
   try {
-    await window._fb.whatsapp('/whatsapp/chat-send', _chatAct, { chatKey: _chatOpenKey, text, media: _chatPendingMedia || undefined });
+    const cOpen = _chatItems.find(x => x.id === _chatOpenKey);
+    if (cOpen && cOpen.channel === 'instagram') await window._fb.whatsapp('/instagram/send', _chatAct, { chatKey: _chatOpenKey, text });
+    else await window._fb.whatsapp('/whatsapp/chat-send', _chatAct, { chatKey: _chatOpenKey, text, media: _chatPendingMedia || undefined });
     ta.value = ''; ta.style.height = 'auto';
     clearChatMedia();
     const c = _chatItems.find(x => x.id === _chatOpenKey);
@@ -13657,7 +13737,7 @@ function toggleWhatsAppSettings(login) {
 const AI_AGENT_DEFAULTS = {
   enabled: false, name: '', business: '', tone: '', goal: '', rules: '',
   stages: ['novo'], stopOnHuman: true, hoursOn: false, from: '08:00', to: '18:00', days: [1, 2, 3, 4, 5],
-  maxReplies: 6, delaySec: 10, qualifiedStage: '', handoffOn: true, autoLead: false, onlyTriggered: false, openWithForm: false, hearAudio: true, mediaOn: false, media: [], examples: '',
+  maxReplies: 6, delaySec: 10, qualifiedStage: '', handoffOn: true, autoLead: false, onlyTriggered: false, openWithForm: false, hearAudio: true, igOn: false, mediaOn: false, media: [], examples: '',
   calendar: { enabled: false, minutes: 30, days: [1, 2, 3, 4, 5], from: '09:00', to: '18:00', daysAhead: 7, noticeHours: 4, meet: true, title: 'Call de apresentação', commitment: true, askEmail: true },
   handoffMessage: 'Vou pedir para um atendente da equipe continuar com você por aqui, tudo bem?'
 };
@@ -13735,6 +13815,11 @@ function openAiAgent(login, actDirect) {
       <label class="ai-switch" style="margin-top:8px;"><span>Pedir o compromisso de comparecimento antes de marcar</span><input type="checkbox" id="ai-cal-commit" ${a.calendar.commitment !== false ? 'checked' : ''}></label>
       <label class="ai-switch" style="margin-top:8px;"><span>Criar link do Google Meet no evento</span><input type="checkbox" id="ai-cal-meet" ${a.calendar.meet ? 'checked' : ''}></label>
       <div class="ai-h" style="margin-top:6px;">Se o lead tiver e-mail no card, ele recebe o convite do Google. Sem a agenda conectada, a IA não oferece horário e passa o lead para a equipe quando ele quiser a call.</div>
+    </div>
+
+    <div class="ai-sec"><div class="ai-t">Instagram</div>
+      <label class="ai-switch"><span>Responder também no direct do Instagram</span><input type="checkbox" id="ai-igon" ${a.igOn ? 'checked' : ''}></label>
+      <div class="ai-h" style="margin-top:4px;">A IA atende quem mandar direct para o Instagram conectado, com as mesmas regras, agenda e passagem para a equipe. Só responde dentro das 24 horas depois da última mensagem da pessoa.</div>
     </div>
 
     <div class="ai-sec"><div class="ai-t">Áudios do lead</div>
@@ -13831,7 +13916,7 @@ function readAiAgent() {
       noticeHours: Math.min(72, Math.max(0, v('ai-cal-notice') === '' ? 4 : Number(v('ai-cal-notice')))),
       meet: ov.querySelector('#ai-cal-meet').checked, commitment: ov.querySelector('#ai-cal-commit').checked, askEmail: ov.querySelector('#ai-cal-askmail').checked, title: v('ai-cal-title').trim() || 'Call de apresentação'
     },
-    handoffOn: ov.querySelector('#ai-handoff-on').checked, mediaOn: ov.querySelector('#ai-media-on').checked, examples: (ov.querySelector('#ai-examples').value || '').slice(0, 10000), media: _aiMedia.map(m => ({ id: m.id, type: m.type, url: m.url, mimetype: m.mimetype || '', fileName: m.fileName || '', title: String(m.title || '').trim(), when: String(m.when || '').trim() })), autoLead: ov.querySelector('#ai-autolead').checked, onlyTriggered: ov.querySelector('#ai-onlytrig').checked, openWithForm: ov.querySelector('#ai-openform').checked, hearAudio: ov.querySelector('#ai-hearaudio').checked,
+    handoffOn: ov.querySelector('#ai-handoff-on').checked, mediaOn: ov.querySelector('#ai-media-on').checked, examples: (ov.querySelector('#ai-examples').value || '').slice(0, 10000), media: _aiMedia.map(m => ({ id: m.id, type: m.type, url: m.url, mimetype: m.mimetype || '', fileName: m.fileName || '', title: String(m.title || '').trim(), when: String(m.when || '').trim() })), autoLead: ov.querySelector('#ai-autolead').checked, onlyTriggered: ov.querySelector('#ai-onlytrig').checked, openWithForm: ov.querySelector('#ai-openform').checked, hearAudio: ov.querySelector('#ai-hearaudio').checked, igOn: ov.querySelector('#ai-igon').checked,
     qualifiedStage: v('ai-qstage'), handoffMessage: v('ai-handoff').trim() || AI_AGENT_DEFAULTS.handoffMessage
   };
 }
@@ -14021,6 +14106,407 @@ async function disconnectCapi() {
   renderCapiView();
 }
 window.renderCapiView = renderCapiView; window.capiAddRule = capiAddRule; window.saveCapi = saveCapi; window.testCapi = testCapi; window.disconnectCapi = disconnectCapi;
+
+// ===== INSTAGRAM: conexão, directs no Chat e automações estilo ManyChat =====
+let _ig = { accounts: [], pages: [], autos: [], webhookUrl: '' };
+const IG_TRIGGERS = [
+  ['dm_keyword', 'Palavra-chave no direct'],
+  ['dm_any', 'Qualquer mensagem no direct (primeiro contato)'],
+  ['comment_keyword', 'Comentário em uma postagem'],
+  ['story_reply', 'Resposta a um story']
+];
+const IG_SCOPE_LABELS = { instagram_basic: 'Perfil do Instagram', instagram_manage_messages: 'Mensagens do Instagram', pages_messaging: 'Mensagens da página', pages_show_list: 'Lista de páginas', instagram_manage_comments: 'Comentários', instagram_content_publish: 'Publicar postagens' };
+
+async function renderInstagramView() {
+  const box = document.getElementById('instagram-body');
+  if (!box) return;
+  const act = flowAct();
+  if (!act) { box.innerHTML = '<div class="integ-empty">Escolha o cliente no topo do menu para configurar o Instagram dele.</div>'; return; }
+  box.innerHTML = '<div class="integ-muted">Carregando...</div>';
+  try {
+    const [st, au] = await Promise.all([window._fb.whatsapp('/instagram/status', act, {}), window._fb.whatsapp('/instagram/autos', act, {})]);
+    _ig = { accounts: st.accounts || [], pages: st.pages || [], autos: au.autos || [], webhookUrl: st.webhookUrl || '' };
+  } catch (e) { box.innerHTML = `<div class="integ-error">Erro: ${escapeHtml(e.message)}</div>`; return; }
+  const client = escapeHtml(getClientDisplayName(act) || act);
+  const stages = (typeof getAllStages === 'function' ? getAllStages(act) : getStages(act)) || [];
+  const connected = new Set(_ig.accounts.map(a => a.pageId));
+  box.innerHTML = `
+    <div class="huv-header" style="margin-bottom:18px;">
+      <div style="flex:1;min-width:220px;">
+        <div class="huv-crumb">${client}  /  Redes sociais</div>
+        <div class="huv-page-title" style="color:var(--text);">Instagram</div>
+        <div class="integ-muted" style="margin-top:4px;">Receba os directs no Chat, responda pelo CRM e monte respostas automáticas por palavra-chave ou comentário, no estilo ManyChat.</div>
+      </div>
+      <button class="btn-add-lead" style="height:40px;padding:0 16px;" onclick="openIgAutoEditor(null)">+ Nova automação</button>
+    </div>
+    <div class="cfgc-grid">
+      <section class="cfgc-card">
+        <div class="cfgc-card-title">Conexão</div>
+        <div class="cfgc-sub">O Instagram precisa ser uma conta profissional ligada a uma página do Facebook deste cliente.</div>
+        ${_ig.accounts.map(a => `<div class="ig-acc">
+          <div class="ig-acc-head"><b>@${escapeHtml(a.igUsername || a.igId)}</b><span class="integ-muted"> · página ${escapeHtml(a.pageName || a.pageId)}</span></div>
+          ${a.missing && a.missing.length ? `<div class="ig-warn">Faltam permissões no login do Facebook: ${a.missing.map(m => escapeHtml(IG_SCOPE_LABELS[m] || m)).join(', ')}. Reconecte o Facebook abaixo e marque tudo.</div>` : (a.error ? `<div class="ig-warn">Não consegui conferir as permissões: ${escapeHtml(a.error)}</div>` : '<div class="ig-ok">Permissões de mensagens ok</div>')}
+          ${a.missingOptional && a.missingOptional.length && !(a.missing && a.missing.length) ? `<div class="integ-muted" style="font-size:12px;">Opcional sem permissão: ${a.missingOptional.map(m => escapeHtml(IG_SCOPE_LABELS[m] || m)).join(', ')}.</div>` : ''}
+          <div class="ig-row">
+            <label class="integ-toggle" title="Cada pessoa nova que falar com você vira um card no funil"><input type="checkbox" ${a.createLead ? 'checked' : ''} onchange="igAccountSave('${escapeJsString(a.pageId)}', this.checked)"> Criar lead no funil</label>
+            <button class="btn-remove" type="button" onclick="igDisconnect('${escapeJsString(a.pageId)}')">Desconectar</button>
+          </div>
+        </div>`).join('')}
+        ${_ig.pages.filter(p => !connected.has(p.id)).map(p => `<div class="ig-acc"><div class="ig-acc-head"><b>${escapeHtml(p.name)}</b><span class="integ-muted"> · página do Facebook</span></div><button class="huv-btn" onclick="igConnect('${escapeJsString(p.id)}', this)">Ligar o Instagram desta página</button></div>`).join('')}
+        ${!_ig.pages.length && !_ig.accounts.length ? '<div class="integ-muted">Nenhuma página do Facebook ligada ainda. Conecte o Facebook abaixo.</div>' : ''}
+        <div id="ig-fb-msg" style="font-size:13px;margin-top:8px;"></div>
+        <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;"><button class="huv-btn" onclick="startFbConnect('${escapeJsString(act)}','ig-fb-box')">Conectar ou reconectar o Facebook</button></div>
+        <div id="ig-fb-box" style="margin-top:10px;"></div>
+        <details class="ig-help"><summary>Configuração no painel da Meta (uma vez só)</summary>
+          <ol>
+            <li>No app da Meta, em <b>Login do Facebook para Empresas</b>, adicione estas permissões na configuração: instagram_basic, instagram_manage_messages, instagram_manage_comments, instagram_content_publish, pages_messaging e pages_manage_posts. Depois reconecte o Facebook aqui.</li>
+            <li>Em <b>Webhooks</b>, escolha <b>Instagram</b>, use o endereço <code>${escapeHtml(_ig.webhookUrl)}</code> com o mesmo token de verificação que já usamos nos leads, e assine os campos <b>messages</b>, <b>messaging_postbacks</b> e <b>comments</b>.</li>
+            <li>Enquanto o app não passa pela revisão da Meta, só contas com função no app (administrador, desenvolvedor ou testador) recebem e enviam mensagens.</li>
+          </ol>
+        </details>
+      </section>
+      <section class="cfgc-card">
+        <div class="cfgc-card-title">Automações do Instagram <span class="cfgc-count">${_ig.autos.length || ''}</span></div>
+        <div class="cfgc-sub">Quando alguém manda a palavra-chave no direct ou comenta no post, o CRM responde na hora. Para postagens e reels, o comentário abre uma mensagem privada.</div>
+        ${_ig.autos.length ? _ig.autos.map(a => igAutoCardHtml(a)).join('') : '<div class="integ-empty">Nenhuma automação ainda. Clique em "+ Nova automação".</div>'}
+      </section>
+    </div>`;
+}
+
+function igAutoCardHtml(a) {
+  const t = a.trigger || {};
+  const label = (IG_TRIGGERS.find(x => x[0] === t.type) || [0, t.type])[1];
+  const kw = (t.keywords || []).map(k => `<span class="chip" style="padding:3px 10px;font-size:12px;">${escapeHtml(k)}</span>`).join(' ');
+  return `<div class="ig-auto">
+    <div style="display:flex;gap:10px;align-items:center;">
+      <div style="flex:1;min-width:0;"><b>${escapeHtml(a.name || 'Automação')}</b><div class="integ-muted" style="font-size:12.5px;">${escapeHtml(label)}${a.count ? ' · ' + a.count + ' envios' : ''}</div></div>
+      <label class="integ-toggle"><input type="checkbox" ${a.active !== false ? 'checked' : ''} onchange="igAutoToggle('${escapeJsString(a.id)}', this.checked)"> ${a.active !== false ? 'Ligada' : 'Desligada'}</label>
+    </div>
+    ${kw ? `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">${kw}</div>` : ''}
+    <div class="integ-muted" style="margin-top:8px;font-size:12.5px;">${escapeHtml(limitText((a.replies && a.replies[0] && a.replies[0].text) || '', 110))}</div>
+    <div style="display:flex;gap:8px;margin-top:10px;"><button class="huv-btn" onclick="openIgAutoEditor('${escapeJsString(a.id)}')">Editar</button><button class="btn-remove" onclick="igAutoDelete('${escapeJsString(a.id)}')">Excluir</button></div>
+  </div>`;
+}
+
+async function igConnect(pageId, btn) {
+  const msg = document.getElementById('ig-fb-msg');
+  btn.disabled = true;
+  try { const r = await window._fb.whatsapp('/instagram/connect', flowAct(), { pageId }); showToast('Instagram @' + (r.igUsername || '') + ' conectado.', 'success'); renderInstagramView(); }
+  catch (e) { if (msg) { msg.style.color = 'var(--red)'; msg.textContent = e.message; } btn.disabled = false; }
+}
+async function igAccountSave(pageId, createLead) {
+  try { await window._fb.whatsapp('/instagram/account-save', flowAct(), { pageId, createLead }); showToast('Salvo.', 'success'); } catch (e) { showToast('Erro: ' + e.message, 'error'); }
+}
+async function igDisconnect(pageId) {
+  if (!await showConfirm('O CRM deixa de receber e enviar mensagens desse Instagram. As conversas já salvas continuam no Chat.', 'Desconectar', 'Desconectar', true)) return;
+  try { await window._fb.whatsapp('/instagram/disconnect', flowAct(), { pageId }); } catch (e) { showToast('Erro: ' + e.message, 'error'); }
+  renderInstagramView();
+}
+async function igAutoToggle(id, on) {
+  const a = _ig.autos.find(x => x.id === id);
+  if (!a) return;
+  try { await window._fb.whatsapp('/instagram/auto-save', flowAct(), { auto: { ...a, id, active: on } }); renderInstagramView(); } catch (e) { showToast('Erro: ' + e.message, 'error'); }
+}
+async function igAutoDelete(id) {
+  if (!await showConfirm('Excluir esta automação do Instagram?', 'Excluir', 'Excluir', true)) return;
+  try { await window._fb.whatsapp('/instagram/auto-delete', flowAct(), { id }); } catch (e) { showToast('Erro: ' + e.message, 'error'); }
+  renderInstagramView();
+}
+
+// ----- editor da automação -----
+let _igEd = null;
+function openIgAutoEditor(id) {
+  const act = flowAct();
+  const a = id ? JSON.parse(JSON.stringify(_ig.autos.find(x => x.id === id) || {})) : {};
+  _igEd = {
+    id: id || '', name: a.name || '', active: a.active !== false,
+    trigger: { type: (a.trigger && a.trigger.type) || 'dm_keyword', keywords: (a.trigger && a.trigger.keywords) || [], match: (a.trigger && a.trigger.match) || 'contains', mediaId: (a.trigger && a.trigger.mediaId) || '' },
+    replies: (a.replies && a.replies.length ? a.replies : [{ text: '', buttons: [] }]).map(r => ({ text: r.text || '', buttons: (r.buttons || []).map(b => ({ ...b })) })),
+    commentReply: a.commentReply || [], moveStage: a.moveStage || '', aiTakeover: !!a.aiTakeover, cooldownHours: a.cooldownHours == null ? 24 : a.cooldownHours
+  };
+  igEditorRender(act);
+}
+function igEditorRender(act) {
+  const e = _igEd;
+  const stages = (typeof getAllStages === 'function' ? getAllStages(act) : getStages(act)) || [];
+  const isComment = e.trigger.type === 'comment_keyword';
+  const needsWords = e.trigger.type === 'dm_keyword' || isComment;
+  let ov = document.getElementById('ig-auto-modal');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'ig-auto-modal'; ov.className = 'modal-overlay stages-modal'; document.body.appendChild(ov); }
+  ov.innerHTML = `<div class="modal-box ai-modal-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;">
+      <div class="modal-title" style="margin-bottom:0;">${e.id ? 'Editar automação' : 'Nova automação'} do Instagram</div>
+      <button class="btn-close-panel" onclick="igEditorClose()">×</button>
+    </div>
+    <div class="ai-sec"><div class="ai-row"><label style="flex-basis:100%;">Nome<input class="field-input" id="ige-name" value="${escapeHtml(e.name)}" placeholder="Ex.: Quem comentar EU QUERO"></label></div></div>
+    <div class="ai-sec"><div class="ai-t">Quando acontecer</div>
+      <select class="field-input" id="ige-trigger" onchange="igEditorSync(); igEditorRender(flowAct())">${IG_TRIGGERS.map(([k, l]) => `<option value="${k}" ${e.trigger.type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      ${needsWords ? `<div class="ai-row" style="margin-top:8px;"><label style="flex:2;">Palavras-chave (separe por vírgula)<input class="field-input" id="ige-words" value="${escapeHtml((e.trigger.keywords || []).join(', '))}" placeholder="quero, preço, valor"></label>
+        <label>Comparação<select class="field-input" id="ige-match"><option value="contains" ${e.trigger.match !== 'exact' ? 'selected' : ''}>Contém a palavra</option><option value="exact" ${e.trigger.match === 'exact' ? 'selected' : ''}>É igual</option></select></label></div>` : ''}
+      ${isComment ? `<div style="margin-top:10px;"><div class="ai-h">Postagem: ${e.trigger.mediaId ? 'uma postagem escolhida' : 'qualquer postagem'}</div><div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="huv-btn" type="button" onclick="igPickMedia()">Escolher postagem</button>${e.trigger.mediaId ? '<button class="huv-btn" type="button" onclick="_igEd.trigger.mediaId=\'\'; igEditorRender(flowAct())">Qualquer postagem</button>' : ''}</div><div id="ige-media" style="margin-top:8px;"></div></div>` : ''}
+    </div>
+    <div class="ai-sec"><div class="ai-t">Mensagens que o CRM envia no direct</div><div class="ai-h">Até 3. Use {nome} para o primeiro nome. Cada uma pode ter um botão com link.</div>
+      ${e.replies.map((r, i) => `<div class="ai-media-item" style="flex-direction:column;">
+        <textarea class="field-input" rows="3" id="ige-r${i}" placeholder="Mensagem ${i + 1}">${escapeHtml(r.text)}</textarea>
+        <div class="ai-row"><label>Botão com link (título)<input class="field-input" id="ige-bt${i}" maxlength="20" value="${escapeHtml((r.buttons[0] || {}).title || '')}" placeholder="Ex.: Ver agora"></label><label style="flex:2;">Endereço do link<input class="field-input" id="ige-bu${i}" value="${escapeHtml((r.buttons[0] || {}).url || '')}" placeholder="https://"></label></div>
+        ${e.replies.length > 1 ? `<button class="btn-remove" type="button" onclick="igEditorSync(); _igEd.replies.splice(${i},1); igEditorRender(flowAct())">Remover mensagem</button>` : ''}
+      </div>`).join('')}
+      ${e.replies.length < 3 ? '<button class="huv-btn" type="button" onclick="igEditorSync(); _igEd.replies.push({text:\'\',buttons:[]}); igEditorRender(flowAct())">+ Mensagem</button>' : ''}
+    </div>
+    ${isComment ? `<div class="ai-sec"><div class="ai-t">Resposta pública no comentário (opcional)</div><div class="ai-h">Uma por linha. O CRM sorteia uma, para não parecer robô.</div><textarea class="field-input" rows="3" id="ige-cr" placeholder="Te chamei no direct!&#10;Enviei os detalhes no seu direct 😉">${escapeHtml((e.commentReply || []).join('\n'))}</textarea></div>` : ''}
+    <div class="ai-sec"><div class="ai-t">Depois de responder</div>
+      <div class="ai-row"><label>Mover o card para<select class="field-input" id="ige-stage"><option value="">Não mover</option>${stages.map(s => `<option value="${escapeHtml(s.id)}" ${e.moveStage === s.id ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}</select></label>
+        <label>Não repetir para a mesma pessoa por (horas)<input class="field-input" id="ige-cool" type="number" min="0" max="720" value="${Number(e.cooldownHours)}"></label></div>
+      <label class="ai-switch" style="margin-top:8px;"><span>Passar a conversa para o Agente de IA</span><input type="checkbox" id="ige-ai" ${e.aiTakeover ? 'checked' : ''}></label>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap;"><span id="ige-fb" style="font-size:12px;align-self:center;margin-right:auto;"></span>
+      <button class="modal-btn-cancel" onclick="igEditorClose()">Cancelar</button><button class="modal-btn-save" onclick="igEditorSave(this)">Salvar</button></div>
+  </div>`;
+  ov.style.display = 'flex'; ov.classList.add('open');
+  if (isComment && e._media) igRenderMedia();
+}
+function igEditorSync() {
+  const e = _igEd, g = id => document.getElementById(id);
+  if (!e || !g('ige-name')) return;
+  e.name = g('ige-name').value;
+  if (g('ige-words')) { e.trigger.keywords = g('ige-words').value.split(',').map(x => x.trim()).filter(Boolean); e.trigger.match = g('ige-match').value; }
+  e.replies.forEach((r, i) => { if (!g('ige-r' + i)) return; r.text = g('ige-r' + i).value; const t = g('ige-bt' + i).value.trim(), u = g('ige-bu' + i).value.trim(); r.buttons = t && u ? [{ title: t, url: u }] : []; });
+  if (g('ige-cr')) e.commentReply = g('ige-cr').value.split('\n').map(x => x.trim()).filter(Boolean);
+  if (g('ige-stage')) { e.moveStage = g('ige-stage').value; e.cooldownHours = Number(g('ige-cool').value) || 0; e.aiTakeover = g('ige-ai').checked; }
+  if (g('ige-trigger')) e.trigger.type = g('ige-trigger').value;
+}
+function igEditorClose() { const ov = document.getElementById('ig-auto-modal'); if (ov) ov.remove(); _igEd = null; }
+async function igEditorSave(btn) {
+  igEditorSync();
+  const fb = document.getElementById('ige-fb');
+  btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'Salvando...';
+  try {
+    await window._fb.whatsapp('/instagram/auto-save', flowAct(), { auto: { id: _igEd.id, name: _igEd.name || 'Automação do Instagram', active: _igEd.active, trigger: _igEd.trigger, replies: _igEd.replies, commentReply: _igEd.commentReply, moveStage: _igEd.moveStage, aiTakeover: _igEd.aiTakeover, cooldownHours: _igEd.cooldownHours } });
+    igEditorClose(); showToast('Automação salva.', 'success'); renderInstagramView();
+  } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = e.message; btn.disabled = false; }
+}
+async function igPickMedia() {
+  igEditorSync();
+  const box = document.getElementById('ige-media');
+  box.innerHTML = '<div class="integ-muted">Buscando postagens...</div>';
+  try { const r = await window._fb.whatsapp('/instagram/media', flowAct(), {}); _igEd._media = r.media || []; igRenderMedia(); }
+  catch (e) { box.innerHTML = `<div class="integ-error">${escapeHtml(e.message)}</div>`; }
+}
+function igRenderMedia() {
+  const box = document.getElementById('ige-media');
+  if (!box || !_igEd._media) return;
+  box.innerHTML = `<div class="ig-media-grid">${_igEd._media.map(m => `<button type="button" class="ig-media ${_igEd.trigger.mediaId === m.id ? 'sel' : ''}" onclick="igEditorSync(); _igEd.trigger.mediaId='${escapeJsString(m.id)}'; igEditorRender(flowAct())" title="${escapeHtml(m.caption)}">${m.thumb ? `<img src="${escapeHtml(m.thumb)}" alt="">` : ''}<span>${escapeHtml(limitText(m.caption || m.type, 40))}</span></button>`).join('')}</div>`;
+}
+window.renderInstagramView = renderInstagramView; window.igConnect = igConnect; window.igAccountSave = igAccountSave; window.igDisconnect = igDisconnect;
+window.igAutoToggle = igAutoToggle; window.igAutoDelete = igAutoDelete; window.openIgAutoEditor = openIgAutoEditor; window.igEditorSync = igEditorSync;
+window.igEditorRender = igEditorRender; window.igEditorClose = igEditorClose; window.igEditorSave = igEditorSave; window.igPickMedia = igPickMedia;
+
+// ===== POSTAGENS: planejamento, calendário e programação =====
+const POST_STATUS = {
+  ideia: ['Ideia', '#8A93A8'], producao: ['Em produção', '#E0A43A'], aprovacao: ['Aprovação', '#4C7DFF'], agendado: ['Agendado', '#1FA855'],
+  publicando: ['Publicando', '#0E9F9F'], publicado: ['Publicado', '#0F7A45'], falhou: ['Falhou', '#D93B3B']
+};
+const POST_CH = { instagram_feed: 'Instagram feed', instagram_reels: 'Reels', instagram_story: 'Story', facebook: 'Facebook' };
+let _posts = { list: [], accounts: {}, month: new Date(), view: 'cal' };
+_posts.month.setDate(1);
+
+async function renderPostsView() {
+  const box = document.getElementById('posts-body');
+  if (!box) return;
+  const act = flowAct();
+  if (!act) { box.innerHTML = '<div class="integ-empty">Escolha o cliente no topo do menu para planejar as postagens dele.</div>'; return; }
+  if (!_posts.loadedAct || _posts.loadedAct !== act) box.innerHTML = '<div class="integ-muted">Carregando...</div>';
+  try { const r = await window._fb.whatsapp('/posts/list', act, {}); _posts.list = r.posts || []; _posts.accounts = r.accounts || {}; _posts.loadedAct = act; }
+  catch (e) { box.innerHTML = `<div class="integ-error">Erro: ${escapeHtml(e.message)}</div>`; return; }
+  postsDraw();
+}
+
+function postDate(p) { return p.scheduledAt || p.publishedAt || ''; }
+function postsDraw() {
+  const box = document.getElementById('posts-body');
+  const act = flowAct();
+  const acc = _posts.accounts || {};
+  const client = escapeHtml(getClientDisplayName(act) || act);
+  box.innerHTML = `
+    <div class="huv-header" style="margin-bottom:14px;">
+      <div style="flex:1;min-width:220px;">
+        <div class="huv-crumb">${client}  /  Redes sociais</div>
+        <div class="huv-page-title" style="color:var(--text);">Postagens</div>
+        <div class="integ-muted" style="margin-top:4px;">Organize as ideias, aprove e programe as publicações no Instagram e no Facebook. O CRM publica sozinho no horário marcado.</div>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+          <span class="huv-chip ${acc.instagram ? 'ok' : 'none'}">${acc.instagram ? 'Instagram @' + escapeHtml(acc.instagram.username || '') : 'Instagram não conectado'}</span>
+          <span class="huv-chip ${acc.facebook ? 'ok' : 'none'}">${acc.facebook ? 'Facebook: ' + escapeHtml(acc.facebook.name) : 'Facebook não conectado'}</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <div class="posts-tabs"><button class="${_posts.view === 'cal' ? 'on' : ''}" onclick="_posts.view='cal';postsDraw()">Calendário</button><button class="${_posts.view === 'board' ? 'on' : ''}" onclick="_posts.view='board';postsDraw()">Quadro</button></div>
+        <button class="btn-add-lead" style="height:40px;padding:0 16px;" onclick="openPostEditor(null)">+ Nova postagem</button>
+      </div>
+    </div>
+    ${_posts.view === 'cal' ? postsCalendarHtml() : postsBoardHtml()}`;
+}
+
+function postChipHtml(p) {
+  const st = POST_STATUS[p.status] || POST_STATUS.ideia;
+  const d = postDate(p) ? new Date(postDate(p)) : null;
+  const time = d ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+  return `<button class="post-chip" style="border-left-color:${st[1]};" onclick="event.stopPropagation();openPostEditor('${escapeJsString(p.id)}')" title="${escapeHtml(p.title)} · ${st[0]}"><span class="post-time">${time}</span> ${escapeHtml(limitText(p.title, 22))}</button>`;
+}
+
+function postsCalendarHtml() {
+  const m = new Date(_posts.month);
+  const first = new Date(m.getFullYear(), m.getMonth(), 1);
+  const startOffset = first.getDay();
+  const days = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < startOffset; i++) cells.push(null);
+  for (let d = 1; d <= days; d++) cells.push(d);
+  while (cells.length % 7) cells.push(null);
+  const byDay = {};
+  _posts.list.forEach(p => { const dt = postDate(p); if (!dt) return; const x = new Date(dt); if (x.getFullYear() === m.getFullYear() && x.getMonth() === m.getMonth()) (byDay[x.getDate()] = byDay[x.getDate()] || []).push(p); });
+  const todayD = new Date();
+  const noDate = _posts.list.filter(p => !postDate(p));
+  return `<div class="posts-cal">
+    <div class="posts-cal-head"><button class="huv-btn" onclick="postsMonth(-1)">‹</button><b>${m.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</b><button class="huv-btn" onclick="postsMonth(1)">›</button><button class="huv-btn" onclick="postsMonth(0)">Hoje</button></div>
+    <div class="posts-grid">${['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(w => `<div class="posts-wd">${w}</div>`).join('')}
+      ${cells.map(d => d === null ? '<div class="posts-day empty"></div>' : `<div class="posts-day ${todayD.getFullYear() === m.getFullYear() && todayD.getMonth() === m.getMonth() && todayD.getDate() === d ? 'today' : ''}" onclick="openPostEditor(null, '${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}')"><div class="posts-dn">${d}</div>${(byDay[d] || []).sort((a, b) => postDate(a).localeCompare(postDate(b))).map(postChipHtml).join('')}</div>`).join('')}
+    </div>
+    ${noDate.length ? `<div class="posts-nodate"><b>Sem data</b> (ideias e rascunhos)<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${noDate.map(postChipHtml).join('')}</div></div>` : ''}
+    <div class="posts-legend">${Object.entries(POST_STATUS).map(([k, v]) => `<span><i style="background:${v[1]}"></i>${v[0]}</span>`).join('')}</div>
+  </div>`;
+}
+function postsMonth(delta) {
+  if (delta === 0) { _posts.month = new Date(); _posts.month.setDate(1); }
+  else { _posts.month = new Date(_posts.month.getFullYear(), _posts.month.getMonth() + delta, 1); }
+  postsDraw();
+}
+
+function postsBoardHtml() {
+  const cols = ['ideia', 'producao', 'aprovacao', 'agendado', 'publicado', 'falhou'];
+  return `<div class="posts-board">${cols.map(k => {
+    const items = _posts.list.filter(p => p.status === k || (k === 'agendado' && p.status === 'publicando')).sort((a, b) => (postDate(a) || 'z').localeCompare(postDate(b) || 'z'));
+    const st = POST_STATUS[k];
+    return `<div class="posts-col" ondragover="event.preventDefault()" ondrop="postsDrop(event,'${k}')"><div class="posts-col-head"><i style="background:${st[1]}"></i>${st[0]}<span>${items.length}</span></div>${items.map(p => {
+      const d = postDate(p) ? new Date(postDate(p)).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Sem data';
+      const m0 = (p.media || [])[0];
+      return `<div class="post-card" draggable="true" ondragstart="event.dataTransfer.setData('text/plain','${escapeJsString(p.id)}')" onclick="openPostEditor('${escapeJsString(p.id)}')">
+        ${m0 ? (m0.type === 'video' ? `<video src="${escapeHtml(m0.url)}#t=0.5" preload="metadata" muted></video>` : `<img src="${escapeHtml(m0.url)}" alt="">`) : ''}
+        <b>${escapeHtml(limitText(p.title, 40))}</b><div class="integ-muted" style="font-size:12px;">${escapeHtml(d)}</div>
+        <div class="post-ch">${(p.channels || []).map(c => `<span>${escapeHtml(POST_CH[c] || c)}</span>`).join('')}</div>
+        ${p.error ? `<div class="ig-warn" style="font-size:11.5px;">${escapeHtml(limitText(p.error, 90))}</div>` : ''}
+      </div>`; }).join('') || '<div class="integ-muted" style="font-size:12.5px;padding:6px;">Vazio</div>'}</div>`;
+  }).join('')}</div>`;
+}
+async function postsDrop(ev, status) {
+  ev.preventDefault();
+  const id = ev.dataTransfer.getData('text/plain');
+  const p = _posts.list.find(x => x.id === id);
+  if (!p || p.status === status || ['publicado', 'falhou', 'publicando'].includes(status) || p.status === 'publicado') return;
+  if (status === 'agendado' && !p.scheduledAt) { showToast('Defina a data e a hora para agendar. Abra a postagem.', 'warning'); openPostEditor(id); return; }
+  try { await window._fb.whatsapp('/posts/save', flowAct(), { post: { ...p, status } }); renderPostsView(); } catch (e) { showToast('Erro: ' + e.message, 'error'); }
+}
+
+// ----- editor -----
+let _pe = null;
+function localInputValue(iso) {
+  if (!iso) return '';
+  const d = new Date(iso); if (isNaN(d)) return '';
+  const off = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - off).toISOString().slice(0, 16);
+}
+function openPostEditor(id, day) {
+  const p = id ? JSON.parse(JSON.stringify(_posts.list.find(x => x.id === id) || {})) : {};
+  _pe = { id: id || '', title: p.title || '', caption: p.caption || '', status: p.status || 'ideia', channels: p.channels || [], media: p.media || [], scheduledAt: p.scheduledAt || (day ? new Date(day + 'T10:00:00').toISOString() : ''), notes: p.notes || '', results: p.results || {}, error: p.error || '' };
+  postEditorRender();
+}
+function postEditorRender() {
+  const e = _pe, acc = _posts.accounts || {};
+  const locked = e.status === 'publicado' || e.status === 'publicando';
+  let ov = document.getElementById('post-modal');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'post-modal'; ov.className = 'modal-overlay stages-modal'; document.body.appendChild(ov); }
+  const chOk = c => c === 'facebook' ? !!acc.facebook : !!acc.instagram;
+  ov.innerHTML = `<div class="modal-box ai-modal-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;"><div class="modal-title" style="margin-bottom:0;">${e.id ? 'Postagem' : 'Nova postagem'}</div><button class="btn-close-panel" onclick="postEditorClose()">×</button></div>
+    ${e.error ? `<div class="ig-warn">Não publicou: ${escapeHtml(e.error)}</div>` : ''}
+    ${Object.keys(e.results || {}).length ? `<div class="ai-sec"><div class="ai-t">Resultado</div>${Object.entries(e.results).map(([c, r]) => `<div class="integ-muted">${escapeHtml(POST_CH[c] || c)}: ${r.ok ? '✓ publicado' + (r.permalink ? ` · <a href="${escapeHtml(r.permalink)}" target="_blank" rel="noopener">abrir</a>` : '') : r.pending ? 'processando o vídeo...' : '✗ ' + escapeHtml(r.error || 'erro')}</div>`).join('')}</div>` : ''}
+    <div class="ai-sec"><div class="ai-row"><label style="flex-basis:100%;">Título ou ideia (só para você)<input class="field-input" id="pe-title" value="${escapeHtml(e.title)}" ${locked ? 'disabled' : ''}></label></div></div>
+    <div class="ai-sec"><div class="ai-t">Legenda</div><textarea class="field-input" id="pe-caption" rows="6" maxlength="2200" ${locked ? 'disabled' : ''} oninput="document.getElementById('pe-count').textContent=this.value.length+' de 2.200'">${escapeHtml(e.caption)}</textarea><div class="integ-muted" id="pe-count" style="text-align:right;font-size:12px;">${e.caption.length} de 2.200</div></div>
+    <div class="ai-sec"><div class="ai-t">Imagens e vídeos</div>
+      <div class="ai-h">Instagram: imagens em JPG (até 10 num carrossel) e vídeos em MP4. Até 24 MB por arquivo.</div>
+      <div class="post-media">${e.media.map((m, i) => `<div class="post-media-item">${m.type === 'video' ? `<video src="${escapeHtml(m.url)}#t=0.5" preload="metadata" muted></video>` : `<img src="${escapeHtml(m.url)}" alt="">`}${locked ? '' : `<button type="button" onclick="postMediaRemove(${i})" aria-label="Remover">×</button>`}</div>`).join('')}</div>
+      ${locked ? '' : '<label class="huv-btn" style="display:inline-flex;align-items:center;cursor:pointer;height:38px;padding:0 14px;margin-top:8px;">+ Adicionar imagem ou vídeo<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4" style="display:none;" onchange="postMediaUpload(this)"></label><span id="pe-up" class="integ-muted" style="margin-left:10px;"></span>'}
+    </div>
+    <div class="ai-sec"><div class="ai-t">Onde publicar</div>
+      <div class="radios" style="gap:8px;">${Object.entries(POST_CH).map(([c, l]) => `<label style="min-width:150px;${chOk(c) ? '' : 'opacity:.55;'}"><input type="checkbox" class="pe-ch" value="${c}" ${e.channels.includes(c) ? 'checked' : ''} ${locked ? 'disabled' : ''}> ${l}${chOk(c) ? '' : ' (não conectado)'}</label>`).join('')}</div>
+    </div>
+    <div class="ai-sec"><div class="ai-row">
+      <label>Data e hora<input class="field-input" type="datetime-local" id="pe-when" value="${localInputValue(e.scheduledAt)}" ${locked ? 'disabled' : ''}></label>
+      <label>Etapa<select class="field-input" id="pe-status" ${locked ? 'disabled' : ''}>${['ideia', 'producao', 'aprovacao', 'agendado'].map(k => `<option value="${k}" ${e.status === k ? 'selected' : ''}>${POST_STATUS[k][0]}</option>`).join('')}${locked ? `<option selected>${POST_STATUS[e.status][0]}</option>` : ''}${e.status === 'falhou' ? '<option selected value="falhou">Falhou</option>' : ''}</select></label>
+    </div></div>
+    <div class="ai-sec"><div class="ai-t">Observações internas</div><textarea class="field-input" id="pe-notes" rows="2" ${locked ? 'disabled' : ''} placeholder="Ex.: aprovar com o cliente até quinta">${escapeHtml(e.notes)}</textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap;"><span id="pe-fb" style="font-size:12px;align-self:center;margin-right:auto;"></span>
+      ${e.id && e.status !== 'publicado' ? '<button class="btn-remove" onclick="postDelete()">Excluir</button>' : ''}
+      ${!locked ? '<button class="modal-btn-cancel" onclick="postSave(this, false)">Salvar</button>' : ''}
+      ${e.status !== 'publicado' && e.status !== 'publicando' ? '<button class="huv-btn" onclick="postPublishNow(this)">Publicar agora</button><button class="modal-btn-save" onclick="postSave(this, true)">Agendar</button>' : ''}
+    </div>
+  </div>`;
+  ov.style.display = 'flex'; ov.classList.add('open');
+}
+function postEditorRead() {
+  const g = id => document.getElementById(id);
+  if (!g('pe-title')) return;
+  _pe.title = g('pe-title').value; _pe.caption = g('pe-caption').value; _pe.notes = g('pe-notes').value;
+  _pe.channels = [...document.querySelectorAll('.pe-ch:checked')].map(i => i.value);
+  const w = g('pe-when').value; _pe.scheduledAt = w ? new Date(w).toISOString() : '';
+  if (!g('pe-status').disabled) _pe.status = g('pe-status').value;
+}
+function postEditorClose() { const ov = document.getElementById('post-modal'); if (ov) ov.remove(); _pe = null; }
+async function postMediaUpload(input) {
+  const file = input.files && input.files[0]; input.value = '';
+  const fb = document.getElementById('pe-up');
+  if (!file) return;
+  if (file.size > 24 * 1024 * 1024) { fb.textContent = 'Arquivo maior que 24 MB.'; return; }
+  fb.textContent = 'Enviando...';
+  postEditorRead();
+  try {
+    const m = await window._fb.uploadCampaignMedia(flowAct(), file, true);
+    if (m.type !== 'image' && m.type !== 'video') throw new Error('Use imagem (JPG) ou vídeo (MP4).');
+    _pe.media.push({ url: m.url, type: m.type, fileName: m.fileName });
+    postEditorRender();
+  } catch (e) { fb.textContent = 'Erro: ' + e.message; }
+}
+function postMediaRemove(i) { postEditorRead(); _pe.media.splice(i, 1); postEditorRender(); }
+async function postSave(btn, schedule) {
+  postEditorRead();
+  const fb = document.getElementById('pe-fb');
+  if (schedule) _pe.status = 'agendado';
+  else if (_pe.status === 'agendado' && !schedule && !document.getElementById('pe-status').disabled) { /* mantém o que escolheu */ }
+  btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'Salvando...';
+  try {
+    await window._fb.whatsapp('/posts/save', flowAct(), { post: { id: _pe.id, title: _pe.title, caption: _pe.caption, status: _pe.status, channels: _pe.channels, media: _pe.media, scheduledAt: _pe.scheduledAt, notes: _pe.notes } });
+    postEditorClose(); showToast(schedule ? 'Postagem agendada.' : 'Postagem salva.', 'success'); renderPostsView();
+  } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = e.message; btn.disabled = false; }
+}
+async function postPublishNow(btn) {
+  postEditorRead();
+  if (!await showConfirm('Publicar agora nos canais escolhidos?', 'Publicar', 'Publicar agora', false)) return;
+  const fb = document.getElementById('pe-fb');
+  btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'Publicando...';
+  try {
+    const saved = await window._fb.whatsapp('/posts/save', flowAct(), { post: { id: _pe.id, title: _pe.title, caption: _pe.caption, status: 'ideia', channels: _pe.channels, media: _pe.media, scheduledAt: _pe.scheduledAt, notes: _pe.notes } });
+    const r = await window._fb.whatsapp('/posts/publish-now', flowAct(), { id: saved.id });
+    postEditorClose();
+    showToast(r.status === 'publicado' ? 'Publicado!' : r.status === 'publicando' ? 'Enviado. O vídeo está sendo processado e sai em instantes.' : 'Não publicou: ' + (r.error || ''), r.status === 'falhou' ? 'error' : 'success', 7000);
+    renderPostsView();
+  } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = e.message; btn.disabled = false; }
+}
+async function postDelete() {
+  if (!await showConfirm('Excluir esta postagem do planejamento?', 'Excluir', 'Excluir', true)) return;
+  try { await window._fb.whatsapp('/posts/delete', flowAct(), { id: _pe.id }); } catch (e) { showToast('Erro: ' + e.message, 'error'); }
+  postEditorClose(); renderPostsView();
+}
+window.renderPostsView = renderPostsView; window.postsDraw = postsDraw; window.postsMonth = postsMonth; window.postsDrop = postsDrop; window.openPostEditor = openPostEditor;
+window.postEditorClose = postEditorClose; window.postMediaUpload = postMediaUpload; window.postMediaRemove = postMediaRemove; window.postSave = postSave; window.postPublishNow = postPublishNow; window.postDelete = postDelete;
 
 // ===== PÁGINA "AGENTE DE IA": card do agente do cliente (editar, pausar/iniciar, conversa de teste) =====
 function aiAgentConfigured(act) {
@@ -16937,7 +17423,7 @@ function onMobileClientChange() {
 // ===== Logins extras do cliente: o admin escolhe quais áreas cada login enxerga =====
 const SUB_LOGIN_VIEWS = [
   ['report', 'Dashboard'], ['analise', 'Atendimento'], ['crm', 'Funil de vendas'], ['chat', 'Chat'], ['contatos', 'Contatos'],
-  ['automacoes', 'Automações'], ['capi', 'Conversões Meta'], ['prospeccao', 'Prospecção'], ['campanhas', 'Campanhas'], ['cadencia', 'Cadência'], ['whatsapp', 'Conexões']
+  ['automacoes', 'Automações'], ['capi', 'Conversões Meta'], ['instagram', 'Instagram'], ['posts', 'Postagens'], ['prospeccao', 'Prospecção'], ['campanhas', 'Campanhas'], ['cadencia', 'Cadência'], ['whatsapp', 'Conexões']
 ];
 let SUB_LOGINS = [];
 let _subVault = {};
