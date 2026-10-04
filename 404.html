@@ -14444,7 +14444,7 @@ function localInputValue(iso) {
 }
 function openPostEditor(id, day) {
   const p = id ? JSON.parse(JSON.stringify(_posts.list.find(x => x.id === id) || {})) : {};
-  _pe = { id: id || '', title: p.title || '', caption: p.caption || '', status: p.status || 'ideia', channels: p.channels || [], media: p.media || [], scheduledAt: p.scheduledAt || (day ? new Date(day + 'T10:00:00').toISOString() : ''), notes: p.notes || '', results: p.results || {}, error: p.error || '' };
+  _pe = { id: id || '', title: p.title || '', caption: p.caption || '', status: p.status || 'ideia', channels: p.channels || [], media: p.media || [], scheduledAt: p.scheduledAt || (day ? new Date(day + 'T10:00:00').toISOString() : ''), notes: p.notes || '', results: p.results || {}, error: p.error || '', collaborators: (p.collaborators || []).map(u => '@' + u).join(', '), tags: (p.tags || []).map(u => '@' + u).join(', '), links: (p.links || []).map(l => (l.label ? l.label + ' | ' : '') + l.url).join(String.fromCharCode(10)), music: p.music || '', audioName: p.audioName || '' };
   postEditorRender();
 }
 function postEditorRender() {
@@ -14463,6 +14463,20 @@ function postEditorRender() {
       <div class="ai-h">Instagram: imagens em JPG (até 10 num carrossel) e vídeos em MP4. Até 24 MB por arquivo.</div>
       <div class="post-media">${e.media.map((m, i) => `<div class="post-media-item">${m.type === 'video' ? `<video src="${escapeHtml(m.url)}#t=0.5" preload="metadata" muted></video>` : `<img src="${escapeHtml(m.url)}" alt="">`}${locked ? '' : `<button type="button" onclick="postMediaRemove(${i})" aria-label="Remover">×</button>`}</div>`).join('')}</div>
       ${locked ? '' : '<label class="huv-btn" style="display:inline-flex;align-items:center;cursor:pointer;height:38px;padding:0 14px;margin-top:8px;">+ Adicionar imagem ou vídeo<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4" style="display:none;" onchange="postMediaUpload(this)"></label><span id="pe-up" class="integ-muted" style="margin-left:10px;"></span>'}
+    </div>
+    <div class="ai-sec"><div class="ai-t">Parcerias, marcações, links e música</div>
+      <div class="ai-row">
+        <label style="flex-basis:100%;">Colaboradores no Instagram (até 3)<input class="field-input" id="pe-collab" placeholder="@perfil1, @perfil2" value="${escapeHtml(e.collaborators)}" ${locked ? 'disabled' : ''}></label>
+        <label style="flex-basis:100%;">Marcar perfis na imagem ou vídeo<input class="field-input" id="pe-tags" placeholder="@perfil1, @perfil2" value="${escapeHtml(e.tags)}" ${locked ? 'disabled' : ''}></label>
+      </div>
+      <div class="ai-h">O colaborador recebe um convite, e a postagem aparece também no perfil dele quando ele aceitar. A marcação fica no centro da imagem. Nenhuma das duas vale para Story.</div>
+      <label style="display:block;margin-top:12px;">Links (um por linha, no formato <b>Nome | https://endereço</b>; o nome é opcional)<textarea class="field-input" id="pe-links" rows="2" ${locked ? 'disabled' : ''} placeholder="Agende uma conversa | https://exemplo.com.br">${escapeHtml(e.links)}</textarea></label>
+      <div class="ai-h">Os links entram no final da legenda. No Instagram, link na legenda não é clicável, então use também o link da bio. No Facebook o link é clicável, e o primeiro vira cartão quando a postagem não tem imagem nem vídeo.</div>
+      <div class="ai-row" style="margin-top:12px;">
+        <label style="flex-basis:100%;">Música usada (anotação só para você)<input class="field-input" id="pe-music" placeholder="Ex.: música X, já colocada no vídeo" value="${escapeHtml(e.music)}" ${locked ? 'disabled' : ''}></label>
+        <label style="flex-basis:100%;">Nome do áudio original do Reels<input class="field-input" id="pe-audio" maxlength="100" placeholder="Ex.: Áudio original da Marca" value="${escapeHtml(e.audioName)}" ${locked ? 'disabled' : ''}></label>
+      </div>
+      <div class="ai-h">A Meta não deixa o CRM escolher músicas da biblioteca do Instagram. Para ter música, coloque-a dentro do próprio vídeo antes de enviar.</div>
     </div>
     <div class="ai-sec"><div class="ai-t">Onde publicar</div>
       <div class="radios" style="gap:8px;">${Object.entries(POST_CH).map(([c, l]) => `<label style="min-width:150px;${chOk(c) ? '' : 'opacity:.55;'}"><input type="checkbox" class="pe-ch" value="${c}" ${e.channels.includes(c) ? 'checked' : ''} ${locked ? 'disabled' : ''}> ${l}${chOk(c) ? '' : ' (não conectado)'}</label>`).join('')}</div>
@@ -14484,9 +14498,14 @@ function postEditorRead() {
   const g = id => document.getElementById(id);
   if (!g('pe-title')) return;
   _pe.title = g('pe-title').value; _pe.caption = g('pe-caption').value; _pe.notes = g('pe-notes').value;
+  _pe.collaborators = g('pe-collab').value; _pe.tags = g('pe-tags').value; _pe.links = g('pe-links').value; _pe.music = g('pe-music').value; _pe.audioName = g('pe-audio').value;
   _pe.channels = [...document.querySelectorAll('.pe-ch:checked')].map(i => i.value);
   const w = g('pe-when').value; _pe.scheduledAt = w ? new Date(w).toISOString() : '';
   if (!g('pe-status').disabled) _pe.status = g('pe-status').value;
+}
+function postExtra() {
+  const links = String(_pe.links || '').split(String.fromCharCode(10)).map(l => l.trim()).filter(Boolean).map(l => { const i = l.indexOf('|'); return i > -1 ? { label: l.slice(0, i).trim(), url: l.slice(i + 1).trim() } : { label: '', url: l }; });
+  return { collaborators: _pe.collaborators, tags: _pe.tags, links, music: _pe.music, audioName: _pe.audioName };
 }
 function postEditorClose() { const ov = document.getElementById('post-modal'); if (ov) ov.remove(); _pe = null; }
 async function postMediaUpload(input) {
@@ -14511,7 +14530,7 @@ async function postSave(btn, schedule) {
   else if (_pe.status === 'agendado' && !schedule && !document.getElementById('pe-status').disabled) { /* mantém o que escolheu */ }
   btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'Salvando...';
   try {
-    await window._fb.whatsapp('/posts/save', flowAct(), { post: { id: _pe.id, title: _pe.title, caption: _pe.caption, status: _pe.status, channels: _pe.channels, media: _pe.media, scheduledAt: _pe.scheduledAt, notes: _pe.notes } });
+    await window._fb.whatsapp('/posts/save', flowAct(), { post: { id: _pe.id, title: _pe.title, caption: _pe.caption, status: _pe.status, channels: _pe.channels, media: _pe.media, scheduledAt: _pe.scheduledAt, notes: _pe.notes, ...postExtra() } });
     postEditorClose(); showToast(schedule ? 'Postagem agendada.' : 'Postagem salva.', 'success'); renderPostsView();
   } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = e.message; btn.disabled = false; }
 }
@@ -14521,7 +14540,7 @@ async function postPublishNow(btn) {
   const fb = document.getElementById('pe-fb');
   btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'Publicando...';
   try {
-    const saved = await window._fb.whatsapp('/posts/save', flowAct(), { post: { id: _pe.id, title: _pe.title, caption: _pe.caption, status: 'ideia', channels: _pe.channels, media: _pe.media, scheduledAt: _pe.scheduledAt, notes: _pe.notes } });
+    const saved = await window._fb.whatsapp('/posts/save', flowAct(), { post: { id: _pe.id, title: _pe.title, caption: _pe.caption, status: 'ideia', channels: _pe.channels, media: _pe.media, scheduledAt: _pe.scheduledAt, notes: _pe.notes, ...postExtra() } });
     const r = await window._fb.whatsapp('/posts/publish-now', flowAct(), { id: saved.id });
     postEditorClose();
     showToast(r.status === 'publicado' ? 'Publicado!' : r.status === 'publicando' ? 'Enviado. O vídeo está sendo processado e sai em instantes.' : 'Não publicou: ' + (r.error || ''), r.status === 'falhou' ? 'error' : 'success', 7000);
