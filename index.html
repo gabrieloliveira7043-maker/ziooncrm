@@ -14160,7 +14160,7 @@ async function renderInstagramView() {
         <details class="ig-help"><summary>Configuração no painel da Meta (uma vez só)</summary>
           <ol>
             <li>No app da Meta, em <b>Login do Facebook para Empresas</b>, adicione estas permissões na configuração: instagram_basic, instagram_manage_messages, instagram_manage_comments, instagram_content_publish, pages_messaging e pages_manage_posts. Depois reconecte o Facebook aqui.</li>
-            <li>Em <b>Webhooks</b>, escolha <b>Instagram</b>, use o endereço <code>${escapeHtml(_ig.webhookUrl)}</code> com o mesmo token de verificação que já usamos nos leads, e assine os campos <b>messages</b>, <b>messaging_postbacks</b> e <b>comments</b>.</li>
+            <li>Em <b>Webhooks</b>, escolha <b>Instagram</b>, use o <b>mesmo endereço e o mesmo token de verificação</b> que já estão configurados para os leads do Facebook (o CRM que recebe os avisos repassa para os outros), e assine os campos <b>messages</b>, <b>messaging_postbacks</b> e <b>comments</b>.</li>
             <li>Enquanto o app não passa pela revisão da Meta, só contas com função no app (administrador, desenvolvedor ou testador) recebem e enviam mensagens.</li>
           </ol>
         </details>
