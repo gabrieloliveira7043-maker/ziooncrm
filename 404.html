@@ -1847,6 +1847,9 @@ td { font-family: var(--font); font-size: 13px; }
 .rp-table td:first-child { width: 34%; font-weight: 600; }
 .rp-st { font-size: 9.5px; font-weight: 700; border-radius: 20px; padding: 2px 8px; background: #EFECE4; color: #6F6D67; }
 .rp-st.on { background: #E3F4E8; color: #1C7A3E; }
+.rp-ad { display: flex; gap: 8px; align-items: flex-start; }
+.rp-ad img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; flex: none; border: 1px solid #E7E3D9; }
+.rp-ad span { min-width: 0; }
 
 /* Atendimento (análise) */
 .an-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
@@ -4345,6 +4348,16 @@ function rpResults(actions) {
   return { leads: getActionValue(actions || [], ['lead']), conv: getActionValue(actions || [], RP_CONV_TYPES) };
 }
 
+// Baixa a imagem do anúncio pelo servidor (a CDN da Meta não libera o uso em outro site) e devolve como data URL.
+async function rpImageData(url, account) {
+  try {
+    const res = await metaFetch(`${WORKER_URL}?account=${account}&img=${encodeURIComponent(url)}`);
+    if (!res.ok) return '';
+    const blob = await res.blob();
+    return await new Promise(resolve => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result || '')); fr.onerror = () => resolve(''); fr.readAsDataURL(blob); });
+  } catch (e) { return ''; }
+}
+
 async function buildDashboardPdf() {
   const snap = _dashSnap;
   const fb = document.getElementById('rp-fb');
@@ -4375,8 +4388,13 @@ async function buildDashboardPdf() {
     }).sort((a, b) => b.spend - a.spend);
     const ads = mergeAdInsightRows(snap.ads || []).map(a => {
       const spend = parseFloat(a.spend || 0), res = resultOf(a.actions);
-      return { name: a.ad_name || 'Anúncio', campaign: a.campaign_name || '', spend, res, cost: res ? spend / res : 0, ctr: a.ctr || 0 };
+      return { name: a.ad_name || 'Anúncio', campaign: a.campaign_name || '', thumb: getAdThumbnail(a) || (a.ad_id ? adThumbnailCache[a.ad_id] : ''), spend, res, cost: res ? spend / res : 0, ctr: a.ctr || 0 };
     }).filter(a => a.spend > 0).sort((a, b) => (b.res - a.res) || (b.spend - a.spend)).slice(0, 10);
+    if (includeAds && ads.length) {
+      say('Baixando as imagens dos anúncios...');
+      const acct = getAdAccountFor(snap.act);
+      await Promise.all(ads.map(async a => { a.img = a.thumb && acct ? await rpImageData(a.thumb, acct) : ''; }));
+    }
     const best = camps.filter(c => c.res).sort((a, b) => a.cost - b.cost)[0];
     const insight = [
       `Investimento de <b>${snap.values.spend}</b> no período`,
@@ -4404,7 +4422,7 @@ async function buildDashboardPdf() {
       </tbody></table>` : ''}
       ${includeAds && ads.length ? `<div class="rp-h rp-avoid">Melhores anúncios</div>
       <table class="rp-table"><thead><tr><th>Anúncio</th><th>Campanha</th><th>Investimento</th><th>${resultLabel}</th><th>Custo/resultado</th><th>CTR</th></tr></thead><tbody>
-        ${ads.map(a => `<tr class="rp-avoid"><td>${escapeHtml(a.name)}</td><td class="mut">${escapeHtml(limitText(a.campaign, 40))}</td><td>${fmtBRL(a.spend)}</td><td>${a.res || '—'}</td><td>${a.res ? fmtBRL(a.cost) : '—'}</td><td>${Number(a.ctr).toFixed(2).replace('.', ',')}%</td></tr>`).join('')}
+        ${ads.map(a => `<tr class="rp-avoid"><td><div class="rp-ad">${a.img ? '<img src="' + a.img + '" alt="">' : ''}<span>${escapeHtml(a.name)}</span></div></td><td class="mut">${escapeHtml(limitText(a.campaign, 40))}</td><td>${fmtBRL(a.spend)}</td><td>${a.res || '—'}</td><td>${a.res ? fmtBRL(a.cost) : '—'}</td><td>${Number(a.ctr).toFixed(2).replace('.', ',')}%</td></tr>`).join('')}
       </tbody></table>` : ''}
       ${att ? `
       <div class="rp-h" style="margin-top:24px;">Atendimento no WhatsApp</div>
