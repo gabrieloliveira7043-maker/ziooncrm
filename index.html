@@ -9558,7 +9558,7 @@ async function renderProspeccaoView() {
     <div id="pr-mode-regiao" style="display:${_prMode === 'regiao' ? 'block' : 'none'};">
     <div class="pr-filters">
       <label>Estado<select class="field-input" id="pr-uf" onchange="prosUfChange()"><option value="">Escolha</option>${PR_UFS.map(u => `<option value="${u}">${u}</option>`).join('')}</select></label>
-      <label style="flex:2;min-width:260px;position:relative;">Atividade (CNAE)<input class="field-input" id="pr-cnae" placeholder="Digite: odontologia, academia, 8630504..." autocomplete="off" oninput="prosCnaeSuggest()" onfocus="prosCnaeSuggest()" onblur="setTimeout(prosCnaeHide, 200)" onkeydown="if(event.key==='Enter'){event.preventDefault();prosCnaeHide();prosSearch();}"><div id="pr-cnae-menu" class="pr-cnae-menu"></div></label>
+      <label style="flex:2;min-width:260px;position:relative;">Atividade (CNAE)<input class="field-input" id="pr-cnae" placeholder="Digite: odontologia, academia... ou deixe vazio para todas as atividades" autocomplete="off" oninput="prosCnaeSuggest()" onfocus="prosCnaeSuggest()" onblur="setTimeout(prosCnaeHide, 200)" onkeydown="if(event.key==='Enter'){event.preventDefault();prosCnaeHide();prosSearch();}"><div id="pr-cnae-menu" class="pr-cnae-menu"></div></label>
       <label>Cidade<select class="field-input" id="pr-city"><option value="">Todas do estado</option></select></label>
       <label>Bairro<input class="field-input" id="pr-bairro" placeholder="Opcional"></label>
       <label>Porte da empresa<select class="field-input" id="pr-porte" onchange="if(_prRows.length) prosApplyFilters()">
@@ -9922,7 +9922,7 @@ function prosParseLine(line) {
 // Lê o pedaço compactado aos poucos e guarda só as empresas da cidade escolhida, para não ocupar
 // muita memória nas atividades grandes (em SP há atividades com quase 300 mil empresas).
 const PR_MAX_ROWS = 60000;
-async function prosReadChunk(res, city, code, rows) {
+async function prosReadChunk(res, city, code, rows, pred) {
   const reader = res.body.pipeThrough(new DecompressionStream('gzip')).pipeThrough(new TextDecoderStream()).getReader();
   let rest = '', header = true, cut = false;
   const take = line => {
@@ -9931,6 +9931,7 @@ async function prosReadChunk(res, city, code, rows) {
     if (rows.length >= PR_MAX_ROWS) { cut = true; return; }
     const r = prosParseLine(line);
     if (city && r.municipio !== city) return;
+    if (pred && !pred(r)) return;
     r.cnae = code;
     rows.push(r);
   };
@@ -9948,28 +9949,62 @@ async function prosReadChunk(res, city, code, rows) {
 
 const prosIsMobile = t => /^\(\d{2}\) 9\d{8}$/.test(String(t || '')) || /^\(\d{2}\) [6-9]\d{7}$/.test(String(t || ''));
 
+// Busca sem atividade: os filtros valem já na leitura, para o limite de empresas só contar as que servem.
+function prosFilterSig() {
+  const v = id => { const e = document.getElementById(id); return e ? e.value.trim().toLowerCase() : ''; };
+  const c = id => { const e = document.getElementById(id); return e && e.checked ? 1 : 0; };
+  return [v('pr-bairro'), v('pr-porte'), c('pr-phone'), c('pr-mobile'), c('pr-email'), c('pr-matriz')].join('|');
+}
+function prosPred() {
+  const bairro = (document.getElementById('pr-bairro').value || '').trim().toLowerCase();
+  const porte = document.getElementById('pr-porte').value;
+  const phone = document.getElementById('pr-phone').checked, mobile = document.getElementById('pr-mobile').checked;
+  const email = document.getElementById('pr-email').checked, matriz = document.getElementById('pr-matriz').checked;
+  return r => (!bairro || r.bairro.toLowerCase().includes(bairro))
+    && (!porte || r.porte === porte || (porte === 'Não informado' && !r.porte))
+    && (!phone || r.telefone1 || r.telefone2) && (!mobile || prosIsMobile(r.telefone1) || prosIsMobile(r.telefone2))
+    && (!email || r.email) && (!matriz || r.tipo === 'Matriz');
+}
+
 async function prosSearch() {
   const uf = document.getElementById('pr-uf').value;
   const result = document.getElementById('pr-result');
   if (!uf) return showToast('Escolha o estado.', 'warning');
-  const codes = prosResolveCnae(uf, document.getElementById('pr-cnae').value);
-  if (!codes.length) return showToast('Escolha a atividade (CNAE) na lista.', 'warning');
-  const key = uf + ':' + codes.join(',');
+  const cnaeText = document.getElementById('pr-cnae').value.trim();
+  const all = !cnaeText;
+  const present = (_prIndex.porEstado || {})[uf] || {};
+  const codes = all ? Object.keys(present).sort((a, b) => present[b].n - present[a].n) : prosResolveCnae(uf, cnaeText);
+  if (!codes.length) return showToast(all ? 'Nenhuma empresa encontrada neste estado.' : 'Escolha a atividade (CNAE) na lista.', 'warning');
+  if (all && !document.getElementById('pr-city').value) {
+    const total = codes.reduce((s, c) => s + present[c].n, 0);
+    if (total > 150000 && !await showConfirm(`${uf} tem ${total.toLocaleString('pt-BR')} empresas ativas. A busca lê todas as atividades e mostra até ${PR_MAX_ROWS.toLocaleString('pt-BR')}, começando pelas maiores atividades. Para ver todas as empresas de uma cidade, escolha a cidade antes. Buscar mesmo assim?`, 'Buscar todas as atividades', 'Buscar', false)) return;
+  }
+  const key = uf + ':' + (all ? 'todas:' + prosFilterSig() + ':' + document.getElementById('pr-city').value : codes.join(','));
   _prLoadingKey = key;
   result.innerHTML = `<div class="integ-muted">Buscando ${codes.length > 1 ? codes.length + ' atividades' : 'empresas'}...</div>`;
   try {
     const rows = [];
     const city = document.getElementById('pr-city').value;
     let cut = false;
-    for (const code of codes) {
-      const info = _prIndex.porEstado[uf][code];
-      const res = await prosFetch('/prospect/chunk', { part: info.p, offset: info.o, length: info.l });
-      if (await prosReadChunk(res, city, code, rows)) { cut = true; break; }
-    }
+    if (all) await prosFetch('/prospect/reserve', { n: codes.length });
+    const pred = all ? prosPred() : null;
+    let next = 0, done = 0;
+    const workers = Array.from({ length: all ? 4 : 1 }, async () => {
+      while (!cut && _prLoadingKey === key) {
+        const code = codes[next++];
+        if (!code) break;
+        const info = _prIndex.porEstado[uf][code];
+        const res = await prosFetch('/prospect/chunk', { part: info.p, offset: info.o, length: info.l, counted: all });
+        if (await prosReadChunk(res, city, code, rows, pred)) cut = true;
+        done++;
+        if (all && _prLoadingKey === key) result.innerHTML = `<div class="integ-muted">Lendo atividade ${done} de ${codes.length} · ${rows.length.toLocaleString('pt-BR')} empresas encontradas...</div>`;
+      }
+    });
+    await Promise.all(workers);
     if (_prLoadingKey !== key) return;
     _prRows = rows;
-    _prLoaded = { uf, cnae: document.getElementById('pr-cnae').value, city, cut };
-    if (cut) showToast(`Atividade muito grande: mostrando as primeiras ${PR_MAX_ROWS.toLocaleString('pt-BR')} empresas. Escolha a cidade para ver todas dela.`, 'warning', 7000);
+    _prLoaded = { uf, cnae: document.getElementById('pr-cnae').value, city, cut, all, sig: prosFilterSig() };
+    if (cut) showToast(`${all ? 'Estado muito grande' : 'Atividade muito grande'}: mostrando as primeiras ${PR_MAX_ROWS.toLocaleString('pt-BR')} empresas. Escolha a cidade para ver todas dela.`, 'warning', 7000);
     _prSelected = new Set();
     _prShown = 200;
     prosApplyFilters();
@@ -9982,7 +10017,7 @@ function prosApplyFilters() {
   const city = document.getElementById('pr-city').value;
   // A busca guardou só uma cidade (ou foi cortada): trocar estado, atividade ou cidade busca de novo.
   const L = _prLoaded;
-  if (L && (L.uf !== document.getElementById('pr-uf').value || L.cnae !== document.getElementById('pr-cnae').value || (city !== L.city && (L.city || L.cut)))) return prosSearch();
+  if (L && (L.uf !== document.getElementById('pr-uf').value || L.cnae !== document.getElementById('pr-cnae').value || (city !== L.city && (L.city || L.cut)) || (L.all && L.sig !== prosFilterSig()))) return prosSearch();
   const bairro = (document.getElementById('pr-bairro').value || '').trim().toLowerCase();
   const phone = document.getElementById('pr-phone').checked, mobile = document.getElementById('pr-mobile').checked;
   const email = document.getElementById('pr-email').checked, matriz = document.getElementById('pr-matriz').checked;
