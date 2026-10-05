@@ -4351,7 +4351,7 @@ async function buildDashboardPdf() {
   const includeAtt = document.getElementById('rp-att') && document.getElementById('rp-att').checked;
   const includeAds = document.getElementById('rp-ads') && document.getElementById('rp-ads').checked;
   const say = t => { if (fb) fb.textContent = t; };
-  let root = null;
+  let root = null, fixCss = null;
   try {
     say('Preparando...');
     const html2pdf = await ensureHtml2Pdf();
@@ -4457,10 +4457,15 @@ async function buildDashboardPdf() {
     root.remove();
     root.style.cssText = `width:${W}px;background:#fff;`;
     say('Gerando PDF...');
+    // A área de captura do html2pdf fica centralizada na janela. Em janelas largas isso deslocava/encolhia o relatório;
+    // fixa a área no canto esquerdo e com a largura exata da página.
+    fixCss = document.createElement('style');
+    fixCss.textContent = '.html2pdf__overlay{left:0!important;right:auto!important;width:' + (W + 4) + 'px!important}.html2pdf__container{left:0!important;right:auto!important;margin:0!important}';
+    document.head.appendChild(fixCss);
     const file = `Relatorio_${safeFileName(snap.client)}_${snap.from}_a_${snap.to}.pdf`;
     await html2pdf().set({
       margin: [12, 12, 14, 12], filename: file, image: { type: 'jpeg', quality: 0.95 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: W },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: W, x: 0, y: 0, scrollX: 0, scrollY: 0 },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'], avoid: ['.rp-avoid', '.rp-kpi', 'tr'] }
     }).from(root).toPdf().get('pdf').then(pdf => {
@@ -4478,6 +4483,7 @@ async function buildDashboardPdf() {
     say('Erro: ' + (e && e.message ? e.message : e));
   } finally {
     if (root) root.remove();
+    if (fixCss) fixCss.remove();
   }
 }
 
