@@ -4386,13 +4386,25 @@ async function buildDashboardPdf() {
       const spend = parseFloat(c.spend || 0), res = resultOf(c.actions);
       return { name: c.campaign_name || '', active: (snap.statusMap[c.campaign_id] || '').toUpperCase() === 'ACTIVE', spend, res, cost: res ? spend / res : 0, ctr: parseFloat(c.ctr || 0), cpm: parseFloat(c.cpm || 0) };
     }).sort((a, b) => b.spend - a.spend);
+    // O relatório não depende da tabela da tela: se os anúncios ainda não carregaram (ou vieram vazios), busca de novo.
+    if (includeAds && !(snap.ads || []).length && snap.account) {
+      say('Buscando os anúncios...');
+      try {
+        const r = await metaFetch(`${WORKER_URL}?account=${snap.account}&from=${snap.from}&to=${snap.to}&fields=spend,reach,impressions,cpm,ctr,frequency,clicks,inline_link_clicks,actions,ad_name,ad_id,campaign_name,campaign_id&level=ad`);
+        const j = await r.json();
+        const rows = Array.isArray(j && j.data) ? j.data : [];
+        const th = await loadAdThumbnails(snap.account, rows);
+        adThumbnailCache = { ...adThumbnailCache, ...th };
+        snap.ads = rows.map(row => ({ ...row, thumbnail_url: row.thumbnail_url || adThumbnailCache[row.ad_id] || '' }));
+      } catch (e) { /* segue sem a tabela de anúncios */ }
+    }
     const ads = mergeAdInsightRows(snap.ads || []).map(a => {
       const spend = parseFloat(a.spend || 0), res = resultOf(a.actions);
       return { name: a.ad_name || 'Anúncio', campaign: a.campaign_name || '', thumb: getAdThumbnail(a) || (a.ad_id ? adThumbnailCache[a.ad_id] : ''), spend, res, cost: res ? spend / res : 0, ctr: a.ctr || 0 };
     }).filter(a => a.spend > 0).sort((a, b) => (b.res - a.res) || (b.spend - a.spend)).slice(0, 10);
     if (includeAds && ads.length) {
       say('Baixando as imagens dos anúncios...');
-      const acct = getAdAccountFor(snap.act);
+      const acct = snap.account || getAdAccountFor(snap.act);
       await Promise.all(ads.map(async a => { a.img = a.thumb && acct ? await rpImageData(a.thumb, acct) : ''; }));
     }
     const best = camps.filter(c => c.res).sort((a, b) => a.cost - b.cost)[0];
