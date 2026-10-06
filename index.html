@@ -7798,10 +7798,11 @@ async function saveCampaignEdit() {
   const templates = readWhatsAppVariations('camp');
   const mediaType = d.mediaType || 'text';
   if (!name) { setFb('#f87171', 'Dê um nome à campanha.'); return; }
-  if (mediaType === 'text' && !templates.length) { setFb('#f87171', 'Escreva pelo menos uma mensagem.'); return; }
-  if (mediaType !== 'text' && !d.media) { setFb('#f87171', 'Envie o arquivo de ' + CAMPAIGN_MEDIA_LABELS[mediaType].toLowerCase() + '.'); return; }
-  const campLines = readWaLinePicker('camp-lines');
-  if (waHasMultiple(d.act) && !campLines) { setFb('#f87171', 'Escolha por qual WhatsApp disparar.'); return; }
+  const qrMode = campMode() === 'qr';
+  if (qrMode && mediaType === 'text' && !templates.length) { setFb('#f87171', 'Escreva pelo menos uma mensagem.'); return; }
+  if (qrMode && mediaType !== 'text' && !d.media) { setFb('#f87171', 'Envie o arquivo de ' + CAMPAIGN_MEDIA_LABELS[mediaType].toLowerCase() + '.'); return; }
+  const campLines = campChosenLines();
+  if (!campLines.length) { setFb('#f87171', 'Escolha por qual WhatsApp disparar.'); return; }
   const cloudTpl = readCampCloudTemplate();
   if (!cloudTpl.ok) { setFb('#f87171', cloudTpl.error); return; }
   const read = readCampaignDispatch();
@@ -7811,10 +7812,10 @@ async function saveCampaignEdit() {
   setFb('var(--muted)', 'Salvando...');
   try {
     await window._fb.updateCampaign(c.id, {
-      name, templates,
-      media: mediaType !== 'text' && d.media ? { type: d.media.type, url: d.media.url, mimetype: d.media.mimetype, fileName: d.media.fileName } : null,
+      name, templates: qrMode ? templates : [],
+      media: qrMode && mediaType !== 'text' && d.media ? { type: d.media.type, url: d.media.url, mimetype: d.media.mimetype, fileName: d.media.fileName } : null,
       dispatch,
-      lines: campLines || c.lines || [waDefaultLine(d.act)],
+      lines: campLines,
       cloudTemplate: cloudTpl.template,
       editedAt: new Date().toISOString()
     });
@@ -7842,7 +7843,8 @@ function openCampaignEditor(copyFrom, opts = {}) {
   const hint = 'font-size:11px;color:var(--muted);margin:4px 0 10px;line-height:1.5;';
   const section = 'font-size:13px;font-weight:600;color:var(--text);margin:18px 0 6px;';
   _campaignDraft = { act, source: 'crm', recipients: [], label: '', media: null, copyFrom: copyFrom || null, cloudPreset: (copyFrom && copyFrom.cloudTemplate) || null };
-  ensureWaSettings(act).then(() => { const b = document.getElementById('camp-lines-box'); if (b && !b.innerHTML.trim()) b.innerHTML = waLinePickerHtml(act, 'camp-lines', copyFrom && copyFrom.lines, 'Por qual WhatsApp disparar?'); renderCampCloudBox(); });
+  _campaignDraft.mode = campInitialMode(act, copyFrom);
+  ensureWaSettings(act).then(() => { if (_campaignDraft && _campaignDraft.act === act) { _campaignDraft.mode = campInitialMode(act, copyFrom); renderCampMode(); } });
   // Marcou/desmarcou uma linha oficial: mostra ou esconde a escolha do modelo.
   if (!editor._cloudHook) { editor._cloudHook = true; editor.addEventListener('change', ev => { if (ev.target && ev.target.name === 'camp-lines') renderCampCloudBox(); }); }
   editor.innerHTML = `
@@ -7853,9 +7855,11 @@ function openCampaignEditor(copyFrom, opts = {}) {
     <label class="field-label">Nome da campanha</label>
     <input class="field-input" id="camp-name" placeholder="Ex.: Promoção de outubro" style="margin-bottom:6px;" value="${editing ? escapeHtml(copyFrom.name || '') : copyFrom ? escapeHtml((copyFrom.name || 'Campanha') + ' (nova)') : ''}">
     ${editing ? `<div style="${hint}">Você pode mudar o nome, as mensagens, o arquivo, o WhatsApp e o ritmo de envio. Os contatos continuam os mesmos (${Number(copyFrom.total) || 0}, dos quais ${Number(copyFrom.sent) || 0} já receberam). As mudanças valem a partir do próximo envio.</div>` : copyFrom ? `<div style="${hint}">Baseada em "${escapeHtml(copyFrom.name || 'Campanha')}". Mude o que quiser: mensagens (adicione ou apague variações), arquivo, contatos e regras.</div>` : ''}
-    <div id="camp-lines-box">${waLinePickerHtml(act, 'camp-lines', copyFrom && copyFrom.lines, 'Por qual WhatsApp disparar?')}</div>
+    <div id="camp-mode-box"></div>
+    <div id="camp-lines-box"></div>
     <div id="camp-cloud-box"></div>
 
+    <div id="camp-qr-content">
     <div style="${section}">Conteúdo</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
       ${Object.entries(CAMPAIGN_MEDIA_LABELS).map(([k, l]) => `<button id="camp-media-${k}" style="${wbtn}" onclick="selectCampaignMediaType('${k}')">${l}</button>`).join('')}
@@ -7867,6 +7871,7 @@ function openCampaignEditor(copyFrom, opts = {}) {
     <div id="camp-text-hint" style="${hint}">Cadastre variações: cada contato recebe uma sorteada. Use {primeiro_nome} e {nome}; se o contato não tiver nome, o marcador some.</div>
     <button class="huv-btn" style="margin-bottom:8px;" onclick="aiCampaignCopy()">${uiIco('sparkles')} Gerar mensagens com IA</button>
     ${whatsappVariationsHtml('camp', copyFrom && Array.isArray(copyFrom.templates) ? copyFrom.templates : [])}
+    </div>
 
     <div id="camp-audience-wrap">
     <div style="${section}">Para quem enviar</div>
@@ -7931,7 +7936,7 @@ function openCampaignEditor(copyFrom, opts = {}) {
     </div>
 
     <div style="${section}">Configurações de disparo</div>
-    <div style="${hint}">Já vêm com o recomendado contra bloqueio. Ajuste antes de iniciar; valem só para esta campanha.</div>
+    <div style="${hint}" id="camp-dispatch-hint">Já vêm com o recomendado contra bloqueio. Ajuste antes de iniciar; valem só para esta campanha.</div>
     ${campaignDispatchHtml()}
 
     <div id="camp-risk" style="display:none;margin-top:14px;padding:10px 12px;border-radius:8px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);font-size:12px;color:var(--text);line-height:1.5;"></div>
@@ -7942,6 +7947,7 @@ function openCampaignEditor(copyFrom, opts = {}) {
       <span id="camp-feedback" style="font-size:12px;"></span>
     </div>`;
   editor.style.display = 'block';
+  renderCampMode();
   editor.querySelectorAll('#camp-daily,#camp-hourly,#camp-start,#camp-end,#camp-warmup').forEach(el => el.addEventListener('change', renderCampaignSummary));
   if (editing) {
     applyCampaignCopy(copyFrom);
@@ -8250,7 +8256,7 @@ async function loadCampaignContacts() {
   const summary = document.getElementById('camp-summary');
   summary.textContent = 'Carregando contatos do WhatsApp...';
   try {
-    const r = await window._fb.whatsapp('/whatsapp/contacts', _campaignDraft.act, { line: (readWaLinePicker('camp-lines') || [waDefaultLine(_campaignDraft.act)])[0] });
+    const r = await window._fb.whatsapp('/whatsapp/contacts', _campaignDraft.act, { line: (campChosenLines()[0] || waDefaultLine(_campaignDraft.act)) });
     setCampaignRecipients(r.contacts || [], 'Contatos do WhatsApp');
   } catch (e) {
     summary.innerHTML = `<span style="color:#f87171;">${escapeHtml(e.message)}</span>`;
@@ -8294,7 +8300,7 @@ async function loadCampaignGroups(refresh) {
   const box = document.getElementById('camp-groups-list');
   box.innerHTML = '<div style="font-size:12px;color:var(--muted);">Carregando grupos... na primeira vez pode levar até 1 minuto.</div>';
   try {
-    const r = await window._fb.whatsapp('/whatsapp/groups', _campaignDraft.act, { refresh: !!refresh, line: (readWaLinePicker('camp-lines') || [waDefaultLine(_campaignDraft.act)])[0] });
+    const r = await window._fb.whatsapp('/whatsapp/groups', _campaignDraft.act, { refresh: !!refresh, line: (campChosenLines()[0] || waDefaultLine(_campaignDraft.act)) });
     const groups = (r.groups || []).sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
     if (!groups.length) { box.innerHTML = '<div style="font-size:12px;color:var(--muted);">Nenhum grupo encontrado.</div>'; return; }
     box.innerHTML = groupsCacheNote(r, 'loadCampaignGroups(true)') + `<label style="position:sticky;top:0;z-index:1;background:var(--surface);display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);padding:4px 0 8px;cursor:pointer;border-bottom:1px solid var(--border);margin-bottom:4px;">
@@ -8338,7 +8344,7 @@ async function loadCampaignGroupParticipants() {
   const request = ++_groupParticipantsRequest;
   summary.textContent = `Carregando participantes de ${checked.length} grupo(s)... pode levar até 1 minuto.`;
   try {
-    const r = await window._fb.whatsapp('/whatsapp/group-participants', _campaignDraft.act, { groupIds: checked.map(cb => cb.value), line: (readWaLinePicker('camp-lines') || [waDefaultLine(_campaignDraft.act)])[0] });
+    const r = await window._fb.whatsapp('/whatsapp/group-participants', _campaignDraft.act, { groupIds: checked.map(cb => cb.value), line: (campChosenLines()[0] || waDefaultLine(_campaignDraft.act)) });
     if (request !== _groupParticipantsRequest || !_campaignDraft) return; // seleção mudou enquanto carregava
     const names = checked.map(cb => cb.getAttribute('data-subject'));
     setCampaignRecipients(r.participants || [], checked.length === document.querySelectorAll('.camp-group').length
@@ -8392,11 +8398,12 @@ async function saveCampaign(start) {
   const templates = readWhatsAppVariations('camp');
   const mediaType = _campaignDraft.mediaType || 'text';
   if (!name) { setFb('#f87171', 'Dê um nome à campanha.'); return; }
-  if (mediaType === 'text' && !templates.length && !(campCloudLines(_campaignDraft.act).length && (readWaLinePicker('camp-lines') || [waDefaultLine(_campaignDraft.act)]).every(waIsCloud))) { setFb('#f87171', 'Escreva pelo menos uma mensagem.'); return; }
-  if (mediaType !== 'text' && !_campaignDraft.media) { setFb('#f87171', 'Envie o arquivo de ' + CAMPAIGN_MEDIA_LABELS[mediaType].toLowerCase() + '.'); return; }
+  const qrMode = campMode() === 'qr';
+  if (qrMode && mediaType === 'text' && !templates.length) { setFb('#f87171', 'Escreva pelo menos uma mensagem.'); return; }
+  if (qrMode && mediaType !== 'text' && !_campaignDraft.media) { setFb('#f87171', 'Envie o arquivo de ' + CAMPAIGN_MEDIA_LABELS[mediaType].toLowerCase() + '.'); return; }
   if (!_campaignDraft.recipients.length) { setFb('#f87171', 'A lista de contatos está vazia.'); return; }
-  const campLines = readWaLinePicker('camp-lines');
-  if (waHasMultiple(_campaignDraft.act) && !campLines) { setFb('#f87171', 'Escolha por qual WhatsApp disparar (pode marcar mais de um para mesclar).'); return; }
+  const campLines = campChosenLines();
+  if (!campLines.length) { setFb('#f87171', 'Escolha por qual WhatsApp disparar (pode marcar mais de um para mesclar).'); return; }
   const cloudTpl = readCampCloudTemplate();
   if (!cloudTpl.ok) { setFb('#f87171', cloudTpl.error); return; }
   const read = readCampaignDispatch();
@@ -8410,13 +8417,13 @@ async function saveCampaign(start) {
     const id = await window._fb.createCampaign({
       act: _campaignDraft.act,
       name,
-      templates,
-      media: _campaignDraft.media ? {
+      templates: qrMode ? templates : [],
+      media: qrMode && _campaignDraft.media ? {
         type: _campaignDraft.media.type, url: _campaignDraft.media.url, mimetype: _campaignDraft.media.mimetype,
         fileName: _campaignDraft.media.fileName
       } : null,
       dispatch: read.dispatch,
-      lines: campLines || [waDefaultLine(_campaignDraft.act)],
+      lines: campLines,
       cloudTemplate: cloudTpl.template,
       startAt: startInfo.startAt,
       audienceType: _campaignDraft.source,
@@ -13599,8 +13606,61 @@ async function deleteCloudTemplate(name) {
 
 // ----- Campanha: modelo para as linhas oficiais -----
 function campCloudLines(act) {
-  const chosen = readWaLinePicker('camp-lines') || [waDefaultLine(act)];
-  return chosen.filter(waIsCloud);
+  return campMode() === 'cloud' ? campChosenLines() : [];
+}
+
+// ----- Tipo de disparo da campanha: QR Code (Evolution) ou API oficial. Um exclui o outro. -----
+function campMode() { return (_campaignDraft && _campaignDraft.mode) || 'qr'; }
+function campLinesOfMode(act, mode) { return waLines(act).filter(l => mode === 'cloud' ? waIsCloud(l.id) : !waIsCloud(l.id)); }
+
+function campInitialMode(act, copyFrom) {
+  const hasQr = campLinesOfMode(act, 'qr').length, hasCloud = campLinesOfMode(act, 'cloud').length;
+  if (!hasCloud) return 'qr';
+  if (!hasQr) return 'cloud';
+  const prev = copyFrom && Array.isArray(copyFrom.lines) ? copyFrom.lines : [];
+  return prev.length && prev.every(waIsCloud) ? 'cloud' : 'qr';
+}
+
+function campChosenLines() {
+  const d = _campaignDraft;
+  if (!d) return [];
+  const all = campLinesOfMode(d.act, campMode()).map(l => l.id);
+  const picked = (readWaLinePicker('camp-lines') || []).filter(id => all.includes(id));
+  return picked.length ? picked : all.length === 1 ? all : [];
+}
+
+function setCampMode(mode) {
+  if (!_campaignDraft || _campaignDraft.mode === mode) return;
+  _campaignDraft.mode = mode;
+  renderCampMode();
+}
+
+function renderCampMode() {
+  const d = _campaignDraft;
+  if (!d) return;
+  const act = d.act, mode = campMode();
+  const hasQr = campLinesOfMode(act, 'qr').length, hasCloud = campLinesOfMode(act, 'cloud').length;
+  const modeBox = document.getElementById('camp-mode-box');
+  if (modeBox) modeBox.innerHTML = hasQr && hasCloud ? `<div class="wa-line-picker">
+      <div class="wa-line-picker-title">Tipo de disparo</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button style="${wbtn}${mode === 'qr' ? '' : 'background:transparent;'}" onclick="setCampMode('qr')">WhatsApp por QR Code</button>
+        <button style="${wbtn}${mode === 'cloud' ? '' : 'background:transparent;'}" onclick="setCampMode('cloud')">API oficial</button>
+      </div>
+      <div class="wa-line-picker-hint">${mode === 'cloud' ? 'Envia um modelo aprovado pela Meta. A Meta cobra cada envio na conta do cliente.' : 'Envia as suas mensagens, fotos, vídeos ou áudios pelos números conectados por QR Code.'}</div>
+    </div>` : '';
+  const linesBox = document.getElementById('camp-lines-box');
+  if (linesBox) linesBox.innerHTML = waLinePickerHtml(act, 'camp-lines', d.copyFrom && d.copyFrom.lines, mode === 'cloud' ? 'Por qual número da API oficial?' : 'Por qual WhatsApp disparar?', l => mode === 'cloud' ? waIsCloud(l.id) : !waIsCloud(l.id));
+  const qr = document.getElementById('camp-qr-content');
+  if (qr) qr.style.display = mode === 'cloud' ? 'none' : '';
+  // Contatos e grupos do WhatsApp só existem nos números por QR Code.
+  ['contacts', 'groups'].forEach(k => { const b = document.getElementById('camp-src-' + k); if (b) b.style.display = mode === 'cloud' ? 'none' : ''; });
+  if (mode === 'cloud' && ['contacts', 'groups'].includes(d.source)) selectCampaignSource('crm');
+  const hint = document.getElementById('camp-dispatch-hint');
+  if (hint) hint.textContent = mode === 'cloud'
+    ? 'Na API oficial não há risco de bloqueio: limites por dia e por hora e intervalo não se aplicam. Valem os dias e o horário de envio.'
+    : 'Já vêm com o recomendado contra bloqueio. Ajuste antes de iniciar; valem só para esta campanha.';
+  renderCampCloudBox();
 }
 
 async function renderCampCloudBox(preset) {
@@ -13736,10 +13796,11 @@ async function ensureWaSettings(act) {
 }
 
 // Escolha de WhatsApp para disparos, automações e 1ª mensagem. Vários marcados = alterna entre eles.
-function waLinePickerHtml(act, name, selected, title) {
-  const lines = waLines(act);
+function waLinePickerHtml(act, name, selected, title, filter) {
+  const lines = waLines(act).filter(filter || (() => true));
   if (lines.length < 2) return '';
-  const sel = new Set((Array.isArray(selected) && selected.length ? selected : [lines[0].id]));
+  const pre = (Array.isArray(selected) ? selected : []).filter(id => lines.some(l => l.id === id));
+  const sel = new Set(pre.length ? pre : [lines[0].id]);
   return `<div class="wa-line-picker">
     <div class="wa-line-picker-title">${escapeHtml(title || 'Por qual WhatsApp enviar?')}</div>
     ${lines.map(l => `<label class="integ-toggle"><input type="checkbox" name="${escapeHtml(name)}" value="${escapeHtml(l.id)}" ${sel.has(l.id) ? 'checked' : ''}> ${escapeHtml(l.label)}${waIsCloud(l.id) ? ' <span class="integ-muted">(API oficial)</span>' : ''}</label>`).join('')}
