@@ -144,10 +144,20 @@ html.tema-novo .client-switch:hover { border-color: color-mix(in srgb, var(--n-s
 html.tema-novo .client-switch-avatar { width: 30px; height: 30px; border-radius: 8px; background: color-mix(in srgb, var(--n-side-brand) 16%, transparent); color: var(--n-side-brand); font-weight: 700; }
 html.tema-novo .client-switch-label { color: var(--n-side-muted); font-weight: 700; letter-spacing: .08em; }
 html.tema-novo .client-switch-name { font-size: 13.5px; font-weight: 600; }
-html.tema-novo body.sb-collapsed .nav-group-label { background: var(--n-side-line); }
 html.tema-novo .client-switch-pop { border-radius: 14px; box-shadow: var(--n-pop); border-color: transparent; }
 html.tema-novo .csp-row { font-weight: 600; border-radius: 8px; }
 html.tema-novo .csp-row:hover { background: var(--n-hover); }
+
+/* Menu recolhido (só no computador): as regras acima não podem trazer o texto de volta */
+@media (min-width: 769px) {
+  html.tema-novo body.sb-collapsed .nav-group { margin-top: 8px; }
+  html.tema-novo body.sb-collapsed .nav-group-label { font-size: 0; padding: 0; height: 1px; letter-spacing: 0; background: var(--n-side-line); margin: 2px 8px 6px; }
+  html.tema-novo body.sb-collapsed .sidebar .nav-item { font-size: 0; justify-content: center; gap: 0; padding: 9px 0; min-height: 36px; }
+  html.tema-novo body.sb-collapsed .sidebar .nav-item svg { width: 18px; height: 18px; }
+  html.tema-novo body.sb-collapsed .client-switch { justify-content: center; padding: 7px 0; }
+  html.tema-novo body.sb-collapsed .sidebar-footer .btn-cfg { font-size: 0; justify-content: center; gap: 0; padding: 9px 0; }
+  html.tema-novo body.sb-collapsed .sidebar-user { justify-content: center; padding: 10px 0 2px; }
+}
 
 /* ---------- 5. Botões ---------- */
 html.tema-novo :is(.btn-update, .btn-add-lead, .btn-save, .modal-btn-save, .login-btn) { border-radius: 8px; font-weight: 600; letter-spacing: 0; }
