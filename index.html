@@ -1190,6 +1190,24 @@ html[data-theme="light"] .login-overlay { background: var(--paper); }
 .chat-row-preview { flex:1; min-width:0; font-size:12px; color:var(--muted2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .chat-unread { background:#25d366; color:#fff; font-size:10.5px; font-weight:700; border-radius:10px; padding:1px 6px; }
 .chat-row-tags { display:flex; gap:4px; flex-wrap:wrap; margin-top:4px; }
+.paleta-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r2); padding:20px; margin-bottom:24px; }
+.paleta-head { display:flex; gap:12px; align-items:flex-start; margin-bottom:16px; color:var(--muted2); }
+.paleta-titulo { font-size:15px; font-weight:700; color:var(--text); }
+.paleta-sub { font-size:12.5px; color:var(--muted); margin-top:2px; line-height:1.5; }
+.paleta-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(92px, 1fr)); gap:8px; }
+.paleta-op { display:flex; flex-direction:column; align-items:center; gap:8px; padding:12px 6px 10px; border-radius:12px; border:1px solid var(--border); background:transparent; color:var(--text); cursor:pointer; font:inherit; transition:border-color .15s, background-color .15s; }
+.paleta-op:hover { background:var(--surface2); }
+.paleta-op.on { border-color:var(--text); }
+.paleta-cor { width:34px; height:34px; border-radius:50%; display:grid; place-items:center; color:#fff; box-shadow:inset 0 0 0 1px rgba(0,0,0,.12); }
+.paleta-op[title="Grafite"] .paleta-cor { color:var(--bg); }
+.paleta-nome { font-size:12.5px; font-weight:600; text-align:center; line-height:1.3; }
+.paleta-nome small { display:block; font-size:10.5px; font-weight:600; color:var(--muted); }
+.sched-media { margin-bottom:12px; }
+.sched-media-label { font-size:12px; font-weight:600; color:var(--muted2); margin-bottom:6px; }
+.sched-media-opts { display:flex; gap:8px; flex-wrap:wrap; }
+.sched-media-opts .chat-pill { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; font-size:12.5px; }
+.sched-media-file { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; color:var(--text); background:var(--surface2); border-radius:10px; padding:8px 10px; }
+.sched-media-name { font-weight:600; min-width:0; overflow-wrap:anywhere; }
 .chat-avatar { width:38px; height:38px; border-radius:50%; background:var(--surface3); color:var(--text); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; flex-shrink:0; }
 .chat-pill { background:transparent; border:1px solid var(--border2); color:var(--text); border-radius:14px; padding:4px 10px; font-size:12px; cursor:pointer; white-space:nowrap; }
 .chat-pill.active { background:var(--accent-glow); border-color:var(--accent); }
@@ -2583,8 +2601,9 @@ td { font-family: var(--font); font-size: 13px; }
   } catch (e) {}
 })();
 </script>
-<link rel="stylesheet" href="tema-novo.css?v=3">
-<script src="icones.js?v=2"></script>
+<link rel="stylesheet" href="tema-novo.css?v=4">
+<script src="icones.js?v=3"></script>
+<script src="cores.js?v=1"></script>
 </head>
 <body>
 
@@ -3638,6 +3657,11 @@ td { font-family: var(--font); font-size: 13px; }
       <div style="max-width:520px;">
         <div style="font-size:18px; font-weight:600; color:var(--text); margin-bottom:6px;">Minha conta</div>
         <div style="font-size:13px; color:var(--muted); margin-bottom:28px;">Altere sua senha de acesso ao relatório.</div>
+
+        <div class="paleta-card">
+          <div class="paleta-head"><i data-ico="palette" data-size="18"></i><div><div class="paleta-titulo">Cores do CRM</div><div class="paleta-sub">Escolha a cor de destaque. A escolha fica guardada neste aparelho e vale no tema claro e no escuro.</div></div></div>
+          <div id="paleta-picker" class="paleta-grid"></div>
+        </div>
 
         <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--r2); padding:24px; margin-bottom:24px;">
           <div class="field-group">
@@ -13025,10 +13049,56 @@ function openScheduleMessage() {
   openHuvenModal('Agendar mensagem', `
     <div class="integ-muted" style="margin-bottom:10px;font-size:12.5px;">A mensagem sai sozinha no horário, por este WhatsApp, mesmo com o CRM fechado.</div>
     <textarea class="field-input" id="sched-text" rows="4" maxlength="4000" style="width:100%;box-sizing:border-box;resize:vertical;margin-bottom:10px;">${escapeHtml(ta ? ta.value : '')}</textarea>
-    ${_chatPendingMedia ? `<div style="font-size:12.5px;margin-bottom:10px;">${uiIco('clip', 13)} ${escapeHtml(_chatPendingMedia.fileName)} vai junto (o texto vira legenda).</div>` : ''}
+    <div id="sched-media" class="sched-media">${schedMediaHtml()}</div>
     <label class="field-label">Quando enviar</label>
     <input type="datetime-local" class="field-input" id="sched-when" value="${chatDateTimeLocal(soon)}" style="margin-bottom:12px;">
     <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="saveScheduleMessage()">Agendar</button> <span id="sched-fb" class="integ-muted"></span>`, 480);
+}
+
+// Anexo da mensagem agendada (imagem, vídeo ou áudio). Usa o mesmo envio de arquivo do chat; o texto vira legenda.
+const SCHED_MEDIA_KINDS = [
+  ['image', 'Imagem', 'image/jpeg,image/png,image/webp'],
+  ['video', 'Vídeo', 'video/mp4'],
+  ['mic', 'Áudio', 'audio/*'],
+];
+
+function schedMediaHtml() {
+  if (_chatPendingMedia) {
+    return `<div class="sched-media-file">${uiIco('clip', 14)} <span class="sched-media-name">${escapeHtml(_chatPendingMedia.fileName)}</span>
+      <span class="integ-muted">o texto vai como legenda</span>
+      <button type="button" class="chat-pill" onclick="clearSchedMedia()">Remover</button></div>`;
+  }
+  return `<div class="sched-media-label">Anexar arquivo (opcional)</div>
+    <div class="sched-media-opts">${SCHED_MEDIA_KINDS.map(([ico, label, accept]) =>
+      `<label class="chat-pill">${uiIco(ico, 14)} ${label}<input type="file" accept="${accept}" style="display:none;" onchange="attachSchedMedia(this)"></label>`).join('')}</div>`;
+}
+
+async function attachSchedMedia(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  const box = document.getElementById('sched-media');
+  if (!file || !_chatAct || !box) return;
+  box.innerHTML = '<div class="integ-muted">Enviando arquivo...</div>';
+  try {
+    _chatPendingMedia = await window._fb.uploadCampaignMedia(_chatAct, file);
+  } catch (e) {
+    _chatPendingMedia = null;
+    box.innerHTML = `<div class="integ-error" style="margin-bottom:8px;">Não foi possível enviar o arquivo: ${escapeHtml(e.message)}</div>` + schedMediaHtml();
+    return;
+  }
+  box.innerHTML = schedMediaHtml();
+  // O anexo também aparece no campo do chat, para não se perder se a janela for fechada.
+  const chip = document.getElementById('chat-media-chip');
+  if (chip) {
+    chip.style.display = 'block';
+    chip.innerHTML = `${uiIco('clip', 13)} ${escapeHtml(_chatPendingMedia.fileName)} <span style="color:var(--muted2);">(o texto vai como legenda)</span> <button class="chat-pill" onclick="clearChatMedia()">remover</button>`;
+  }
+}
+
+function clearSchedMedia() {
+  clearChatMedia();
+  const box = document.getElementById('sched-media');
+  if (box) box.innerHTML = schedMediaHtml();
 }
 
 async function saveScheduleMessage() {

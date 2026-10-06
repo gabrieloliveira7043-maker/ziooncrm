@@ -428,3 +428,43 @@ html.tema-novo .ct-cell { font-weight: 500; }
   html.tema-novo .metric-card { padding: 14px; }
   html.tema-novo .mobile-header .mobile-header-sub { font-family: var(--font); }
 }
+
+/* ---------- 14. Combinações de cores (escolhidas em Conta > Cores do CRM) ---------- */
+/* --pa: destaque no escuro, --pa-ink: texto sobre ele; --pl: destaque no claro, --pl-ink: texto sobre ele */
+html.tema-novo[data-paleta="dourado"]   { --pa: #C9A24A; --pa-ink: #15161A; --pl: #8A6A1F; --pl-ink: #FFFFFF; }
+html.tema-novo[data-paleta="marinho"]   { --pa: #5B7BFF; --pa-ink: #FFFFFF; --pl: #001645; --pl-ink: #FFFFFF; }
+html.tema-novo[data-paleta="esmeralda"] { --pa: #34C38F; --pa-ink: #06231A; --pl: #0F7B57; --pl-ink: #FFFFFF; }
+html.tema-novo[data-paleta="oceano"]    { --pa: #4FA3E8; --pa-ink: #061A2C; --pl: #0B5FA5; --pl-ink: #FFFFFF; }
+html.tema-novo[data-paleta="violeta"]   { --pa: #9B87F5; --pa-ink: #160D33; --pl: #5B32C8; --pl-ink: #FFFFFF; }
+html.tema-novo[data-paleta="rubi"]      { --pa: #F2667A; --pa-ink: #2A060D; --pl: #B4123A; --pl-ink: #FFFFFF; }
+html.tema-novo[data-paleta="ambar"]     { --pa: #F2994A; --pa-ink: #2A1302; --pl: #B4470A; --pl-ink: #FFFFFF; }
+html.tema-novo[data-paleta="turquesa"]  { --pa: #2EC4B6; --pa-ink: #032421; --pl: #0B7A72; --pl-ink: #FFFFFF; }
+html.tema-novo[data-paleta="rosa"]      { --pa: #E879B9; --pa-ink: #2B0718; --pl: #B0256E; --pl-ink: #FFFFFF; }
+html.tema-novo[data-paleta="grafite"]   { --pa: #E4E2DD; --pa-ink: #15161A; --pl: #18181B; --pl-ink: #FFFFFF; }
+
+html.tema-novo[data-paleta] {
+  --accent: var(--pa);
+  --accent2: var(--pa);
+  --gold: var(--pa);
+  --accent-glow: color-mix(in srgb, var(--pa) 16%, transparent);
+  --accent-glow2: color-mix(in srgb, var(--pa) 8%, transparent);
+  --border3: color-mix(in srgb, var(--pa) 45%, transparent);
+  --btn-bg: var(--pa);
+  --btn-text: var(--pa-ink);
+  --n-ring: var(--pa);
+  --n-side-brand: var(--pa);
+}
+html.tema-novo[data-paleta][data-theme="light"] {
+  --accent: var(--pl);
+  --accent2: var(--pl);
+  --gold: var(--pl);
+  --accent-glow: color-mix(in srgb, var(--pl) 12%, transparent);
+  --accent-glow2: color-mix(in srgb, var(--pl) 6%, transparent);
+  --border3: color-mix(in srgb, var(--pl) 45%, transparent);
+  --btn-bg: var(--pl);
+  --btn-text: var(--pl-ink);
+  --n-ring: var(--pl);
+}
+/* No claro da Zioon o menu é azul-marinho: o destaque do menu usa a cor clara da combinação */
+html.tema-novo.marca-zioon[data-paleta][data-theme="light"] { --n-side-brand: var(--pa); }
+html.tema-novo[data-paleta="grafite"][data-theme="light"] .sidebar .nav-item.active svg { stroke: #FFFFFF; }
