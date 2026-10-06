@@ -398,13 +398,11 @@
     });
   }
 
-  // O botão só aparece com o usuário dentro do sistema: tela de login fechada e menu já preenchido.
+  // O botão só aparece com o usuário dentro do sistema: tela de login fechada e menu já preenchido (no celular o menu lateral fica escondido, mas é preenchido igual).
   function syncVisibility() {
     var login = document.getElementById('login-overlay');
     var loginOpen = !!login && getComputedStyle(login).display !== 'none';
-    var side = document.querySelector('.sidebar');
-    var sideOn = !!side && side.getClientRects().length > 0;
-    var logged = sideOn && !loginOpen && userRole() !== '';
+    var logged = !loginOpen && userRole() !== '';
     fab.style.display = logged ? 'flex' : 'none';
     if (!logged && panel.classList.contains('open')) panel.classList.remove('open');
   }
