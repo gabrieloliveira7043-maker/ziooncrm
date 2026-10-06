@@ -2582,6 +2582,21 @@ td { font-family: var(--font); font-size: 13px; }
       await setDoc(doc(db, 'extra_clients', login), { name: personName, act, adAccount, layout, uid, parentLogin: parent.login, perms });
       await saveToVault(login, pass);
     },
+    // Áreas do login principal de cada cliente (só admin). null = acesso a tudo.
+    async getClientLoginPerms() {
+      const snap = await getDocs(query(collection(db, 'users'), where('role', '==', 'client')));
+      const out = {};
+      snap.forEach(d => {
+        const x = d.data();
+        if (x.login && !x.parentLogin) out[x.login] = x.perms && Array.isArray(x.perms.views) ? x.perms.views : null;
+      });
+      return out;
+    },
+    async setClientLoginPerms(login, views) {
+      const uid = await findUidByLogin(login);
+      if (!uid) throw new Error('Login não encontrado.');
+      await updateDoc(doc(db, 'users', uid), { perms: views ? { views } : null });
+    },
     async updateSubLogin(login, personName, perms) {
       const uid = await findUidByLogin(login);
       if (!uid) throw new Error('Login não encontrado.');
@@ -7219,6 +7234,7 @@ async function renderAdminLogins() {
   await loadExtraClients();
   let vault = {};
   try { vault = await window._fb.getVault(); _subVault = vault; } catch(e) { console.warn('Cofre de senhas indisponível:', e); }
+  try { _mainLoginPerms = await window._fb.getClientLoginPerms(); } catch (e) { _mainLoginPerms = null; console.warn('Áreas dos logins principais indisponíveis:', e); }
 
   const todos = Object.entries(CREDENTIALS)
     .filter(([login, cred]) => login !== 'admin' && cred && cred.act)
@@ -7274,9 +7290,41 @@ async function renderAdminLogins() {
         <button onclick="saveClientCredential('${jsLogin}')" style="${buttonStyle}">Trocar senha</button>
         <span id="login-feedback-${id}" style="font-size:11px;display:none;"></span>
       </div>
+      ${mainLoginPermsHtml(c.login)}
       <div class="sublogin-box" data-parent="${id}">${subLoginsHtml(c.login)}</div>
     </div>`;
   }).join('');
+}
+
+// ----- Áreas que o login principal do cliente pode abrir (o admin libera ou tira, como nos logins extras) -----
+let _mainLoginPerms = {};
+function mainLoginPermsLabel(views) {
+  return views ? `${views.length} de ${SUB_LOGIN_VIEWS.length} áreas liberadas` : 'acesso a todas as áreas';
+}
+function mainLoginPermsHtml(login) {
+  if (_mainLoginPerms === null) return '<div class="sub-empty">Não foi possível carregar as áreas do login principal. Recarregue a página para tentar de novo.</div>';
+  const views = _mainLoginPerms[login] || null;
+  return `<div class="sub-item main-perms" data-mainlogin="${escapeHtml(login)}">
+    <div class="sub-head-t">Áreas do login principal <small class="main-perms-count">${mainLoginPermsLabel(views)}</small></div>
+    ${subViewChecks(views)}
+    <div class="sub-actions"><button class="integ-btn primary" onclick="saveMainLoginPerms('${escapeJsString(login)}', this)">Salvar acessos</button><span class="sub-msg"></span></div>
+  </div>`;
+}
+async function saveMainLoginPerms(login, btn) {
+  const item = btn.closest('.sub-item');
+  const picked = readSubViews(item);
+  if (!picked.length) return subMsg(btn, 'Marque pelo menos uma área.', false);
+  // Tudo marcado = sem restrição (áreas novas que surgirem também ficam liberadas).
+  const views = picked.length === SUB_LOGIN_VIEWS.length ? null : picked;
+  btn.disabled = true; subMsg(btn, 'Salvando...', true);
+  try {
+    await window._fb.setClientLoginPerms(login, views);
+    _mainLoginPerms[login] = views;
+    const count = item.querySelector('.main-perms-count');
+    if (count) count.textContent = mainLoginPermsLabel(views);
+    subMsg(btn, 'Salvo ✓ (vale quando o cliente recarregar a página ou entrar de novo)', true);
+  } catch (e) { subMsg(btn, 'Erro: ' + e.message, false); }
+  btn.disabled = false;
 }
 
 function subViewChecks(selected) {
