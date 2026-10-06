@@ -13718,7 +13718,10 @@ function readCampCloudTemplate() {
   if (!d || !campCloudLines(d.act).length) return { ok: true, template: null };
   const tpl = cloudSelectedTpl('camp-cloud-tpl', _cloudTplCache[d.act + '|' + d.cloudLine]);
   if (!tpl) return { ok: false, error: 'Escolha o modelo aprovado da API oficial.' };
-  return { ok: true, template: cloudTplObject(tpl, readCloudParams('camp-cloud', tpl)) };
+  const params = readCloudParams('camp-cloud', tpl);
+  const empty = params.findIndex(p => !p);
+  if (empty >= 0) return { ok: false, error: 'Preencha a variável {{' + (empty + 1) + '}} do modelo (texto fixo ou {primeiro_nome}).' };
+  return { ok: true, template: cloudTplObject(tpl, params) };
 }
 
 // ----- Chat: conversa pela linha oficial -----
