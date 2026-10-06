@@ -43,19 +43,10 @@ svg.av{position:absolute}
 </div>
 <div class="t" id="cnt" style="top:1665px;font-size:64px;letter-spacing:-1px"></div>
 <!-- avatars -->
-<svg class="av" id="owner" width="220" height="220" viewBox="0 0 220 220" style="left:60px;top:1620px">
- <rect x="30" y="130" width="160" height="90" rx="40" fill="#5B7BFF"/><circle cx="110" cy="85" r="52" fill="#f1c9a5"/>
- <path d="M58 78 Q110 10 162 78 Q150 48 110 46 Q70 48 58 78Z" fill="#2b2118"/>
- <g id="eyesOpen"><circle cx="90" cy="88" r="6" fill="#222"/><circle cx="130" cy="88" r="6" fill="#222"/></g>
- <g id="eyesShut" stroke="#222" stroke-width="5" stroke-linecap="round"><path d="M80 90 L100 90"/><path d="M120 90 L140 90"/></g>
- <path id="mouth" d="M95 112 Q110 124 125 112" stroke="#222" stroke-width="5" fill="none" stroke-linecap="round"/></svg>
-<div class="t" id="zzz" style="left:230px;right:auto;text-align:left;top:1600px;font-size:60px;color:#8EA6FF;letter-spacing:0">Z z z</div>
-<svg class="av" id="presenter" width="360" height="360" viewBox="0 0 220 220" style="left:60px;top:560px">
- <rect x="20" y="135" width="180" height="90" rx="40" fill="#1c2540"/><circle cx="110" cy="85" r="52" fill="#e0b08a"/>
- <path d="M58 82 Q110 10 162 82 Q150 44 110 44 Q70 44 58 82Z" fill="#111"/>
- <circle cx="90" cy="88" r="6" fill="#222"/><circle cx="130" cy="88" r="6" fill="#222"/>
- <path d="M90 110 Q110 130 130 110" stroke="#222" stroke-width="5" fill="none" stroke-linecap="round"/></svg>
-<div id="bubble" style="position:absolute;left:380px;right:60px;top:600px;padding:44px 48px;border-radius:44px;border-top-left-radius:10px;background:#fff;color:#0a1230;font-size:50px;font-weight:700;line-height:1.2">Quer conhecer melhor <span style="color:#3b5be0">o processo?</span></div>
+<img id="owner" src="dono.jpg" style="position:absolute;left:50px;top:1610px;width:230px;height:230px;border-radius:50%;object-fit:cover;border:8px solid #5B7BFF;box-shadow:0 0 40px rgba(91,123,255,.5)">
+<div class="t" id="zzz" style="left:290px;right:auto;text-align:left;top:1600px;font-size:60px;color:#8EA6FF;letter-spacing:0">Z z z</div>
+<img id="presenter" src="vendedor.jpg" style="position:absolute;left:50px;top:540px;width:300px;height:300px;border-radius:50%;object-fit:cover;border:10px solid #5B7BFF;box-shadow:0 0 60px rgba(91,123,255,.55)">
+<div id="bubble" style="position:absolute;left:390px;right:50px;top:590px;padding:44px 48px;border-radius:44px;border-top-left-radius:10px;background:#fff;color:#0a1230;font-size:50px;font-weight:700;line-height:1.2">Quer conhecer melhor <span style="color:#3b5be0">o processo?</span></div>
 <img id="logo" src="logo.png" style="position:absolute;left:410px;top:1000px;width:260px;height:260px;border-radius:60px">
 <div class="t" id="brand" style="top:1290px;font-size:110px">Zioon CRM</div>
 <div id="cta" style="top:1470px"><span style="display:inline-block;padding:38px 90px;border-radius:90px;background:#5B7BFF;font-size:56px;font-weight:700">Agende uma conversa</span></div>
@@ -116,8 +107,7 @@ window.render=function(t){
  const ov=(t>=4.2&&t<8.4)?win(t,4.4,8.4):(t>=17.8&&t<22.0?win(t,18.0,22.0):0);
  $('owner').style.opacity=ov;
  $('owner').style.top=(t>=17.8?'1630px':'1620px');
- $('eyesShut').style.display=(t<18.2)?'':'none';$('eyesOpen').style.display=(t<18.2)?'none':'';
- $('mouth').style.display=(t<18.2)?'none':'';
+ $('owner').style.filter=(t<18.2)?'grayscale(.6) brightness(.55)':'none';
  $('zzz').style.opacity=(t>=4.2&&t<8.4)?win(t,4.6,8.4)*(.6+.4*Math.sin(t*5)):0;
  $('zzz').style.transform=`translateY(${-Math.sin(t*3)*8}px)`;
  // chat
