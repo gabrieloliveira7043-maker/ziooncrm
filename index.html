@@ -7863,6 +7863,7 @@ function openCampaignEditor(copyFrom, opts = {}) {
       <div style="${hint}">Escolha os grupos; os participantes entram na lista sem repetir. Carregar os participantes pode levar até 1 minuto.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
         <button style="${wbtn}" onclick="loadCampaignGroups()">Carregar grupos</button>
+        <button style="${wbtn}" onclick="selectAllCampaignGroups()">Selecionar todos os grupos</button>
         <button style="${wbtn}background:transparent;" onclick="exportCampaignAudience()">Exportar lista (CSV)</button>
       </div>
       <div id="camp-groups-list" style="max-height:260px;overflow:auto;"></div>
@@ -8238,7 +8239,7 @@ async function loadCampaignGroups(refresh) {
     const r = await window._fb.whatsapp('/whatsapp/groups', _campaignDraft.act, { refresh: !!refresh, line: (readWaLinePicker('camp-lines') || [waDefaultLine(_campaignDraft.act)])[0] });
     const groups = (r.groups || []).sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
     if (!groups.length) { box.innerHTML = '<div style="font-size:12px;color:var(--muted);">Nenhum grupo encontrado.</div>'; return; }
-    box.innerHTML = groupsCacheNote(r, 'loadCampaignGroups(true)') + `<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);padding:4px 0 8px;cursor:pointer;border-bottom:1px solid var(--border);margin-bottom:4px;">
+    box.innerHTML = groupsCacheNote(r, 'loadCampaignGroups(true)') + `<label style="position:sticky;top:0;z-index:1;background:var(--surface);display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);padding:4px 0 8px;cursor:pointer;border-bottom:1px solid var(--border);margin-bottom:4px;">
         <input type="checkbox" id="camp-groups-all" onchange="toggleAllCampaignGroups(this.checked)"> Selecionar todos os ${groups.length} grupos</label>` +
       groups.map(g => `<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);padding:4px 0;cursor:pointer;">
       <input type="checkbox" class="camp-group" value="${escapeHtml(g.id)}" data-subject="${escapeHtml(g.subject)}" onchange="scheduleGroupParticipants()">
@@ -8246,6 +8247,15 @@ async function loadCampaignGroups(refresh) {
   } catch (e) {
     box.innerHTML = `<div style="font-size:12px;color:#f87171;">${escapeHtml(e.message)}</div>`;
   }
+}
+
+// Botão "Selecionar todos os grupos": carrega a lista se ainda não carregou e marca todos de uma vez.
+async function selectAllCampaignGroups() {
+  if (!document.querySelector('.camp-group')) await loadCampaignGroups();
+  const all = document.getElementById('camp-groups-all');
+  if (!all) return; // nenhum grupo encontrado ou erro ao carregar (a mensagem já aparece na lista)
+  all.checked = true;
+  toggleAllCampaignGroups(true);
 }
 
 function toggleAllCampaignGroups(checked) {
@@ -8700,6 +8710,10 @@ async function openCadenceEditor(copyFrom, options = {}) {
     <div style="${hint}">${mode === 'edit-item' ? 'Escolha o grupo deste envio.' : 'Marque um ou mais grupos: a mensagem sai em cada um deles.'}</div>
     <div id="cad-line-box"></div>
     <input class="field-input" id="cad-group-search" placeholder="Buscar grupo..." oninput="filterCadenceGroups(this.value)" style="margin-bottom:6px;">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+      <button type="button" class="chat-pill" onclick="selectAllCadenceGroups(true)">Selecionar todos</button>
+      <button type="button" class="chat-pill" onclick="selectAllCadenceGroups(false)">Desmarcar todos</button>
+    </div>
     <div id="cad-groups" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--muted);">Carregando grupos... na primeira vez pode levar até 1 minuto.</div>`}
 
     <div style="${section}">Quando</div>
@@ -8871,6 +8885,16 @@ function closeCadenceEditor() {
   const editor = document.getElementById('cadence-editor');
   if (editor) { editor.style.display = 'none'; editor.innerHTML = ''; }
   _cadenceDraft = null;
+}
+
+// Marca ou desmarca de uma vez os grupos que aparecem na lista (com busca digitada, só os encontrados).
+function selectAllCadenceGroups(on) {
+  document.querySelectorAll('.cad-group-row').forEach(row => {
+    if (row.style.display === 'none') return;
+    const cb = row.querySelector('.cad-group');
+    if (cb) cb.checked = on;
+  });
+  renderCadencePreview();
 }
 
 function filterCadenceGroups(term) {
