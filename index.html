@@ -2559,6 +2559,21 @@ td { font-family: var(--font); font-size: 13px; }
   window._fbReady = true;
   window.dispatchEvent(new Event('fbready'));
 </script>
+<script>
+// Tema novo (repaginação): ?tema=novo liga e ?tema=antigo desliga; a escolha fica guardada no aparelho.
+(function () {
+  try {
+    var h = document.documentElement, k = 'crm_tema_novo';
+    var q = new URLSearchParams(location.search).get('tema');
+    if (q === 'novo') localStorage.setItem(k, '1');
+    else if (q === 'antigo') localStorage.setItem(k, '0');
+    if (localStorage.getItem(k) === '1') h.classList.add('tema-novo');
+    var m = document.querySelector('meta[name="application-name"]');
+    if (m && /zioon/i.test(m.content)) h.classList.add('marca-zioon');
+  } catch (e) {}
+})();
+</script>
+<link rel="stylesheet" href="tema-novo.css?v=1">
 </head>
 <body>
 

@@ -1,0 +1,270 @@
+/* =====================================================================
+   Tema novo (repaginação "mais limpo, mais fino").
+   Só vale quando o <html> tem a classe "tema-novo" (ligada pelo script no <head>).
+   Para desligar: abrir o CRM com ?tema=antigo, ou remover este arquivo do index.html.
+   O mesmo arquivo serve Huven e Zioon: a Zioon recebe "marca-zioon" e usa o azul da logo.
+   ===================================================================== */
+
+/* ---------- 1. Cores e medidas: Huven ---------- */
+html.tema-novo {
+  --border: rgba(255,255,255,0.06);
+  --border2: rgba(255,255,255,0.11);
+  --col-bg: #121317;
+  --card-shadow: none;
+  --r: 8px;
+  --r2: 12px;
+  --n-pop: 0 16px 40px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.06);
+  --n-ring: #D9B25A;
+  --n-hover: rgba(255,255,255,.04);
+  --n-side-bg: #0B0C0E;
+  --n-side-line: rgba(255,255,255,.06);
+  --n-side-text: #C9C6BE;
+  --n-side-muted: #75736D;
+  --n-side-hover: rgba(255,255,255,.05);
+  --n-side-active: rgba(255,255,255,.08);
+  --n-side-brand: #C9A24A;
+  --n-side-field: rgba(255,255,255,.04);
+  --n-ease: cubic-bezier(.2,.7,.2,1);
+}
+html.tema-novo[data-theme="light"] {
+  --border: #E8E3D8;
+  --border2: #DAD4C7;
+  --col-bg: #EEEBE4;
+  --muted: #6E6B64;
+  --n-pop: 0 16px 40px rgba(21,22,26,.14), 0 0 0 1px rgba(21,22,26,.06);
+  --n-ring: #8A6A1F;
+  --n-hover: rgba(21,22,26,.04);
+  --n-side-bg: #111215;
+}
+
+/* ---------- 2. Cores e medidas: Zioon (azul da logo, #001645) ---------- */
+html.tema-novo.marca-zioon {
+  --bg: #070B16;
+  --surface: #0D1324;
+  --surface2: #131B31;
+  --surface3: #1C2540;
+  --border: rgba(160,185,255,0.08);
+  --border2: rgba(160,185,255,0.15);
+  --border3: rgba(91,123,255,0.5);
+  --text: #EEF1FA;
+  --fg: #EEF1FA;
+  --muted: #838DAA;
+  --muted2: #B2BBD3;
+  --accent: #5B7BFF;
+  --accent2: #8EA6FF;
+  --accent-glow: rgba(91,123,255,0.16);
+  --accent-glow2: rgba(91,123,255,0.08);
+  --gold: #5B7BFF;
+  --btn-bg: #5B7BFF;
+  --btn-text: #FFFFFF;
+  --col-bg: #0A1020;
+  --sidebar-bg: #050813;
+  --sidebar-border: rgba(160,185,255,0.08);
+  --font-display: 'Manrope', system-ui, sans-serif;
+  --n-ring: #8EA6FF;
+  --n-side-bg: #050813;
+  --n-side-line: rgba(160,185,255,.08);
+  --n-side-text: #C5CCE0;
+  --n-side-muted: #7C86A4;
+  --n-side-brand: #8EA6FF;
+  --n-side-field: rgba(160,185,255,.06);
+}
+html.tema-novo.marca-zioon[data-theme="light"] {
+  --bg: #F2F4F9;
+  --surface: #FFFFFF;
+  --surface2: #F6F8FC;
+  --surface3: #E8ECF5;
+  --border: #E1E6F0;
+  --border2: #D0D7E6;
+  --border3: rgba(31,75,216,0.45);
+  --text: #0B1330;
+  --fg: #0B1330;
+  --muted: #5F6A8A;
+  --muted2: #4A5575;
+  --accent: #1F4BD8;
+  --accent2: #1F4BD8;
+  --accent-glow: rgba(31,75,216,0.12);
+  --accent-glow2: rgba(31,75,216,0.06);
+  --gold: #1F4BD8;
+  --btn-bg: #001645;
+  --btn-text: #FFFFFF;
+  --col-bg: #E9EDF5;
+  --sidebar-bg: #001645;
+  --sidebar-border: #001645;
+  --n-ring: #1F4BD8;
+  --n-side-bg: #001645;
+  --n-side-line: rgba(255,255,255,.10);
+  --n-side-text: #D5DCF0;
+  --n-side-muted: #8995BC;
+  --n-side-hover: rgba(255,255,255,.07);
+  --n-side-active: rgba(255,255,255,.12);
+  --n-side-brand: #FFFFFF;
+  --n-side-field: rgba(255,255,255,.08);
+}
+html.tema-novo.marca-zioon :is(.page-title, .crm-title, .login-title, .welcome-title, .help-title, .integ-page-title, .huv-page-title) {
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+}
+
+/* ---------- 3. Base: foco visível, movimento curto ---------- */
+html.tema-novo body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+html.tema-novo :is(button, a, [role="button"], [tabindex], summary, .nav-item, .mobile-nav-item):focus-visible {
+  outline: 2px solid var(--n-ring) !important;
+  outline-offset: 2px;
+}
+html.tema-novo :is(.nav-item, .card-btn, .kanban-card, .btn-cfg, .client-switch, .huv-btn, .huv-pill, .pl-tab, .pr-tab, .col-auto-btn, .crm-actions > button, .modal-btn-cancel, .confirm-btn-cancel, .csp-row, .chat-row, .flow-add) {
+  transition: background-color .15s var(--n-ease), border-color .15s var(--n-ease), color .15s var(--n-ease), box-shadow .15s var(--n-ease), opacity .15s var(--n-ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  html.tema-novo *, html.tema-novo *::before, html.tema-novo *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
+}
+
+/* ---------- 4. Menu lateral ---------- */
+html.tema-novo .sidebar { background: var(--n-side-bg); border-right-color: var(--n-side-line); color: var(--n-side-text); }
+html.tema-novo .sidebar .logo-sub { color: var(--n-side-brand); border-color: color-mix(in srgb, var(--n-side-brand) 35%, transparent); }
+html.tema-novo .sb-toggle { border-color: var(--n-side-line); color: var(--n-side-muted); }
+html.tema-novo .sb-toggle:hover { background: var(--n-side-hover); color: #FFFFFF; }
+html.tema-novo .nav-group { margin-top: 16px; }
+html.tema-novo .nav-group-label { color: var(--n-side-muted); font-weight: 700; font-size: 10.5px; letter-spacing: .1em; }
+html.tema-novo .sidebar .nav-item { min-height: 34px; padding: 7px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--n-side-text); }
+html.tema-novo .sidebar .nav-item svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.6; opacity: .72; }
+html.tema-novo .sidebar .nav-item:hover { background: var(--n-side-hover); color: #FFFFFF; }
+html.tema-novo .sidebar .nav-item:hover svg { opacity: 1; }
+html.tema-novo .sidebar .nav-item.active { background: var(--n-side-active); color: #FFFFFF; font-weight: 600; }
+html.tema-novo .sidebar .nav-item.active svg { stroke: var(--n-side-brand); opacity: 1; }
+html.tema-novo .sidebar-footer { border-top-color: var(--n-side-line); }
+html.tema-novo .sidebar-footer .btn-cfg { color: var(--n-side-text); border-radius: 8px; }
+html.tema-novo .sidebar-footer .btn-cfg svg { stroke: currentColor; stroke-width: 1.6; opacity: .72; }
+html.tema-novo .sidebar-footer .btn-cfg:hover { background: var(--n-side-hover); color: #FFFFFF; }
+html.tema-novo .sidebar-footer .notification-badge { background: var(--btn-bg); color: var(--btn-text); }
+html.tema-novo .sidebar-user-avatar { background: var(--n-side-field); color: #FFFFFF; font-weight: 700; box-shadow: inset 0 0 0 1px var(--n-side-line); }
+html.tema-novo .sidebar-user-role { color: var(--n-side-muted); }
+html.tema-novo .client-switch { background: var(--n-side-field); border-color: var(--n-side-line); border-radius: 10px; }
+html.tema-novo .client-switch:hover { border-color: color-mix(in srgb, var(--n-side-brand) 40%, transparent); }
+html.tema-novo .client-switch-avatar { width: 30px; height: 30px; border-radius: 8px; background: color-mix(in srgb, var(--n-side-brand) 16%, transparent); color: var(--n-side-brand); font-weight: 700; }
+html.tema-novo .client-switch-label { color: var(--n-side-muted); font-weight: 700; letter-spacing: .08em; }
+html.tema-novo .client-switch-name { font-size: 13.5px; font-weight: 600; }
+html.tema-novo body.sb-collapsed .nav-group-label { background: var(--n-side-line); }
+html.tema-novo .client-switch-pop { border-radius: 14px; box-shadow: var(--n-pop); border-color: transparent; }
+html.tema-novo .csp-row { font-weight: 600; border-radius: 8px; }
+html.tema-novo .csp-row:hover { background: var(--n-hover); }
+
+/* ---------- 5. Botões ---------- */
+html.tema-novo :is(.btn-update, .btn-add-lead, .btn-save, .modal-btn-save, .login-btn) { border-radius: 8px; font-weight: 600; letter-spacing: 0; }
+html.tema-novo :is(.btn-manage-stages, .modal-btn-cancel, .confirm-btn-cancel, .btn-remove) { border-radius: 8px; font-weight: 600; background: transparent; }
+html.tema-novo :is(.btn-manage-stages, .modal-btn-cancel, .confirm-btn-cancel, .btn-remove):hover { background: var(--n-hover); }
+html.tema-novo .huv-btn { border-radius: 8px; font-weight: 600; font-size: 13px; padding: 7px 13px; background: transparent; }
+html.tema-novo .huv-btn:hover { background: var(--n-hover); }
+html.tema-novo .huv-btn.primary { background: var(--btn-bg); color: var(--btn-text); border-color: var(--btn-bg); }
+html.tema-novo .huv-btn.primary:hover { filter: brightness(1.07); background: var(--btn-bg); }
+html.tema-novo :is(.pl-tab, .pr-tab, .huv-pill) { border-radius: 8px; font-weight: 600; }
+html.tema-novo .huv-pill { border-radius: 99px; }
+html.tema-novo .cw-seg, html.tema-novo .cw-nav { border-radius: 10px; }
+html.tema-novo .cw-seg button { font-weight: 600; border-radius: 7px; }
+html.tema-novo .cp-actions button { border-radius: 8px !important; font-weight: 600 !important; background: transparent !important; }
+
+/* ---------- 6. Campos ---------- */
+html.tema-novo :is(.field-input, .modal-input, .modal-select, .crm-month-select, .crm-client-select, .login-input, input[type="date"]) { border-radius: 8px; }
+html.tema-novo :is(.field-input, .modal-input, .modal-select, .login-input, input[type="date"]):focus {
+  border-color: var(--n-ring) !important;
+  box-shadow: 0 0 0 3px var(--accent-glow2) !important;
+}
+html.tema-novo :is(.field-label, .modal-label, .login-label) { font-weight: 600; letter-spacing: .02em; }
+html.tema-novo .huv-search { border-radius: 8px; }
+
+/* ---------- 7. Janelas, avisos e cartões ---------- */
+html.tema-novo :is(.modal-box, .confirm-box) { border-radius: 16px; border-color: transparent; box-shadow: var(--n-pop); }
+html.tema-novo :is(.modal-title, .panel-title, .confirm-title) { font-weight: 700; letter-spacing: -0.01em; }
+html.tema-novo .toast { border-radius: 10px; box-shadow: var(--n-pop); border-color: transparent; }
+html.tema-novo :is(.metric-card, .table-card, .help-card, .integ-card, .ct-table, .cp-table, .cp-kpi, .wa-card, .huv-card, .an-kpi, .an-card) { border-radius: 12px; box-shadow: none; }
+html.tema-novo :is(.metric-label, .section-label, th, .ct-head, .cp-head) { font-weight: 700; }
+html.tema-novo .huv-name, html.tema-novo .cp-name, html.tema-novo .ct-strong { font-weight: 700; }
+html.tema-novo .huv-avatar { border-radius: 10px; }
+
+/* ---------- 8. Funil ---------- */
+html.tema-novo .crm-actions { gap: 6px; }
+html.tema-novo .crm-actions > :is(button, select, label) { height: 36px; border-radius: 8px; font-size: 13px; font-weight: 600; }
+html.tema-novo .crm-actions > button { background: transparent; border-color: var(--border2); }
+html.tema-novo .crm-actions > button:hover { background: var(--n-hover); }
+html.tema-novo .crm-actions > button.btn-add-lead { background: var(--btn-bg); border-color: var(--btn-bg); color: var(--btn-text); }
+html.tema-novo .crm-actions > button.btn-add-lead:hover { filter: brightness(1.07); }
+html.tema-novo .crm-actions > button svg { stroke-width: 1.6; }
+
+/* Faixa de faturamento: informação, não alerta */
+html.tema-novo #valor-fechado-banner {
+  background: transparent !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px !important;
+  padding: 9px 14px !important;
+  color: var(--muted2);
+}
+
+html.tema-novo .kanban-board { gap: 12px; }
+html.tema-novo .kanban-col { background: var(--col-bg); border-radius: 14px; box-shadow: inset 0 0 0 1px var(--border); }
+html.tema-novo .kanban-col.drag-over { background: var(--accent-glow2); box-shadow: inset 0 0 0 1.5px var(--accent); }
+html.tema-novo .kanban-col-header { padding: 14px 14px 8px 16px; align-items: center; }
+/* Título, botões da coluna e contagem na 1ª linha; valor em aberto na 2ª linha */
+html.tema-novo .kanban-col-header { align-items: flex-start; }
+html.tema-novo .kanban-col-header > div:first-child { flex-wrap: wrap !important; gap: 4px 6px !important; align-items: center; }
+html.tema-novo .kanban-col-header button[title="Renomear coluna"] { padding: 2px !important; }
+html.tema-novo .kanban-col-title { font-size: 13px; font-weight: 600; letter-spacing: -0.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 100%; }
+html.tema-novo .kanban-col-title::before { width: 8px; height: 8px; }
+html.tema-novo .kanban-col-count { background: transparent !important; color: var(--muted) !important; font-weight: 600; font-size: 12px; padding: 0 2px; margin-left: 8px; font-variant-numeric: tabular-nums; line-height: 22px; }
+html.tema-novo .kanban-col-total { order: 9; flex-basis: 100%; margin: 0 0 0 16px; font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+html.tema-novo .col-auto-btn { border-color: transparent; background: transparent; color: var(--muted); border-radius: 6px; padding: 1px 4px !important; font-size: 11px; font-weight: 600; line-height: 18px; }
+html.tema-novo .col-auto-btn:hover { background: var(--n-hover); color: var(--text); border-color: transparent; }
+html.tema-novo .col-auto-btn.on { background: var(--amber-dim); border-color: transparent; color: var(--amber); }
+html.tema-novo .col-search-input { background: transparent; border-color: var(--border); border-radius: 8px; font-size: 12.5px; }
+html.tema-novo .col-search-input:focus { border-color: var(--border2); outline: none; }
+
+html.tema-novo .kanban-cards { padding: 4px 10px 12px; gap: 8px; }
+html.tema-novo .kanban-card {
+  background: var(--surface);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.18);
+  padding: 12px 14px;
+}
+html.tema-novo[data-theme="light"] .kanban-card { box-shadow: 0 1px 2px rgba(21,22,26,.06); }
+html.tema-novo .kanban-card:hover { border-color: var(--border2); transform: none; box-shadow: 0 1px 2px rgba(0,0,0,.18); }
+html.tema-novo[data-theme="light"] .kanban-card:hover { box-shadow: 0 1px 2px rgba(21,22,26,.06); }
+html.tema-novo .kanban-card.dragging, html.tema-novo .kanban-card[style*="opacity"] { box-shadow: var(--n-pop); }
+html.tema-novo .card-name { font-size: 13.5px; font-weight: 600; letter-spacing: -0.005em; }
+html.tema-novo .card-valor { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+html.tema-novo .card-phone { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+html.tema-novo .card-email { font-size: 12px; color: var(--muted); }
+html.tema-novo .kc-chips { gap: 4px; margin-bottom: 8px; }
+html.tema-novo .kc-chip { font-size: 11px; font-weight: 600; border-radius: 99px; padding: 2px 8px; background: var(--surface3); color: var(--muted2); }
+html.tema-novo .kc-chip.kc-origin { background: var(--blue-dim); color: var(--blue); }
+html.tema-novo .kanban-card .card-obs { background: var(--surface2); border-radius: 8px; font-size: 12px; color: var(--muted2); }
+html.tema-novo .kanban-card .card-actions { gap: 2px; margin-top: 10px; }
+html.tema-novo .kc-date { font-size: 11.5px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+html.tema-novo .kanban-card .card-btn {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+}
+html.tema-novo .kanban-card .card-btn svg { stroke-width: 1.7; }
+html.tema-novo .kanban-card .card-btn:hover { background: var(--n-hover) !important; color: var(--text) !important; border-color: transparent !important; }
+html.tema-novo .kanban-card .card-btn.del:hover { background: var(--red-dim) !important; color: var(--red) !important; }
+html.tema-novo .kanban-card :is(.card-btn-whatsapp, .card-btn-first-msg) { color: var(--green); background: var(--green-dim); font-size: 11.5px; font-weight: 600; padding: 0 8px; }
+html.tema-novo .kanban-card :is(.card-btn-whatsapp, .card-btn-first-msg):hover { background: var(--green-dim) !important; color: var(--green) !important; filter: brightness(1.1); }
+
+html.tema-novo .crm-new-lead-banner { border-radius: 10px; }
+
+/* ---------- 9. Celular ---------- */
+@media (max-width: 768px) {
+  html.tema-novo .mobile-nav { background: var(--surface); border-top-color: var(--border); }
+  html.tema-novo .mobile-nav-item { font-weight: 600; }
+  html.tema-novo .mobile-nav-item svg { stroke-width: 1.6; }
+  html.tema-novo .mobile-nav-item.active { color: var(--accent2); }
+  html.tema-novo .mobile-header { background: var(--n-side-bg); }
+  html.tema-novo .mobile-header select { background: var(--n-side-field); border-color: var(--n-side-line); border-radius: 8px; }
+  html.tema-novo .kanban-card .card-btn { min-width: 36px; height: 36px; }
+  html.tema-novo .kanban-card .card-actions { gap: 4px; }
+  html.tema-novo .mnav-sheet-item { border-radius: 12px; font-weight: 600; }
+}
