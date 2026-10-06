@@ -1180,6 +1180,39 @@ html[data-theme="light"] .login-overlay { background: var(--paper); }
 .chat-row { display:flex; gap:10px; padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--border); }
 .chat-row:hover { background:var(--surface2); }
 .chat-row.active { background:var(--accent-glow); }
+.chat-row-body { flex:1; min-width:0; }
+.chat-row-top { display:flex; gap:6px; align-items:baseline; }
+.chat-row-name { flex:1; min-width:0; font-size:13.5px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.chat-row.unread .chat-row-name { font-weight:700; }
+.chat-row-time { font-size:11px; color:var(--muted2); white-space:nowrap; }
+.chat-row.unread .chat-row-time { color:var(--green); }
+.chat-row-mid { display:flex; gap:6px; align-items:center; margin-top:2px; }
+.chat-row-preview { flex:1; min-width:0; font-size:12px; color:var(--muted2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.chat-unread { background:#25d366; color:#fff; font-size:10.5px; font-weight:700; border-radius:10px; padding:1px 6px; }
+.chat-row-tags { display:flex; gap:4px; flex-wrap:wrap; margin-top:4px; }
+.paleta-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r2); padding:20px; margin-bottom:24px; }
+.paleta-head { display:flex; gap:12px; align-items:flex-start; margin-bottom:16px; color:var(--muted2); }
+.paleta-titulo { font-size:15px; font-weight:700; color:var(--text); }
+.paleta-sub { font-size:12.5px; color:var(--muted); margin-top:2px; line-height:1.5; }
+.paleta-alcance { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
+.paleta-alcance button { display:flex; flex-direction:column; gap:2px; text-align:left; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:transparent; color:var(--text); font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
+.paleta-alcance button small { font-size:11.5px; font-weight:500; color:var(--muted); }
+.paleta-alcance button:hover { background:var(--surface2); }
+.paleta-alcance button.on { border-color:var(--text); background:var(--surface2); }
+.paleta-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(92px, 1fr)); gap:8px; }
+.paleta-op { display:flex; flex-direction:column; align-items:center; gap:8px; padding:12px 6px 10px; border-radius:12px; border:1px solid var(--border); background:transparent; color:var(--text); cursor:pointer; font:inherit; transition:border-color .15s, background-color .15s; }
+.paleta-op:hover { background:var(--surface2); }
+.paleta-op.on { border-color:var(--text); }
+.paleta-cor { width:34px; height:34px; border-radius:50%; display:grid; place-items:center; color:#fff; box-shadow:inset 0 0 0 1px rgba(0,0,0,.12); }
+.paleta-op[title="Grafite"] .paleta-cor { color:var(--bg); }
+.paleta-nome { font-size:12.5px; font-weight:600; text-align:center; line-height:1.3; }
+.paleta-nome small { display:block; font-size:10.5px; font-weight:600; color:var(--muted); }
+.sched-media { margin-bottom:12px; }
+.sched-media-label { font-size:12px; font-weight:600; color:var(--muted2); margin-bottom:6px; }
+.sched-media-opts { display:flex; gap:8px; flex-wrap:wrap; }
+.sched-media-opts .chat-pill { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; font-size:12.5px; }
+.sched-media-file { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; color:var(--text); background:var(--surface2); border-radius:10px; padding:8px 10px; }
+.sched-media-name { font-weight:600; min-width:0; overflow-wrap:anywhere; }
 .chat-avatar { width:38px; height:38px; border-radius:50%; background:var(--surface3); color:var(--text); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; flex-shrink:0; }
 .chat-pill { background:transparent; border:1px solid var(--border2); color:var(--text); border-radius:14px; padding:4px 10px; font-size:12px; cursor:pointer; white-space:nowrap; }
 .chat-pill.active { background:var(--accent-glow); border-color:var(--accent); }
@@ -2549,6 +2582,21 @@ td { font-family: var(--font); font-size: 13px; }
       await setDoc(doc(db, 'extra_clients', login), { name: personName, act, adAccount, layout, uid, parentLogin: parent.login, perms });
       await saveToVault(login, pass);
     },
+    // Áreas do login principal de cada cliente (só admin). null = acesso a tudo.
+    async getClientLoginPerms() {
+      const snap = await getDocs(query(collection(db, 'users'), where('role', '==', 'client')));
+      const out = {};
+      snap.forEach(d => {
+        const x = d.data();
+        if (x.login && !x.parentLogin) out[x.login] = x.perms && Array.isArray(x.perms.views) ? x.perms.views : null;
+      });
+      return out;
+    },
+    async setClientLoginPerms(login, views) {
+      const uid = await findUidByLogin(login);
+      if (!uid) throw new Error('Login não encontrado.');
+      await updateDoc(doc(db, 'users', uid), { perms: views ? { views } : null });
+    },
     async updateSubLogin(login, personName, perms) {
       const uid = await findUidByLogin(login);
       if (!uid) throw new Error('Login não encontrado.');
@@ -2559,6 +2607,23 @@ td { font-family: var(--font); font-size: 13px; }
   window._fbReady = true;
   window.dispatchEvent(new Event('fbready'));
 </script>
+<script>
+// Tema novo (repaginação): ligado por padrão; ?tema=antigo volta ao visual anterior e ?tema=novo religa (fica guardado no aparelho).
+(function () {
+  try {
+    var h = document.documentElement, k = 'crm_tema_novo';
+    var q = new URLSearchParams(location.search).get('tema');
+    if (q === 'novo') localStorage.setItem(k, '1');
+    else if (q === 'antigo') localStorage.setItem(k, '0');
+    if (localStorage.getItem(k) !== '0') h.classList.add('tema-novo'); // ligado para todos; ?tema=antigo desliga
+    var m = document.querySelector('meta[name="application-name"]');
+    if (m && /zioon/i.test(m.content)) h.classList.add('marca-zioon');
+  } catch (e) {}
+})();
+</script>
+<link rel="stylesheet" href="tema-novo.css?v=5">
+<script src="icones.js?v=4"></script>
+<script src="cores.js?v=2"></script>
 </head>
 <body>
 
@@ -2624,6 +2689,7 @@ td { font-family: var(--font); font-size: 13px; }
     <button type="button" class="mnav-sheet-item" onclick="closeMobileMore(); switchView('posts'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span>Postagens</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('cadencia'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM16 2v4M8 2v4M3 10h18"/></svg><span>Cadência</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('whatsapp'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/></svg><span>Conexões</span></button>
+    <button type="button" class="mnav-sheet-item" onclick="closeMobileMore(); switchView('modelos'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Modelos oficiais</button>
     <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); switchView('integracoes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>Integrações</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('conta'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Conta</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('ajuda'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg><span>Ajuda</span></button>
@@ -2727,6 +2793,10 @@ td { font-family: var(--font); font-size: 13px; }
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/></svg>
           Conexões
         </div>
+        <div class="nav-item" id="nav-modelos" onclick="switchView('modelos')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+          Modelos oficiais
+        </div>
         <div class="nav-item" id="nav-agenteia" onclick="switchView('agenteia')" style="display:none;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 4h6M9 14h.01M15 14h.01M2 14h2M20 14h2"/></svg>
           Agente de IA
@@ -2822,7 +2892,7 @@ td { font-family: var(--font); font-size: 13px; }
       </div>
 
       <div class="welcome-state" id="welcome-state">
-        <div class="welcome-icon">📊</div>
+        <div class="welcome-icon"><i data-ico="chart" data-size="28"></i></div>
         <div class="welcome-title">Nenhum cliente selecionado</div>
         <div class="welcome-desc">Selecione um cliente na barra lateral ou configure a integração para começar.</div>
       </div>
@@ -3051,9 +3121,9 @@ td { font-family: var(--font); font-size: 13px; }
             <option value="all">Geral</option>
           </select>
 
-          <button class="btn-manage-stages" onclick="openStagesModal()" style="margin-right:8px;">⚙ Colunas</button>
-          <button class="btn-manage-stages" id="btn-cfg-campos" onclick="openFieldsModal()" style="margin-right:8px; display:none;">⚙ Campos</button>
-          <button class="btn-manage-stages" id="btn-limpar-crm" onclick="limparCrmCliente()" style="margin-right:8px; display:none; color:var(--red); border-color:rgba(248,113,113,0.3);" title="Limpar todos os leads deste cliente">🗑 Limpar CRM</button>
+          <button class="btn-manage-stages" onclick="openStagesModal()" style="margin-right:8px;"><i data-ico="gear"></i> Colunas</button>
+          <button class="btn-manage-stages" id="btn-cfg-campos" onclick="openFieldsModal()" style="margin-right:8px; display:none;"><i data-ico="gear"></i> Campos</button>
+          <button class="btn-manage-stages" id="btn-limpar-crm" onclick="limparCrmCliente()" style="margin-right:8px; display:none; color:var(--red); border-color:rgba(248,113,113,0.3);" title="Limpar todos os leads deste cliente"><i data-ico="trash"></i> Limpar CRM</button>
           <button class="btn-manage-stages" onclick="exportLeads()" style="margin-right:8px;" title="Exportar leads para Excel">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Exportar Excel
@@ -3384,7 +3454,7 @@ td { font-family: var(--font); font-size: 13px; }
           </div>
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <select id="contatos-client-select" class="field-input" style="display:none; width:auto; padding:8px 10px; font-size:13px;" onchange="onContatosClientChange()"></select>
-            <button class="chat-pill" onclick="openTagManager()">🏷️ Etiquetas</button>
+            <button class="chat-pill" onclick="openTagManager()"><i data-ico="tag"></i> Etiquetas</button>
           </div>
         </div>
         <div style="display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:var(--r2); padding:10px 14px; margin-bottom:14px;">
@@ -3540,7 +3610,7 @@ td { font-family: var(--font); font-size: 13px; }
             <div class="help-tag">Funil</div>
             <div class="help-demo hs hs-bulk" aria-hidden="true"><div class="hs-col c1"><b>Novo lead</b><i></i><i class="mv m1"></i><i class="mv m2"></i></div><div class="hs-col c2"><b>Proposta</b><i></i></div><div class="hs-tip">3 selecionados → Proposta</div></div>
             <h3>Mover vários leads de uma vez</h3>
-            <ol><li>No Funil, clique no botão <b>⇄</b> no topo da coluna.</li><li>Marque os leads (ou use <b>todos</b>) e escolha a coluna ou o funil de destino.</li><li>Confirme: todos mudam de etapa juntos.</li><li>Use o botão <b>▶ Começar</b> da coluna para iniciar a automação nos leads que já estão lá.</li></ol>
+            <ol><li>No Funil, clique no botão <b><i data-ico="swap" data-size="13"></i></b> no topo da coluna.</li><li>Marque os leads (ou use <b>todos</b>) e escolha a coluna ou o funil de destino.</li><li>Confirme: todos mudam de etapa juntos.</li><li>Use o botão <b><i data-ico="play" data-size="12"></i> Começar</b> da coluna para iniciar a automação nos leads que já estão lá.</li></ol>
           </section>
           <section class="help-card" data-view="chat">
             <div class="help-tag">Chat</div>
@@ -3552,13 +3622,13 @@ td { font-family: var(--font); font-size: 13px; }
             <div class="help-tag">Contatos</div>
             <div class="help-demo hs hs-tags" aria-hidden="true"><div class="hs-ct"><i></i>Maria<em class="t1">quente</em></div><div class="hs-ct"><i></i>João<em class="t2">orçamento</em></div><div class="hs-ct"><i></i>Ana<em class="t3">cliente</em></div></div>
             <h3>Buscar, etiquetar e mandar para o funil</h3>
-            <ul><li>Busque por nome ou telefone e filtre por <b>origem</b> e pela <b>data de entrada</b>.</li><li>Crie <b>🏷️ etiquetas</b> e marque os contatos para organizar listas.</li><li>Use <b>Selecionar todos</b> para aplicar uma etiqueta ou enviar vários contatos ao funil de uma vez.</li><li>Escolha o cliente no topo do menu antes de enviar ao funil.</li></ul>
+            <ul><li>Busque por nome ou telefone e filtre por <b>origem</b> e pela <b>data de entrada</b>.</li><li>Crie <b>etiquetas</b> e marque os contatos para organizar listas.</li><li>Use <b>Selecionar todos</b> para aplicar uma etiqueta ou enviar vários contatos ao funil de uma vez.</li><li>Escolha o cliente no topo do menu antes de enviar ao funil.</li></ul>
           </section>
           <section class="help-card help-wide" data-view="automacoes">
             <div class="help-tag">Automações</div>
             <div class="help-demo hs hs-flow" aria-hidden="true"><div class="hs-n n1">Entrou</div><div class="hs-n n2">Espera</div><div class="hs-n n3">Mensagem</div><div class="hs-n n4">Respondeu?</div><div class="hs-line"></div><div class="hs-dot"></div></div>
             <h3>Fluxos que rodam sozinhos</h3>
-            <ol><li>Em <b>Automações</b>, clique em <b>+ Nova automação</b> ou em <b>✨ Criar com IA</b>.</li><li>Escolha a coluna do funil que dispara o fluxo (“quando o lead entrar em…”).</li><li>Monte os blocos: esperar, mandar mensagem, imagem, vídeo ou áudio, conferir se respondeu e mover o card.</li><li>Defina o que acontece se o lead responder (parar ou seguir) e ligue a automação.</li><li>Acompanhe quantos leads estão no fluxo e pause quando quiser. O CRM já protege o número contra bloqueio.</li></ol>
+            <ol><li>Em <b>Automações</b>, clique em <b>+ Nova automação</b> ou em <b><i data-ico="sparkles" data-size="13"></i> Criar com IA</b>.</li><li>Escolha a coluna do funil que dispara o fluxo (“quando o lead entrar em…”).</li><li>Monte os blocos: esperar, mandar mensagem, imagem, vídeo ou áudio, conferir se respondeu e mover o card.</li><li>Defina o que acontece se o lead responder (parar ou seguir) e ligue a automação.</li><li>Acompanhe quantos leads estão no fluxo e pause quando quiser. O CRM já protege o número contra bloqueio.</li></ol>
           </section>
           <section class="help-card" data-view="whatsapp">
             <div class="help-tag">Primeira mensagem</div>
@@ -3612,6 +3682,12 @@ td { font-family: var(--font); font-size: 13px; }
       <div style="max-width:520px;">
         <div style="font-size:18px; font-weight:600; color:var(--text); margin-bottom:6px;">Minha conta</div>
         <div style="font-size:13px; color:var(--muted); margin-bottom:28px;">Altere sua senha de acesso ao relatório.</div>
+
+        <div class="paleta-card">
+          <div class="paleta-head"><i data-ico="palette" data-size="18"></i><div><div class="paleta-titulo">Cores do CRM</div><div class="paleta-sub">Escolha a cor e onde ela aparece. A escolha fica guardada neste aparelho e vale no tema claro e no escuro.</div></div></div>
+          <div id="paleta-alcance" class="paleta-alcance" role="group" aria-label="Onde a cor aparece"></div>
+          <div id="paleta-picker" class="paleta-grid"></div>
+        </div>
 
         <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--r2); padding:24px; margin-bottom:24px;">
           <div class="field-group">
@@ -3721,6 +3797,7 @@ td { font-family: var(--font); font-size: 13px; }
 
     <!-- Conversões Meta (API de Conversões) -->
     <div id="capi-view" class="huv-view" style="display:none;"><div id="capi-body"></div></div>
+    <div id="modelos-view" class="huv-view" style="display:none;"><div id="modelos-body"></div></div>
 
     <!-- Instagram -->
     <div id="instagram-view" class="huv-view" style="display:none;"><div id="instagram-body"></div></div>
@@ -4778,7 +4855,7 @@ function formatLeadObservationText(text, max = 420) {
 function renderLeadObservationHtml(text) {
   const formatted = formatLeadObservationText(text);
   if (!formatted) return '';
-  return `<div class="card-obs"><div class="card-obs-label">💬 Observações</div><div class="card-obs-text">${escapeHtml(formatted)}</div></div>`;
+  return `<div class="card-obs"><div class="card-obs-label">Observações</div><div class="card-obs-text">${escapeHtml(formatted)}</div></div>`;
 }
 
 function getAdThumbnail(row) {
@@ -5555,7 +5632,7 @@ async function confirmarImportacao() {
   function normalizeValor(rawVal) {
     if (typeof rawVal === 'number' && rawVal > 0) return rawVal.toFixed(2).replace('.', ',');
     if (typeof rawVal === 'string') {
-      const clean = rawVal.replace(/[R$\s]/g,'').replace(',','.');
+      const clean = rawVal.replace(/[R$\s]/g,'').replace(/\.(?=\d{3})/g,'').replace(',','.'); // ponto de milhar sai antes da vírgula virar ponto
       const num = parseFloat(clean);
       if (!isNaN(num) && num > 0) return num.toFixed(2).replace('.', ',');
     }
@@ -5615,7 +5692,7 @@ async function confirmarImportacao() {
   closeImportModal();
   document.getElementById('btn-import-confirmar').disabled = false;
 
-  showToast('✅ ' + imported + ' leads importados' + (errors > 0 ? ' · ' + errors + ' erros' : ''), imported > 0 ? 'success' : 'warning');
+  showToast(imported + ' leads importados' + (errors > 0 ? ' · ' + errors + ' erros' : ''), imported > 0 ? 'success' : 'warning');
   await getLeadsAsync();
   renderKanban();
   renderFunilChart();
@@ -5928,7 +6005,7 @@ function renderPipelineBar(act) {
   bar.style.display = 'flex';
   bar.innerHTML = `<span class="pl-label">Pipeline</span>` + pipelineList(act).map(p => `<button class="pl-tab ${p.id === cur ? 'active' : ''}" onclick="setCurrentPipeline('${a}','${escapeJsString(p.id)}')">${escapeHtml(p.name)} <span class="pl-count">${count(p.id)}</span></button>`).join('')
     + `<button class="pl-tab pl-add" onclick="openPipelineEditor('${a}')">+ Pipeline</button>`
-    + `<button class="pl-tab pl-gear" title="Renomear ou excluir este pipeline" onclick="openPipelineEditor('${a}','${escapeJsString(cur)}')">⚙</button>`;
+    + `<button class="pl-tab pl-gear" title="Renomear ou excluir este pipeline" onclick="openPipelineEditor('${a}','${escapeJsString(cur)}')">${uiIco('gear')}</button>`;
 }
 
 function openPipelineEditor(act, id) {
@@ -6633,7 +6710,7 @@ function renderContatos() {
       ? (isAdmin ? '<span style="font-size:12px;color:var(--muted);">Escolha o cliente no topo do menu para usar etiquetas e mandar contatos para o funil.</span>' : '')
       : tags.length
         ? `<span style="font-size:12px;color:var(--muted);align-self:center;">Filtrar por etiqueta:</span>${tagFilterChipsHtml(tags, _contatosTagFilter, 'toggleContatosTagFilter')}`
-        : '<span style="font-size:12px;color:var(--muted);">Nenhuma etiqueta criada ainda. Clique em "🏷️ Etiquetas" para criar.</span>';
+        : '<span style="font-size:12px;color:var(--muted);">Nenhuma etiqueta criada ainda. Clique em "Etiquetas" para criar.</span>';
   }
 
   const list = document.getElementById('contatos-list');
@@ -6693,7 +6770,7 @@ function renderContatosBulkBar() {
   if (!n || !contatosAct()) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
   bar.style.display = 'flex';
   bar.innerHTML = `<span style="font-size:13px;font-weight:600;color:var(--text);margin-right:4px;">${n} selecionado(s)</span>
-    <button class="chat-pill active" onclick="openBulkTag('add')">🏷️ Etiquetar</button>
+    <button class="chat-pill active" onclick="openBulkTag('add')">${uiIco('tag')} Etiquetar</button>
     <button class="chat-pill" onclick="openBulkTag('remove')">Tirar etiqueta</button>
     <button class="chat-pill active" onclick="openSendToFunnel()">➜ Enviar para o funil</button>
     <button class="chat-pill" onclick="_contatosSelected.clear(); renderContatos();">Limpar seleção</button>`;
@@ -7049,7 +7126,7 @@ function switchView(view) {
     showToast('Seu login não tem acesso a esta área.', 'warning');
     view = firstAllowedView();
   }
-  ['report','analise','clientes','automacoes','agenteia','capi','instagram','posts','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes'].forEach(v => {
+  ['report','analise','clientes','automacoes','agenteia','capi','instagram','posts','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes','modelos'].forEach(v => {
     const el = document.getElementById('nav-' + v);
     if (el) el.classList.toggle('active', v === view);
   });
@@ -7089,6 +7166,9 @@ function switchView(view) {
   const capiView = document.getElementById('capi-view');
   if (capiView) capiView.style.display = view === 'capi' ? 'block' : 'none';
   if (view === 'capi') renderCapiView();
+  const modelosView = document.getElementById('modelos-view');
+  if (modelosView) modelosView.style.display = view === 'modelos' ? 'block' : 'none';
+  if (view === 'modelos' && window.renderModelosView) renderModelosView();
   const igView = document.getElementById('instagram-view');
   if (igView) igView.style.display = view === 'instagram' ? 'block' : 'none';
   if (view === 'instagram') renderInstagramView();
@@ -7163,6 +7243,7 @@ async function renderAdminLogins() {
   await loadExtraClients();
   let vault = {};
   try { vault = await window._fb.getVault(); _subVault = vault; } catch(e) { console.warn('Cofre de senhas indisponível:', e); }
+  try { _mainLoginPerms = await window._fb.getClientLoginPerms(); } catch (e) { _mainLoginPerms = null; console.warn('Áreas dos logins principais indisponíveis:', e); }
 
   const todos = Object.entries(CREDENTIALS)
     .filter(([login, cred]) => login !== 'admin' && cred && cred.act)
@@ -7218,9 +7299,41 @@ async function renderAdminLogins() {
         <button onclick="saveClientCredential('${jsLogin}')" style="${buttonStyle}">Trocar senha</button>
         <span id="login-feedback-${id}" style="font-size:11px;display:none;"></span>
       </div>
+      ${mainLoginPermsHtml(c.login)}
       <div class="sublogin-box" data-parent="${id}">${subLoginsHtml(c.login)}</div>
     </div>`;
   }).join('');
+}
+
+// ----- Áreas que o login principal do cliente pode abrir (o admin libera ou tira, como nos logins extras) -----
+let _mainLoginPerms = {};
+function mainLoginPermsLabel(views) {
+  return views ? `${views.length} de ${SUB_LOGIN_VIEWS.length} áreas liberadas` : 'acesso a todas as áreas';
+}
+function mainLoginPermsHtml(login) {
+  if (_mainLoginPerms === null) return '<div class="sub-empty">Não foi possível carregar as áreas do login principal. Recarregue a página para tentar de novo.</div>';
+  const views = _mainLoginPerms[login] || null;
+  return `<div class="sub-item main-perms" data-mainlogin="${escapeHtml(login)}">
+    <div class="sub-head-t">Áreas do login principal <small class="main-perms-count">${mainLoginPermsLabel(views)}</small></div>
+    ${subViewChecks(views)}
+    <div class="sub-actions"><button class="integ-btn primary" onclick="saveMainLoginPerms('${escapeJsString(login)}', this)">Salvar acessos</button><span class="sub-msg"></span></div>
+  </div>`;
+}
+async function saveMainLoginPerms(login, btn) {
+  const item = btn.closest('.sub-item');
+  const picked = readSubViews(item);
+  if (!picked.length) return subMsg(btn, 'Marque pelo menos uma área.', false);
+  // Tudo marcado = sem restrição (áreas novas que surgirem também ficam liberadas).
+  const views = picked.length === SUB_LOGIN_VIEWS.length ? null : picked;
+  btn.disabled = true; subMsg(btn, 'Salvando...', true);
+  try {
+    await window._fb.setClientLoginPerms(login, views);
+    _mainLoginPerms[login] = views;
+    const count = item.querySelector('.main-perms-count');
+    if (count) count.textContent = mainLoginPermsLabel(views);
+    subMsg(btn, 'Salvo ✓ (vale quando o cliente recarregar a página ou entrar de novo)', true);
+  } catch (e) { subMsg(btn, 'Erro: ' + e.message, false); }
+  btn.disabled = false;
 }
 
 function subViewChecks(selected) {
@@ -7655,7 +7768,8 @@ function onCampaignStartModeChange() {
 function aiCampaignCopy() {
   if (!_campaignDraft) return;
   openAiCopyModal({
-    act: _campaignDraft.act, kind: 'campaign', count: 4, title: '✨ Mensagens da campanha com IA',
+    act: _campaignDraft.act, kind: 'campaign', count: 4, title: 'Mensagens da campanha com IA',
+    baseText: (document.getElementById('camp-var-0')?.value || '').trim(),
     hint: 'A IA escreve 4 variações diferentes da mesma mensagem (cada contato recebe uma sorteada, o que ajuda contra bloqueio).',
     onResult: (texts, tip) => {
       for (let i = 0; i < WHATSAPP_MAX_VARIATIONS; i++) { const el = document.getElementById('camp-var-' + i); if (el) el.value = texts[i] || ''; }
@@ -7755,7 +7869,7 @@ function openCampaignEditor(copyFrom, opts = {}) {
       <div id="camp-media-status" style="${hint}"></div>
     </div>
     <div id="camp-text-hint" style="${hint}">Cadastre variações: cada contato recebe uma sorteada. Use {primeiro_nome} e {nome}; se o contato não tiver nome, o marcador some.</div>
-    <button class="huv-btn" style="margin-bottom:8px;" onclick="aiCampaignCopy()">✨ Gerar mensagens com IA</button>
+    <button class="huv-btn" style="margin-bottom:8px;" onclick="aiCampaignCopy()">${uiIco('sparkles')} Gerar mensagens com IA</button>
     ${whatsappVariationsHtml('camp', copyFrom && Array.isArray(copyFrom.templates) ? copyFrom.templates : [])}
     </div>
 
@@ -7812,6 +7926,7 @@ function openCampaignEditor(copyFrom, opts = {}) {
       <div style="${hint}">Escolha os grupos; os participantes entram na lista sem repetir. Carregar os participantes pode levar até 1 minuto.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
         <button style="${wbtn}" onclick="loadCampaignGroups()">Carregar grupos</button>
+        <button style="${wbtn}" onclick="selectAllCampaignGroups()">Selecionar todos os grupos</button>
         <button style="${wbtn}background:transparent;" onclick="exportCampaignAudience()">Exportar lista (CSV)</button>
       </div>
       <div id="camp-groups-list" style="max-height:260px;overflow:auto;"></div>
@@ -8188,7 +8303,7 @@ async function loadCampaignGroups(refresh) {
     const r = await window._fb.whatsapp('/whatsapp/groups', _campaignDraft.act, { refresh: !!refresh, line: (campChosenLines()[0] || waDefaultLine(_campaignDraft.act)) });
     const groups = (r.groups || []).sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
     if (!groups.length) { box.innerHTML = '<div style="font-size:12px;color:var(--muted);">Nenhum grupo encontrado.</div>'; return; }
-    box.innerHTML = groupsCacheNote(r, 'loadCampaignGroups(true)') + `<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);padding:4px 0 8px;cursor:pointer;border-bottom:1px solid var(--border);margin-bottom:4px;">
+    box.innerHTML = groupsCacheNote(r, 'loadCampaignGroups(true)') + `<label style="position:sticky;top:0;z-index:1;background:var(--surface);display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);padding:4px 0 8px;cursor:pointer;border-bottom:1px solid var(--border);margin-bottom:4px;">
         <input type="checkbox" id="camp-groups-all" onchange="toggleAllCampaignGroups(this.checked)"> Selecionar todos os ${groups.length} grupos</label>` +
       groups.map(g => `<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);padding:4px 0;cursor:pointer;">
       <input type="checkbox" class="camp-group" value="${escapeHtml(g.id)}" data-subject="${escapeHtml(g.subject)}" onchange="scheduleGroupParticipants()">
@@ -8196,6 +8311,15 @@ async function loadCampaignGroups(refresh) {
   } catch (e) {
     box.innerHTML = `<div style="font-size:12px;color:#f87171;">${escapeHtml(e.message)}</div>`;
   }
+}
+
+// Botão "Selecionar todos os grupos": carrega a lista se ainda não carregou e marca todos de uma vez.
+async function selectAllCampaignGroups() {
+  if (!document.querySelector('.camp-group')) await loadCampaignGroups();
+  const all = document.getElementById('camp-groups-all');
+  if (!all) return; // nenhum grupo encontrado ou erro ao carregar (a mensagem já aparece na lista)
+  all.checked = true;
+  toggleAllCampaignGroups(true);
 }
 
 function toggleAllCampaignGroups(checked) {
@@ -8501,7 +8625,7 @@ function renderCadenceListView() {
     const late = i.status === 'scheduled' && when.getTime() < Date.now() - 90000;
     const id = escapeJsString(i.id);
     const preview = i.type === 'poll' && i.poll
-      ? `📊 ${escapeHtml(i.poll.question || '')}<div style="font-size:12px;color:var(--muted);margin-top:2px;">${(i.poll.options || []).map(o => '○ ' + escapeHtml(o)).join('  ')}${i.poll.multiple ? ' · várias respostas' : ''}</div>`
+      ? `${uiIco('chart', 13)} ${escapeHtml(i.poll.question || '')}<div style="font-size:12px;color:var(--muted);margin-top:2px;">${(i.poll.options || []).map(o => '○ ' + escapeHtml(o)).join('  ')}${i.poll.multiple ? ' · várias respostas' : ''}</div>`
       : i.text ? escapeHtml(i.text.length > 140 ? i.text.slice(0, 140) + '…' : i.text) : '<span style="color:var(--muted);">(sem texto)</span>';
     const actions = i.status === 'scheduled'
       ? `<button style="${wbtn}" onclick="editCadenceItem('${id}')">Editar</button><button style="${wbtn}background:transparent;" onclick="duplicateCadenceItem('${id}')">Duplicar</button><button style="${wbtn}background:transparent;" onclick="cancelCadenceItem('${id}')">Cancelar</button>`
@@ -8511,7 +8635,7 @@ function renderCadenceListView() {
         <input type="checkbox" style="margin-top:4px;cursor:pointer;" ${_cadenceSelected.has(i.id) ? 'checked' : ''} onchange="toggleCadenceSelected('${id}', this.checked)">
         <div style="font-size:15px;font-weight:600;color:var(--text);min-width:52px;">${when.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
         <div style="flex:1;min-width:0;">
-          <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">${escapeHtml(i.groupName || i.groupId)} · ${i.eventName ? '📅 Evento: ' + escapeHtml(i.eventName) + (i.eventStep ? ' (' + escapeHtml(i.eventStep) + ')' : '') : (CADENCE_TYPES[i.type] || 'Texto')}${i.mentionAll ? ' · marca todos' : ''}${i.media && i.media.fileName ? ' · ' + escapeHtml(i.media.fileName) : ''}</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">${escapeHtml(i.groupName || i.groupId)} · ${i.eventName ? uiIco('calendar', 13) + ' Evento: ' + escapeHtml(i.eventName) + (i.eventStep ? ' (' + escapeHtml(i.eventStep) + ')' : '') : (CADENCE_TYPES[i.type] || 'Texto')}${i.mentionAll ? ' · marca todos' : ''}${i.media && i.media.fileName ? ' · ' + escapeHtml(i.media.fileName) : ''}</div>
           <div style="font-size:13px;color:var(--text);white-space:pre-wrap;word-break:break-word;">${preview}</div>
           ${i.error ? `<div style="font-size:11px;color:#f87171;margin-top:4px;">${escapeHtml(i.error)}</div>` : ''}
         </div>
@@ -8651,6 +8775,10 @@ async function openCadenceEditor(copyFrom, options = {}) {
     <div style="${hint}">${mode === 'edit-item' ? 'Escolha o grupo deste envio.' : 'Marque um ou mais grupos: a mensagem sai em cada um deles.'}</div>
     <div id="cad-line-box"></div>
     <input class="field-input" id="cad-group-search" placeholder="Buscar grupo..." oninput="filterCadenceGroups(this.value)" style="margin-bottom:6px;">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+      <button type="button" class="chat-pill" onclick="selectAllCadenceGroups(true)">Selecionar todos</button>
+      <button type="button" class="chat-pill" onclick="selectAllCadenceGroups(false)">Desmarcar todos</button>
+    </div>
     <div id="cad-groups" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--muted);">Carregando grupos... na primeira vez pode levar até 1 minuto.</div>`}
 
     <div style="${section}">Quando</div>
@@ -8822,6 +8950,16 @@ function closeCadenceEditor() {
   const editor = document.getElementById('cadence-editor');
   if (editor) { editor.style.display = 'none'; editor.innerHTML = ''; }
   _cadenceDraft = null;
+}
+
+// Marca ou desmarca de uma vez os grupos que aparecem na lista (com busca digitada, só os encontrados).
+function selectAllCadenceGroups(on) {
+  document.querySelectorAll('.cad-group-row').forEach(row => {
+    if (row.style.display === 'none') return;
+    const cb = row.querySelector('.cad-group');
+    if (cb) cb.checked = on;
+  });
+  renderCadencePreview();
 }
 
 function filterCadenceGroups(term) {
@@ -9357,7 +9495,7 @@ function renderAutomationList() {
       return `<div class="integ-card">
         <div class="integ-card-head">
           <div style="flex:1;min-width:0;">
-            <div class="integ-title">⚡ ${escapeHtml(a.name || 'Automação')}</div>
+            <div class="integ-title">${uiIco('bolt')} ${escapeHtml(a.name || 'Automação')}</div>
             <div class="integ-muted">Quando o lead entrar em <b>${escapeHtml(autoStageLabel(act, a.triggerStage))}</b> · ${running} lead(s) no fluxo agora</div>
           </div>
           <label class="integ-toggle" title="Ligar ou desligar"><input type="checkbox" ${a.active ? 'checked' : ''} onchange="toggleAutomation('${id}', this.checked)"> ${a.active ? 'Ligada' : 'Desligada'}</label>
@@ -9505,7 +9643,7 @@ function automationCardChip(lead) {
   if (!a || a.status !== 'running') return '';
   const when = a.nextAt ? new Date(a.nextAt) : null;
   const txt = when ? when.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-  return `<span class="kc-chip kc-auto" title="${escapeHtml((a.name || 'Automação') + (txt ? ' · próximo passo em ' + txt : '') + (a.waiting ? ' · ' + a.waiting : ''))}">⚡ ${escapeHtml(limitText(a.name || 'Automação', 22))} · passo ${(Number(a.step) || 0) + 1}</span>`;
+  return `<span class="kc-chip kc-auto" title="${escapeHtml((a.name || 'Automação') + (txt ? ' · próximo passo em ' + txt : '') + (a.waiting ? ' · ' + a.waiting : ''))}">${uiIco('bolt', 12)} ${escapeHtml(limitText(a.name || 'Automação', 22))} · passo ${(Number(a.step) || 0) + 1}</span>`;
 }
 
 // ===== AUTOMAÇÕES: editor visual de fluxos (blocos ligados, no estilo do n8n) =====
@@ -10211,7 +10349,7 @@ async function renderAutomacoesView() {
         <div class="integ-muted" style="margin-top:4px;">Fluxos que rodam sozinhos quando o lead entra numa coluna do funil: esperar, mandar mensagem, imagem, vídeo ou áudio, conferir se respondeu e mover o card.</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="huv-btn" style="height:40px;padding:0 16px;" onclick="_aiPreset=null;_flowReturn=null;openAiFlowModal()">✨ Criar com IA</button>
+        <button class="huv-btn" style="height:40px;padding:0 16px;" onclick="_aiPreset=null;_flowReturn=null;openAiFlowModal()">${uiIco('sparkles')} Criar com IA</button>
         <button class="btn-add-lead" style="height:40px;padding:0 16px;" onclick="_flowReturn=null;openFlowEditor(null)">+ Nova automação</button>
       </div>
     </div>
@@ -10224,7 +10362,7 @@ async function renderAutomacoesView() {
           <div class="huv-card-head">
             <div class="huv-avatar" style="background:var(--amber-dim);color:var(--amber);">${flowIcon('trigger', 'currentColor')}</div>
             <div style="flex:1;min-width:0;"><div class="huv-name">${escapeHtml(f.name || 'Automação')}</div><div class="huv-sub">Quando entrar em ${escapeHtml(autoStageLabel(act, f.triggerStage))}</div></div>
-            <label class="integ-toggle"><input type="checkbox" ${f.active ? 'checked' : ''} onchange="toggleFlow('${id}', this.checked)"> ${f.active ? (f.paused ? '⏸ Pausada' : 'Ligada') : 'Desligada'}</label>
+            <label class="integ-toggle"><input type="checkbox" ${f.active ? 'checked' : ''} onchange="toggleFlow('${id}', this.checked)"> ${f.active ? (f.paused ? uiIco('pause', 13) + ' Pausada' : 'Ligada') : 'Desligada'}</label>
           </div>
           <div class="huv-stats">
             <div><div class="huv-stat-label">Blocos</div><div class="huv-stat-value">${blocks}</div></div>
@@ -10234,7 +10372,7 @@ async function renderAutomacoesView() {
           <div class="huv-actions">
             <button class="huv-btn primary" onclick="openFlowEditor('${id}')">Abrir editor</button>
             <button class="huv-btn" onclick="openFlowProgress('${id}')">Andamento</button>
-            ${f.active ? `<button class="huv-btn" onclick="toggleFlowPause('${id}')">${f.paused ? '▶ Retomar' : '⏸ Pausar'}</button>` : ''}
+            ${f.active ? `<button class="huv-btn" onclick="toggleFlowPause('${id}')">${f.paused ? uiIco('play') + ' Retomar' : uiIco('pause') + ' Pausar'}</button>` : ''}
             <button class="huv-btn" onclick="duplicateFlow('${id}')">Duplicar</button>
             <button class="huv-btn" style="margin-left:auto;color:var(--red);border-color:var(--red);" onclick="deleteFlowConfirm('${id}')">Excluir</button>
           </div>
@@ -10339,7 +10477,7 @@ function openFlowProgress(id) {
       ${card('Responderam', st.replied, pct(st.replied, st.entered) + ' do total', 'var(--accent2)')}
       ${card('Parados', st.stopped, st.stopped ? 'veja o motivo abaixo' : '', st.stopped ? 'var(--red)' : '')}
     </div>
-    ${f.paused ? '<div style="margin-top:12px;padding:8px 12px;border-radius:8px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.35);font-size:12.5px;">⏸ Automação pausada: os leads estão parados e não recebem mensagens até você retomar.</div>' : ''}<div style="margin-top:14px;font-size:12px;color:var(--muted2);">O fluxo tem ${msgCount} mensagem(ns). ${next ? 'Próximo envio previsto: ' + next + '.' : ''}</div>
+    ${f.paused ? '<div style="margin-top:12px;padding:8px 12px;border-radius:8px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.35);font-size:12.5px;">' + uiIco('pause', 13) + ' Automação pausada: os leads estão parados e não recebem mensagens até você retomar.</div>' : ''}<div style="margin-top:14px;font-size:12px;color:var(--muted2);">O fluxo tem ${msgCount} mensagem(ns). ${next ? 'Próximo envio previsto: ' + next + '.' : ''}</div>
     <div style="overflow-x:auto;margin-top:8px;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead><tr style="text-align:center;color:var(--muted2);font-size:11px;"><th style="text-align:left;padding:6px 8px;">Etapa</th><th style="padding:6px 8px;">Receberam</th><th style="padding:6px 8px;">Estão aqui agora</th><th style="padding:6px 8px;">Responderam depois</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="4" class="integ-muted">Fluxo sem etapas.</td></tr>'}</tbody></table></div>
@@ -10485,15 +10623,39 @@ function readAiBrief(prefix, act) {
 // Janela de copy com IA (campanhas e blocos do fluxo). onResult(texts, tip).
 let _aiCopyCtx = null;
 function openAiCopyModal(opts) {
-  _aiCopyCtx = opts;
-  openHuvenModal(opts.title || '✨ Escrever com IA', `
-    <div class="integ-muted" style="font-size:12.5px;margin-bottom:10px;">${escapeHtml(opts.hint || 'Conte o objetivo e a IA escreve as mensagens. Você revisa antes de usar.')}</div>
-    ${aiBriefFieldsHtml('ai-copy', opts.act)}
+  _aiCopyCtx = { ...opts, mode: 'brief' };
+  const maxVar = Math.max(1, (opts.maxTotal || WHATSAPP_MAX_VARIATIONS) - 1);
+  openHuvenModal(opts.title || 'Escrever com IA', `
+    <div class="pr-tabs" style="margin-bottom:12px;">
+      <button class="pr-tab active" id="ai-copy-mode-brief" onclick="setAiCopyMode('brief')">A partir do objetivo</button>
+      <button class="pr-tab" id="ai-copy-mode-base" onclick="setAiCopyMode('base')">A partir de uma mensagem minha</button>
+    </div>
+    <div id="ai-copy-brief-box">
+      <div class="integ-muted" style="font-size:12.5px;margin-bottom:10px;">${escapeHtml(opts.hint || 'Conte o objetivo e a IA escreve as mensagens. Você revisa antes de usar.')}</div>
+      ${aiBriefFieldsHtml('ai-copy', opts.act)}
+    </div>
+    <div id="ai-copy-base-box" style="display:none;">
+      <div class="integ-muted" style="font-size:12.5px;margin-bottom:10px;">Cole ou escreva a sua mensagem. A IA cria variações com outras palavras, mantendo a oferta, o tom e o pedido de ação. A sua mensagem continua como a primeira.</div>
+      <label class="field-label">Sua mensagem</label>
+      <textarea class="field-input" id="ai-copy-base" rows="5" maxlength="2000" style="width:100%;box-sizing:border-box;resize:vertical;margin-bottom:10px;" placeholder="Ex.: Oi {primeiro_nome}! Vi que você se interessou pelo plano premium. Posso te mandar os detalhes?">${escapeHtml(opts.baseText || '')}</textarea>
+      <label class="field-label">Quantas variações</label>
+      <select class="field-input" id="ai-copy-count" style="width:auto;margin-bottom:12px;">${Array.from({ length: maxVar }, (_, i) => i + 1).map(n => `<option value="${n}" ${n === maxVar ? 'selected' : ''}>${n}</option>`).join('')}</select>
+    </div>
     <button class="btn-save" id="ai-copy-btn" style="width:auto;padding:9px 16px;" onclick="runAiCopy()">Gerar mensagens</button> <span id="ai-copy-fb" class="integ-muted"></span>`, 560);
+}
+function setAiCopyMode(mode) {
+  if (!_aiCopyCtx) return;
+  _aiCopyCtx.mode = mode;
+  document.getElementById('ai-copy-mode-brief').classList.toggle('active', mode === 'brief');
+  document.getElementById('ai-copy-mode-base').classList.toggle('active', mode === 'base');
+  document.getElementById('ai-copy-brief-box').style.display = mode === 'brief' ? '' : 'none';
+  document.getElementById('ai-copy-base-box').style.display = mode === 'base' ? '' : 'none';
+  document.getElementById('ai-copy-btn').textContent = mode === 'base' ? 'Gerar variações' : 'Gerar mensagens';
 }
 async function runAiCopy() {
   const o = _aiCopyCtx;
   if (!o) return;
+  if (o.mode === 'base') return runAiCopyFromBase(o);
   const brief = readAiBrief('ai-copy', o.act);
   const fb = document.getElementById('ai-copy-fb');
   const btn = document.getElementById('ai-copy-btn');
@@ -10505,13 +10667,28 @@ async function runAiCopy() {
     o.onResult(r.texts, r.tip);
   } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = e.message; btn.disabled = false; }
 }
+// Modo "a partir de uma mensagem minha": devolve [mensagem da pessoa, ...variações] para quem abriu a janela.
+async function runAiCopyFromBase(o) {
+  const base = (document.getElementById('ai-copy-base').value || '').trim();
+  const count = +document.getElementById('ai-copy-count').value || 1;
+  const fb = document.getElementById('ai-copy-fb');
+  const btn = document.getElementById('ai-copy-btn');
+  if (base.length < 10) { fb.style.color = 'var(--red)'; fb.textContent = 'Escreva a mensagem base.'; return; }
+  btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'Gerando variações... (uns 5 segundos)';
+  try {
+    const texts = await requestAiVariations(o.act, base, count, o.kind);
+    if (!texts.length) throw new Error('A IA não devolveu variações. Tente de novo.');
+    closeHuvenModal();
+    o.onResult([base, ...texts], '');
+  } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = e.message; btn.disabled = false; }
+}
 
 function openAiFlowModal() {
   const act = (_aiPreset && _aiPreset.act) || flowAct();
   if (!act) return showToast('Escolha o cliente no topo do menu.', 'warning');
   _aiPdfText = '';
   _aiFlowMode = 'plan';
-  openHuvenModal('✨ Criar automação com IA', `
+  openHuvenModal('Criar automação com IA', `
     ${_aiPreset ? `<div class="chat-tag" style="display:inline-block;background:var(--amber-dim);color:var(--amber);margin-bottom:8px;">Coluna: ${escapeHtml(_aiPreset.label)}</div>` : ''}
     <div class="pr-tabs" style="margin-bottom:12px;">
       <button class="pr-tab active" id="ai-mode-plan" onclick="setAiFlowMode('plan')">A IA planeja o fluxo</button>
@@ -10692,7 +10869,7 @@ function openColumnAutomation(stageId) {
   openHuvenModal('Automação da coluna ' + stage.label, `
     <div class="integ-muted" style="font-size:12.5px;margin-bottom:14px;">Todo lead que cair ou for arrastado para "${escapeHtml(stage.label)}" segue o fluxo que você montar aqui. Ele fica desligado até você ligar.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="newColumnFlow('${escapeJsString(stageId)}', false)">✨ Criar com IA</button>
+      <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="newColumnFlow('${escapeJsString(stageId)}', false)">${uiIco('sparkles')} Criar com IA</button>
       <button class="huv-btn" onclick="newColumnFlow('${escapeJsString(stageId)}', true)">Montar o fluxo</button>
     </div>`, 460);
 }
@@ -10809,7 +10986,7 @@ function flowNodeSummary(n) {
   if (n.type === 'ai') return 'A IA assume a conversa, qualifica e marca a reunião.';
   const kind = d.kind || 'text';
   const txt = (d.templates || []).find(Boolean) || '';
-  const file = d.media && d.media.fileName ? `<div class="flow-file">📎 ${escapeHtml(limitText(d.media.fileName, 28))}</div>` : (kind !== 'text' ? '<div class="flow-file" style="color:var(--red);">Falta o arquivo</div>' : '');
+  const file = d.media && d.media.fileName ? `<div class="flow-file">${uiIco('clip', 13)} ${escapeHtml(limitText(d.media.fileName, 28))}</div>` : (kind !== 'text' ? '<div class="flow-file" style="color:var(--red);">Falta o arquivo</div>' : '');
   return file + (txt ? escapeHtml(limitText(txt, 90)) : (kind === 'text' ? '<span style="color:var(--red);">Escreva a mensagem</span>' : ''));
 }
 
@@ -11009,7 +11186,8 @@ function aiFlowNodeCopy() {
   if (!n) return;
   const nodeId = n.id;
   openAiCopyModal({
-    act: _flow.act, kind: 'message', count: 2, title: '✨ Texto desta mensagem com IA', context: flowNodeContext(nodeId),
+    act: _flow.act, kind: 'message', count: 2, title: 'Texto desta mensagem com IA', context: flowNodeContext(nodeId),
+    maxTotal: 3, baseText: ((n.data && n.data.templates) || [])[0] || '',
     hint: 'A IA escreve esta mensagem considerando a posição dela no fluxo (as anteriores, a espera e se o lead respondeu).',
     onResult: texts => {
       const node = _flow && _flow.nodes.find(x => x.id === nodeId);
@@ -11067,8 +11245,8 @@ function renderFlowInspector() {
     html += `<label class="auto-label">Tipo</label><div class="flow-kinds">${Object.entries(FLOW_MEDIA).map(([k, l]) => `<button class="${kind === k ? 'active' : ''}" onclick="setFlowData('kind', '${k}'); ${k === 'text' ? "setFlowData('media', null);" : ''} renderFlowInspector()">${l}</button>`).join('')}</div>`;
     if (kind !== 'text') {
       html += `<label class="auto-label" style="margin-top:10px;">Arquivo</label>
-        ${d.fileHint && !(d.media && d.media.url) ? `<div class="integ-muted" style="color:var(--amber);margin-bottom:6px;">📎 Anexe: ${escapeHtml(d.fileHint)}</div>` : ''}
-        ${d.media && d.media.fileName ? `<div class="flow-file" style="margin-bottom:6px;">📎 ${escapeHtml(d.media.fileName)}</div>` : ''}
+        ${d.fileHint && !(d.media && d.media.url) ? `<div class="integ-muted" style="color:var(--amber);margin-bottom:6px;">${uiIco('clip', 13)} Anexe: ${escapeHtml(d.fileHint)}</div>` : ''}
+        ${d.media && d.media.fileName ? `<div class="flow-file" style="margin-bottom:6px;">${uiIco('clip', 13)} ${escapeHtml(d.media.fileName)}</div>` : ''}
         <input type="file" class="field-input" accept="${kind === 'image' ? 'image/jpeg,image/png,image/webp' : kind === 'video' ? 'video/mp4' : 'audio/*'}" onchange="uploadFlowMedia(this, '${kind}')">
         <div class="integ-muted" id="flow-upload-fb" style="margin-top:4px;">${kind === 'audio' ? 'Chega como áudio gravado na hora (não encaminhado).' : 'Até 24 MB.'}</div>`;
     }
@@ -11076,7 +11254,7 @@ function renderFlowInspector() {
     html += `<label class="auto-label" style="margin-top:10px;">${kind === 'text' ? 'Mensagem' : kind === 'audio' ? 'Texto enviado depois do áudio (opcional)' : 'Legenda (opcional)'}</label>
       ${temps.map((t, i) => `<textarea class="field-input" rows="3" style="margin-bottom:6px;" placeholder="${i === 0 ? 'Oi {primeiro_nome}, ...' : 'Outra versão (sorteada)'}" oninput="setFlowTemplate(${i}, this.value)">${escapeHtml(t || '')}</textarea>`).join('')}
       ${temps.length < 3 ? `<button class="ci-add" onclick="setFlowTemplate(${temps.length}, ''); renderFlowInspector()">+ outra versão</button>` : ''}
-      <button class="ci-add" style="margin-left:6px;" onclick="aiFlowNodeCopy()">✨ Sugerir texto com IA</button>
+      <button class="ci-add" style="margin-left:6px;" onclick="aiFlowNodeCopy()">${uiIco('sparkles', 13)} Sugerir texto com IA</button>
       <div class="integ-muted" style="margin-top:6px;">Use {primeiro_nome} e {nome}. Com várias versões, uma é sorteada a cada envio.</div>`;
   }
   if (n.type !== 'trigger') html += `<button class="huv-btn" style="margin-top:16px;color:var(--red);border-color:var(--red);" onclick="deleteFlowNode('${n.id}')">Excluir bloco</button>`;
@@ -11709,11 +11887,11 @@ async function diagnoseMetaPage(pageId) {
     const since = saved.subscribedAt ? Date.parse(saved.subscribedAt) : 0;
     const after = (r.recent || []).filter(l => Date.parse(l.created) > since);
     const missing = after.filter(l => !l.inCrm);
-    const verdict = !sub ? '⚠️ A página não está assinada para avisar o CRM. Clique em "Salvar" de novo.'
-      : missing.length ? `⚠️ ${missing.length} lead(s) chegaram depois da ligação e a Meta não avisou o CRM. Quase sempre é o app da Meta em modo Desenvolvimento: coloque o app em modo Ao vivo (Live) em developers.facebook.com. Os que já chegaram você traz com "Importar leads".`
-      : after.length ? '✅ Os leads que chegaram depois da ligação estão no CRM.' : 'Nenhum lead novo desde a ligação para conferir. Faça um teste na Ferramenta de teste de anúncios de cadastro da Meta.';
+    const verdict = !sub ? uiIco('alert') + ' A página não está assinada para avisar o CRM. Clique em "Salvar" de novo.'
+      : missing.length ? `${uiIco('alert')} ${missing.length} lead(s) chegaram depois da ligação e a Meta não avisou o CRM. Quase sempre é o app da Meta em modo Desenvolvimento: coloque o app em modo Ao vivo (Live) em developers.facebook.com. Os que já chegaram você traz com "Importar leads".`
+      : after.length ? uiIco('checkCircle') + ' Os leads que chegaram depois da ligação estão no CRM.' : 'Nenhum lead novo desde a ligação para conferir. Faça um teste na Ferramenta de teste de anúncios de cadastro da Meta.';
     box.innerHTML = `<div class="integ-forms" style="margin-top:10px;"><div style="font-size:13px;margin-bottom:8px;">${verdict}</div>
-      ${(r.recent || []).length ? '<div class="integ-muted" style="margin-bottom:4px;">Últimos leads nos formulários (7 dias):</div>' + r.recent.map(l => `<div class="integ-muted">${l.inCrm ? '✅' : '•'} ${new Date(l.created).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${escapeHtml(l.formName || '')}${l.inCrm ? '' : ' · não está no CRM'}</div>`).join('') : ''}</div>`;
+      ${(r.recent || []).length ? '<div class="integ-muted" style="margin-bottom:4px;">Últimos leads nos formulários (7 dias):</div>' + r.recent.map(l => `<div class="integ-muted">${l.inCrm ? uiIco('check', 13) : '•'} ${new Date(l.created).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${escapeHtml(l.formName || '')}${l.inCrm ? '' : ' · não está no CRM'}</div>`).join('') : ''}</div>`;
   } catch (e) { box.innerHTML = `<div class="integ-error" style="margin-top:10px;">${escapeHtml(e.message)}</div>`; }
 }
 
@@ -11741,7 +11919,7 @@ async function importMetaLeads(pageId) {
       const r = await window._fb.adminApi('/meta/import-leads', { pageId, leads: leads.slice(i, i + 4) });
       created += r.created; skipped += r.skipped; failed += r.failed;
     }
-    box.innerHTML = `<div class="integ-forms" style="margin-top:10px;font-size:13px;">✅ ${created} lead(s) criados no CRM · ${skipped} já estavam · ${failed} com erro (de ${leads.length} encontrados nos últimos ${days} dias).</div>`;
+    box.innerHTML = `<div class="integ-forms" style="margin-top:10px;font-size:13px;">${uiIco('checkCircle')} ${created} lead(s) criados no CRM · ${skipped} já estavam · ${failed} com erro (de ${leads.length} encontrados nos últimos ${days} dias).</div>`;
     showToast(`${created} lead(s) da Meta importados.`, 'success');
   } catch (e) { box.innerHTML = `<div class="integ-error" style="margin-top:10px;">${escapeHtml(e.message)}</div>`; }
 }
@@ -12166,22 +12344,22 @@ function renderChatList() {
     else if (chatWaiting(c)) tags.push('<span class="chat-tag" style="background:var(--amber-dim);color:var(--amber);">Aguardando resposta</span>');
     if (c.assignedName) tags.push(`<span class="chat-tag" style="background:var(--blue-dim);color:var(--blue);">${escapeHtml(c.assignedTo === me.uid ? 'Você' : c.assignedName)}</span>`);
     if (c.channel === 'instagram') tags.push('<span class="chat-tag ig">Instagram</span>');
-    if (multiLine && c.channel !== 'instagram') tags.push(`<span class="chat-tag" style="background:var(--surface3);color:var(--muted2);">📱 ${escapeHtml(waLineLabel(_chatAct, c.line || waLineOfKey(c.id)))}</span>`);
+    if (multiLine && c.channel !== 'instagram') tags.push(`<span class="chat-tag" style="background:var(--surface3);color:var(--muted2);">${uiIco('phone', 12)} ${escapeHtml(waLineLabel(_chatAct, c.line || waLineOfKey(c.id)))}</span>`);
     const rem = chatReminderFor(_chatAct, c.id);
-    if (rem) tags.push(`<span class="chat-tag" style="background:rgba(224,164,58,.2);color:#B7791F;">🔔 ${new Date(rem.remindAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>`);
+    if (rem) tags.push(`<span class="chat-tag" style="background:rgba(224,164,58,.2);color:#B7791F;">${uiIco('bell', 12)} ${new Date(rem.remindAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>`);
     chatTagIds(c, lead, chatContactFor(c, contactIndex)).map(id => tagById[id]).filter(Boolean).forEach(t => tags.push(tagChipHtml(t)));
-    return `<div class="chat-row ${c.id === _chatOpenKey ? 'active' : ''}" onclick="openChat('${escapeJsString(c.id)}')">
+    return `<div class="chat-row ${c.id === _chatOpenKey ? 'active' : ''} ${c.unread > 0 ? 'unread' : ''}" onclick="openChat('${escapeJsString(c.id)}')">
       <div class="chat-avatar">${escapeHtml(initials)}</div>
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;gap:6px;align-items:baseline;">
-          <div style="flex:1;min-width:0;font-size:13.5px;font-weight:${c.unread > 0 ? 700 : 600};color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(name)}</div>
-          <div style="font-size:11px;color:${c.unread > 0 ? 'var(--green)' : 'var(--muted2)'};white-space:nowrap;">${chatTime(c.lastAt)}</div>
+      <div class="chat-row-body">
+        <div class="chat-row-top">
+          <div class="chat-row-name">${escapeHtml(name)}</div>
+          <div class="chat-row-time">${chatTime(c.lastAt)}</div>
         </div>
-        <div style="display:flex;gap:6px;align-items:center;margin-top:2px;">
-          <div style="flex:1;min-width:0;font-size:12px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.lastFromMe ? 'Você: ' : ''}${escapeHtml(c.lastText || '')}</div>
-          ${c.unread > 0 ? `<span style="background:#25d366;color:#fff;font-size:10.5px;font-weight:700;border-radius:10px;padding:1px 6px;">${c.unread}</span>` : ''}
+        <div class="chat-row-mid">
+          <div class="chat-row-preview">${c.lastFromMe ? 'Você: ' : ''}${escapeHtml(c.lastText || '')}</div>
+          ${c.unread > 0 ? `<span class="chat-unread">${c.unread}</span>` : ''}
         </div>
-        ${tags.length ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">${tags.join('')}</div>` : ''}
+        ${tags.length ? `<div class="chat-row-tags">${tags.join('')}</div>` : ''}
       </div>
     </div>`;
   }).join('') + (_chatItems.length >= _chatLimit ? `<div style="padding:12px;text-align:center;"><button class="chat-pill" onclick="loadMoreChats()">Carregar conversas mais antigas</button></div>` : '');
@@ -12225,12 +12403,12 @@ function openChat(key) {
       <div class="chat-qr-pop" id="chat-qr-pop"></div>
       <div class="chat-qr-pop chat-stk-pop" id="chat-stk-pop"></div>
       <div class="chat-input">
-        <label class="chat-pill chat-tool" title="Enviar foto, vídeo ou áudio">📎<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,audio/*" style="display:none;" onchange="attachChatMedia(this)"></label>
-        <button class="chat-pill chat-tool" title="Respostas prontas (ou digite / no começo da mensagem)" onclick="toggleQuickReplies()">⚡</button>
-        <button class="chat-pill chat-tool" title="Emojis e figurinhas" onclick="toggleEmojiPicker()">🙂</button>
+        <label class="chat-pill chat-tool" title="Enviar foto, vídeo ou áudio" aria-label="Anexar arquivo">${uiIco('clip', 18)}<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,audio/*" style="display:none;" onchange="attachChatMedia(this)"></label>
+        <button class="chat-pill chat-tool" title="Respostas prontas (ou digite / no começo da mensagem)" onclick="toggleQuickReplies()" aria-label="Respostas prontas">${uiIco('bolt', 18)}</button>
+        <button class="chat-pill chat-tool" title="Emojis e figurinhas" onclick="toggleEmojiPicker()" aria-label="Emojis e figurinhas">${uiIco('smile', 18)}</button>
         <textarea id="chat-text" class="field-input" rows="1" placeholder="Mensagem ( / respostas prontas)" onkeydown="chatTextKey(event)" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,140)+'px';chatQrInput(this)" onblur="setTimeout(() => { if (_qrBySlash) closeQuickReplies(); }, 200)"></textarea>
-        <button class="chat-pill chat-tool" title="Nota interna ou lembrete (só a equipe vê)" onclick="openChatNote()">📝</button>
-        <button class="chat-pill chat-tool" title="Agendar mensagem" onclick="openScheduleMessage()">🕐</button>
+        <button class="chat-pill chat-tool" title="Nota interna ou lembrete (só a equipe vê)" onclick="openChatNote()" aria-label="Nota interna">${uiIco('note', 18)}</button>
+        <button class="chat-pill chat-tool" title="Agendar mensagem" onclick="openScheduleMessage()" aria-label="Agendar mensagem">${uiIco('clock', 18)}</button>
         <button class="btn-save" id="chat-send-btn" style="width:auto;padding:10px 16px;" onclick="sendChatMessage()">Enviar</button>
       </div>
     </div>`;
@@ -12343,14 +12521,14 @@ function renderChatHeader() {
       <div style="font-size:15px;font-weight:600;color:var(--text);">${escapeHtml(chatName(c, lead))}</div>
       <div style="font-size:12px;color:var(--muted2);display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:2px;">
         <span>${escapeHtml(c.channel === 'instagram' ? 'Instagram' + (c.igUsername ? ' · @' + c.igUsername : '') : (chatFormatPhone(c.phone) || 'Número oculto pelo WhatsApp'))}</span>
-        ${waHasMultiple(_chatAct) ? `<span class="chat-tag" style="background:var(--surface3);color:var(--text);">📱 via ${escapeHtml(waLineLabel(_chatAct, c.line || waLineOfKey(c.id)))}</span>` : ''}
+        ${waHasMultiple(_chatAct) ? `<span class="chat-tag" style="background:var(--surface3);color:var(--text);">${uiIco('phone', 12)} via ${escapeHtml(waLineLabel(_chatAct, c.line || waLineOfKey(c.id)))}</span>` : ''}
         ${stage ? `<span class="chat-tag" style="background:var(--accent-glow);color:var(--text);">Lead · ${escapeHtml(stage)}</span>` : ''}
         ${c.dispatchSource ? `<span class="chat-tag" style="background:var(--surface3);color:var(--muted2);">${escapeHtml(c.dispatchSource)}</span>` : ''}
         ${c.assignedName ? `<span class="chat-tag" style="background:var(--blue-dim);color:var(--blue);">Responsável: ${escapeHtml(c.assignedTo === me.uid ? 'você' : c.assignedName)}</span>` : '<span class="chat-tag" style="background:var(--surface3);color:var(--muted2);">Sem responsável</span>'}
         ${tagChips}
       </div>
     </div>
-    <button class="chat-pill" onclick="openChatTags()">🏷️ Etiquetas</button>
+    <button class="chat-pill" onclick="openChatTags()">${uiIco('tag')} Etiquetas</button>
     ${lead ? `<button class="chat-pill" onclick="openMoveModal('${escapeJsString(lead.id)}')">Mover no funil</button>` : ''}
     ${lead ? aiLeadBtnHtml(lead, 'chat') : ''}
     ${assignBtn}`;
@@ -12402,7 +12580,7 @@ function renderChatMessages() {
         media = m.type === 'image' || m.type === 'sticker' ? `<img src="${loaded.url}" alt="" class="${m.type === 'sticker' ? 'chat-sticker' : ''}">${m.type === 'sticker' && !m.fromMe ? `<br><a href="#" style="font-size:11.5px;color:var(--accent2);" onclick="saveReceivedSticker('${escapeJsString(m.id)}');return false;">⭐ Salvar no pack</a>` : ''}`
           : m.type === 'video' ? `<video src="${loaded.url}" controls></video>`
           : m.type === 'audio' ? `<audio src="${loaded.url}" controls style="max-width:240px;display:block;margin-bottom:4px;"></audio>`
-          : `<a href="${loaded.url}" download="${escapeHtml(m.fileName || 'arquivo')}" style="color:var(--accent2);">⬇ ${escapeHtml(m.fileName || 'Baixar documento')}</a><br>`;
+          : `<a href="${loaded.url}" download="${escapeHtml(m.fileName || 'arquivo')}" style="color:var(--accent2);">${uiIco('download', 13)} ${escapeHtml(m.fileName || 'Baixar documento')}</a><br>`;
       } else {
         media = `<button class="chat-pill" style="margin-bottom:4px;" onclick="loadChatMedia('${escapeJsString(m.id)}','${m.type}')">${loaded && loaded.loading ? 'Carregando...' : (CHAT_MEDIA_LABELS[m.type] + (m.fileName ? ' · ' + escapeHtml(m.fileName) : '') + ' · ver')}</button>${loaded && loaded.error ? `<div style="font-size:11px;color:var(--red);">${escapeHtml(loaded.error)}</div>` : ''}<br>`;
       }
@@ -12415,7 +12593,7 @@ function renderChatMessages() {
     const who = m.fromMe ? [m.source, m.sentBy].filter(Boolean).join(' · ') : '';
     const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     if (m.deleted) {
-      parts.push(`<div class="chat-bubble ${m.fromMe ? 'out' : 'in'} deleted">🚫 Mensagem apagada<div class="chat-meta">${m.deletedBy ? 'apagada por ' + escapeHtml(m.deletedBy) + ' · ' : ''}${time}</div></div>`);
+      parts.push(`<div class="chat-bubble ${m.fromMe ? 'out' : 'in'} deleted">${uiIco('ban', 13)} Mensagem apagada<div class="chat-meta">${m.deletedBy ? 'apagada por ' + escapeHtml(m.deletedBy) + ' · ' : ''}${time}</div></div>`);
       return;
     }
     // Enviada por nós e ainda dentro do prazo do WhatsApp: botão para editar (texto, 15 min) ou apagar (2 dias).
@@ -12424,13 +12602,13 @@ function renderChatMessages() {
     const canEdit = !cloudChat && m.fromMe && (m.type || 'text') === 'text' && age < 15 * 60000 && !/^(crm|sch)\d/.test(m.id);
     const canDel = !cloudChat && m.fromMe && age < 2 * 86400000 && !/^(crm|sch)\d/.test(m.id);
     const menu = canEdit || canDel ? `<button class="chat-msg-more" title="Editar ou apagar" onclick="openChatMsgMenu(event, '${escapeJsString(m.id)}', ${canEdit}, ${canDel})">⋯</button>` : '';
-    parts.push(`<div class="chat-bubble ${m.fromMe ? 'out' : 'in'}">${menu}${media}${escapeHtml(bodyText)}${m.failed ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">⚠️ Não entregue: ${escapeHtml(m.error || '')}</div>` : ''}<div class="chat-meta">${who ? escapeHtml(who) + ' · ' : ''}${m.edited ? 'editada · ' : ''}${time}</div></div>`);
+    parts.push(`<div class="chat-bubble ${m.fromMe ? 'out' : 'in'}">${menu}${media}${escapeHtml(bodyText)}${m.failed ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">${uiIco('alert', 12)} Não entregue: ${escapeHtml(m.error || '')}</div>` : ''}<div class="chat-meta">${who ? escapeHtml(who) + ' · ' : ''}${m.edited ? 'editada · ' : ''}${time}</div></div>`);
   });
   pendingSched.forEach(s => {
     const when = new Date(s.sendAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-    const head = s.status === 'failed' ? `⚠️ Agendada para ${when} não foi enviada: ${escapeHtml(s.error || '')}`
-      : s.status === 'sending' ? `🕐 Enviando agora...` : `🕐 Agendada para ${when}${s.lastError ? ' · ' + escapeHtml(s.lastError) : ''}`;
-    parts.push(`<div class="chat-sched ${s.status === 'failed' ? 'failed' : ''}"><div style="font-size:11px;font-weight:700;color:var(--muted2);margin-bottom:3px;">${head}</div>${s.media && s.media.fileName ? `📎 ${escapeHtml(s.media.fileName)}<br>` : ''}${escapeHtml(s.text || '')}<div class="chat-meta">${escapeHtml(s.createdByName || '')}${['pending', 'failed'].includes(s.status) ? ` · <a href="#" onclick="cancelScheduled('${escapeJsString(s.id)}');return false;" style="color:var(--red);">${s.status === 'failed' ? 'dispensar' : 'cancelar'}</a>` : ''}</div></div>`);
+    const head = s.status === 'failed' ? `${uiIco('alert', 12)} Agendada para ${when} não foi enviada: ${escapeHtml(s.error || '')}`
+      : s.status === 'sending' ? `${uiIco('clock', 12)} Enviando agora...` : `${uiIco('clock', 12)} Agendada para ${when}${s.lastError ? ' · ' + escapeHtml(s.lastError) : ''}`;
+    parts.push(`<div class="chat-sched ${s.status === 'failed' ? 'failed' : ''}"><div style="font-size:11px;font-weight:700;color:var(--muted2);margin-bottom:3px;">${head}</div>${s.media && s.media.fileName ? `${uiIco('clip', 13)} ${escapeHtml(s.media.fileName)}<br>` : ''}${escapeHtml(s.text || '')}<div class="chat-meta">${escapeHtml(s.createdByName || '')}${['pending', 'failed'].includes(s.status) ? ` · <a href="#" onclick="cancelScheduled('${escapeJsString(s.id)}');return false;" style="color:var(--red);">${s.status === 'failed' ? 'dispensar' : 'cancelar'}</a>` : ''}</div></div>`);
   });
   box.innerHTML = parts.join('');
   box.dataset.loaded = '1';
@@ -12442,7 +12620,7 @@ function chatContactCardHtml(c) {
   const phone = String(c.phone || '').replace(/\D/g, '');
   const name = c.name || 'Contato';
   return `<div style="border:1px solid var(--border2);border-radius:10px;padding:8px 10px;margin-bottom:6px;min-width:210px;">
-    <div style="font-weight:700;">👤 ${escapeHtml(name)}</div>
+    <div style="font-weight:700;">${uiIco('user', 13)} ${escapeHtml(name)}</div>
     <div style="font-size:12px;color:var(--muted2);">${escapeHtml(chatFormatPhone(phone) || 'sem número')}</div>
     ${phone ? `<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
       <button class="chat-pill" onclick="chatContactOpen('${phone}','${escapeJsString(name)}')">Abrir conversa</button>
@@ -12461,8 +12639,8 @@ function openChatMsgMenu(ev, id, canEdit, canDel) {
   const menu = document.createElement('div');
   menu.id = 'chat-msg-menu';
   menu.className = 'chat-msg-menu';
-  menu.innerHTML = (canEdit ? `<button onclick="editChatMessage('${escapeJsString(id)}')">✏️ Editar</button>` : '')
-    + (canDel ? `<button style="color:var(--red);" onclick="deleteChatMessage('${escapeJsString(id)}')">🗑️ Apagar para todos</button>` : '');
+  menu.innerHTML = (canEdit ? `<button onclick="editChatMessage('${escapeJsString(id)}')">${uiIco('edit', 14)} Editar</button>` : '')
+    + (canDel ? `<button style="color:var(--red);" onclick="deleteChatMessage('${escapeJsString(id)}')">${uiIco('trash', 14)} Apagar para todos</button>` : '');
   document.body.appendChild(menu);
   const r = ev.currentTarget.getBoundingClientRect();
   menu.style.top = Math.min(window.innerHeight - 100, r.bottom + 4) + 'px';
@@ -12539,7 +12717,7 @@ async function attachChatMedia(input) {
   chip.textContent = 'Enviando arquivo...';
   try {
     _chatPendingMedia = await window._fb.uploadCampaignMedia(_chatAct, file);
-    chip.innerHTML = `📎 ${escapeHtml(_chatPendingMedia.fileName)} <span style="color:var(--muted2);">(o texto vai como legenda)</span> <button class="chat-pill" onclick="clearChatMedia()">remover</button>`;
+    chip.innerHTML = `${uiIco('clip', 13)} ${escapeHtml(_chatPendingMedia.fileName)} <span style="color:var(--muted2);">(o texto vai como legenda)</span> <button class="chat-pill" onclick="clearChatMedia()">remover</button>`;
   } catch (e) {
     _chatPendingMedia = null;
     chip.innerHTML = `<span style="color:var(--red);">Erro: ${escapeHtml(e.message)}</span>`;
@@ -12598,7 +12776,7 @@ function renderQuickReplies(term) {
   pop.innerHTML = (items.length
     ? items.map((q, i) => `<div class="chat-qr-item ${i === _qrSel ? 'sel' : ''}" onmousedown="event.preventDefault();pickQuickReply('${escapeJsString(q.id)}')"><b>/${escapeHtml(q.title)}</b><div>${escapeHtml(q.text)}</div></div>`).join('')
     : `<div class="chat-qr-item" style="cursor:default;"><div>${(_qrCache[_chatAct] || []).length ? 'Nenhuma resposta pronta com esse nome.' : 'Ainda não há respostas prontas.'}</div></div>`)
-    + `<div class="chat-qr-item" style="text-align:center;" onmousedown="event.preventDefault();openQuickRepliesManager()"><b style="color:var(--accent2);">⚙ Gerenciar respostas prontas</b></div>`;
+    + `<div class="chat-qr-item" style="text-align:center;" onmousedown="event.preventDefault();openQuickRepliesManager()"><b style="color:var(--accent2);">${uiIco('gear', 13)} Gerenciar respostas prontas</b></div>`;
   pop.classList.add('open');
 }
 
@@ -12671,7 +12849,7 @@ function renderQuickRepliesManager() {
   const items = _qrCache[_chatAct] || [];
   const ed = _qrEditing;
   body.innerHTML = `
-    <div class="integ-muted" style="margin-bottom:12px;font-size:12.5px;">Toda a equipe deste cliente usa estas respostas. No chat, clique em ⚡ ou digite <b>/</b> e o atalho. Use <b>{nome}</b> para colocar o primeiro nome do contato.</div>
+    <div class="integ-muted" style="margin-bottom:12px;font-size:12.5px;">Toda a equipe deste cliente usa estas respostas. No chat, clique em ${uiIco('bolt', 13)} ou digite <b>/</b> e o atalho. Use <b>{nome}</b> para colocar o primeiro nome do contato.</div>
     <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">
       ${items.map(q => `<div style="display:flex;gap:8px;align-items:flex-start;border:1px solid var(--border);border-radius:10px;padding:8px 10px;">
         <div style="flex:1;min-width:0;"><b style="font-size:13px;color:var(--text);">/${escapeHtml(q.title)}</b><div style="font-size:12.5px;color:var(--muted2);white-space:pre-wrap;">${escapeHtml(q.text)}</div></div>
@@ -12892,8 +13070,8 @@ function chatNoteHtml(n) {
   const time = new Date(n.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   const rem = n.remindAt ? new Date(n.remindAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
   const id = escapeJsString(n.id);
-  return `<div class="chat-note"><div class="chat-note-head">📝 Nota interna · ${escapeHtml(n.by || '')} · ${time}
-    ${rem ? `<span class="chat-tag" style="background:${n.done ? 'var(--surface3)' : 'rgba(224,164,58,.25)'};color:${n.done ? 'var(--muted2)' : '#B7791F'};">🔔 ${n.done ? 'concluído' : 'lembrete'} ${rem}</span>` : ''}
+  return `<div class="chat-note"><div class="chat-note-head">${uiIco('note', 12)} Nota interna · ${escapeHtml(n.by || '')} · ${time}
+    ${rem ? `<span class="chat-tag" style="background:${n.done ? 'var(--surface3)' : 'rgba(224,164,58,.25)'};color:${n.done ? 'var(--muted2)' : '#B7791F'};">${uiIco('bell', 11)} ${n.done ? 'concluído' : 'lembrete'} ${rem}</span>` : ''}
     <span class="sp"></span>
     ${rem && !n.done ? `<button onclick="finishReminder('${id}')">Concluir</button>` : ''}
     <button onclick="deleteChatNoteUi('${id}')">Excluir</button></div>${escapeHtml(n.text || '')}</div>`;
@@ -12967,7 +13145,7 @@ function renderReminders() {
   if (!el) { el = document.createElement('div'); el.id = 'rem-stack'; el.className = 'rem-stack'; document.body.appendChild(el); }
   due.forEach(n => { if (!_remShown.has(n.id)) { _remShown.add(n.id); if (typeof playLeadNotificationSound === 'function') try { playLeadNotificationSound(); } catch (e) {} } });
   el.innerHTML = due.slice(0, 4).map(n => `<div class="rem-card" data-rem="${escapeHtml(n.id)}">
-    <button class="wa-alert-close" style="position:static;float:right;font-size:16px;line-height:1;" title="Esconder" onclick="_remShown.add('${escapeJsString(n.id)}:hidden');renderReminders()">×</button><div style="font-size:11px;font-weight:800;color:#B7791F;margin-bottom:3px;">🔔 LEMBRETE${isAdmin ? ' · ' + escapeHtml(getClientDisplayName(n.act) || '') : ''} · ${escapeHtml(n.chatName || '')}</div>
+    <button class="wa-alert-close" style="position:static;float:right;font-size:16px;line-height:1;" title="Esconder" onclick="_remShown.add('${escapeJsString(n.id)}:hidden');renderReminders()">×</button><div style="font-size:11px;font-weight:800;color:#B7791F;margin-bottom:3px;">${uiIco('bell', 11)} LEMBRETE${isAdmin ? ' · ' + escapeHtml(getClientDisplayName(n.act) || '') : ''} · ${escapeHtml(n.chatName || '')}</div>
     <div style="white-space:pre-wrap;">${escapeHtml(limitText(n.text || '', 240))}</div>
     <div class="rem-actions">
       <button class="chat-pill active" onclick="openChatByKey('${escapeJsString(n.act)}','${escapeJsString(n.chatKey)}')">Abrir conversa</button>
@@ -13006,10 +13184,56 @@ function openScheduleMessage() {
   openHuvenModal('Agendar mensagem', `
     <div class="integ-muted" style="margin-bottom:10px;font-size:12.5px;">A mensagem sai sozinha no horário, por este WhatsApp, mesmo com o CRM fechado.</div>
     <textarea class="field-input" id="sched-text" rows="4" maxlength="4000" style="width:100%;box-sizing:border-box;resize:vertical;margin-bottom:10px;">${escapeHtml(ta ? ta.value : '')}</textarea>
-    ${_chatPendingMedia ? `<div style="font-size:12.5px;margin-bottom:10px;">📎 ${escapeHtml(_chatPendingMedia.fileName)} vai junto (o texto vira legenda).</div>` : ''}
+    <div id="sched-media" class="sched-media">${schedMediaHtml()}</div>
     <label class="field-label">Quando enviar</label>
     <input type="datetime-local" class="field-input" id="sched-when" value="${chatDateTimeLocal(soon)}" style="margin-bottom:12px;">
     <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="saveScheduleMessage()">Agendar</button> <span id="sched-fb" class="integ-muted"></span>`, 480);
+}
+
+// Anexo da mensagem agendada (imagem, vídeo ou áudio). Usa o mesmo envio de arquivo do chat; o texto vira legenda.
+const SCHED_MEDIA_KINDS = [
+  ['image', 'Imagem', 'image/jpeg,image/png,image/webp'],
+  ['video', 'Vídeo', 'video/mp4'],
+  ['mic', 'Áudio', 'audio/*'],
+];
+
+function schedMediaHtml() {
+  if (_chatPendingMedia) {
+    return `<div class="sched-media-file">${uiIco('clip', 14)} <span class="sched-media-name">${escapeHtml(_chatPendingMedia.fileName)}</span>
+      <span class="integ-muted">o texto vai como legenda</span>
+      <button type="button" class="chat-pill" onclick="clearSchedMedia()">Remover</button></div>`;
+  }
+  return `<div class="sched-media-label">Anexar arquivo (opcional)</div>
+    <div class="sched-media-opts">${SCHED_MEDIA_KINDS.map(([ico, label, accept]) =>
+      `<label class="chat-pill">${uiIco(ico, 14)} ${label}<input type="file" accept="${accept}" style="display:none;" onchange="attachSchedMedia(this)"></label>`).join('')}</div>`;
+}
+
+async function attachSchedMedia(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  const box = document.getElementById('sched-media');
+  if (!file || !_chatAct || !box) return;
+  box.innerHTML = '<div class="integ-muted">Enviando arquivo...</div>';
+  try {
+    _chatPendingMedia = await window._fb.uploadCampaignMedia(_chatAct, file);
+  } catch (e) {
+    _chatPendingMedia = null;
+    box.innerHTML = `<div class="integ-error" style="margin-bottom:8px;">Não foi possível enviar o arquivo: ${escapeHtml(e.message)}</div>` + schedMediaHtml();
+    return;
+  }
+  box.innerHTML = schedMediaHtml();
+  // O anexo também aparece no campo do chat, para não se perder se a janela for fechada.
+  const chip = document.getElementById('chat-media-chip');
+  if (chip) {
+    chip.style.display = 'block';
+    chip.innerHTML = `${uiIco('clip', 13)} ${escapeHtml(_chatPendingMedia.fileName)} <span style="color:var(--muted2);">(o texto vai como legenda)</span> <button class="chat-pill" onclick="clearChatMedia()">remover</button>`;
+  }
+}
+
+function clearSchedMedia() {
+  clearChatMedia();
+  const box = document.getElementById('sched-media');
+  if (box) box.innerHTML = schedMediaHtml();
 }
 
 async function saveScheduleMessage() {
@@ -13499,7 +13723,7 @@ function updateChatCloudHint() {
   el.style.display = 'flex';
   el.innerHTML = open
     ? `<span>API oficial · conversa aberta até ${escapeHtml(new Date(Date.parse(c.lastInAt) + 24 * 3600 * 1000).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</span>`
-    : `<span>API oficial · fora da janela de 24 h: só dá para enviar um modelo aprovado.</span><button class="chat-pill" onclick="openChatTemplate()">📋 Enviar modelo</button>`;
+    : `<span>API oficial · fora da janela de 24 h: só dá para enviar um modelo aprovado.</span><button class="chat-pill" onclick="openChatTemplate()">${uiIco('clipboard')} Enviar modelo</button>`;
 }
 
 async function openChatTemplate() {
@@ -13710,7 +13934,7 @@ async function renderWhatsAppView() {
     adminPanel.style.display = 'none';
     clientPanel.style.display = 'block';
     subtitle.textContent = 'Conecte o número de WhatsApp que vai falar com os seus leads.';
-    document.getElementById('whatsapp-own-variations').innerHTML = whatsappVariationsHtml('wa-own', getWhatsAppTemplates(profile.act));
+    document.getElementById('whatsapp-own-variations').innerHTML = whatsappVariationsHtml('wa-own', getWhatsAppTemplates(profile.act), profile.act);
     document.getElementById('whatsapp-own-template-feedback').textContent = '';
     renderOwnWhatsAppSection();
   }
@@ -13768,12 +13992,52 @@ function getWhatsAppTemplates(act) {
   return list.length ? list : [getFirstMessageTemplate(act)];
 }
 
-function whatsappVariationsHtml(prefix, templates) {
+function whatsappVariationsHtml(prefix, templates, act) {
   const rows = [];
   for (let i = 0; i < WHATSAPP_MAX_VARIATIONS; i++) {
     rows.push(`<textarea class="field-input" id="${prefix}-var-${i}" rows="3" style="resize:vertical;width:100%;box-sizing:border-box;font-size:13px;margin-bottom:8px;" placeholder="${i === 0 ? 'Mensagem principal' : 'Variação ' + (i + 1) + ' (opcional)'}">${escapeHtml(templates[i] || '')}</textarea>`);
   }
+  rows.push(`<button type="button" class="ci-add ai-var-btn" id="${prefix}-ai-var" onclick="aiVariationsFrom('${escapeJsString(prefix)}', '${escapeJsString(act || '')}')">${uiIco('sparkles', 13)} Gerar variações com IA a partir da mensagem principal</button>`);
   return rows.join('');
+}
+
+// ----- Variações com IA a partir de uma mensagem que a pessoa escreveu -----
+// Usa a mesma rota de copy com IA (/ai/copy): a mensagem base vai como pedido e como contexto.
+function aiVariationBrief(base) {
+  return {
+    objetivo: 'Criar variações da MENSAGEM BASE para enviar no WhatsApp sem repetir o mesmo texto. Cada variação diz a mesma coisa com outras palavras: mesma oferta, mesmo tom, mesmo pedido de ação e tamanho parecido. Não invente preços, prazos, nomes ou informações que não estão na mensagem base. Mantenha exatamente como estão as variáveis entre chaves, como {primeiro_nome} e {nome}.',
+    publico: '', oferta: '', tom: 'o mesmo da mensagem base', cta: 'o mesmo da mensagem base',
+    extra: 'MENSAGEM BASE:\n' + base
+  };
+}
+async function requestAiVariations(act, base, count, kind) {
+  const r = await window._fb.whatsapp('/ai/copy', act, { kind: kind || 'campaign', count, brief: aiVariationBrief(base), context: 'MENSAGEM BASE (reescreva em variações):\n' + base });
+  const norm = t => String(t || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const seen = new Set([norm(base)]);
+  return (r.texts || []).map(t => String(t || '').trim()).filter(t => t && !seen.has(norm(t)) && seen.add(norm(t))).slice(0, count);
+}
+async function aiVariationsFrom(prefix, act) {
+  if (prefix === 'camp' && _campaignDraft) act = _campaignDraft.act;
+  if (!act) return showToast('Escolha o cliente no topo do menu.', 'warning');
+  const baseEl = document.getElementById(prefix + '-var-0');
+  const base = (baseEl && baseEl.value || '').trim();
+  if (base.length < 10) { showToast('Escreva primeiro a mensagem principal (o primeiro campo). A IA cria as variações a partir dela.', 'warning', 6000); if (baseEl) baseEl.focus(); return; }
+  const others = [];
+  for (let i = 1; i < WHATSAPP_MAX_VARIATIONS; i++) { const el = document.getElementById(prefix + '-var-' + i); if (el) others.push(el); }
+  if (others.some(el => el.value.trim()) && !confirm('As variações já preenchidas serão trocadas pelas da IA. Continuar?')) return;
+  const btn = document.getElementById(prefix + '-ai-var');
+  const label = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Gerando variações... (uns 5 segundos)'; }
+  try {
+    const texts = await requestAiVariations(act, base, others.length);
+    if (!texts.length) throw new Error('A IA não devolveu variações. Tente de novo.');
+    others.forEach((el, i) => { el.value = texts[i] || ''; });
+    showToast(`${texts.length} variação(ões) criadas a partir da sua mensagem. Revise antes de salvar.`, 'success', 7000);
+  } catch (e) {
+    showToast('Não foi possível gerar as variações: ' + e.message, 'error', 7000);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = label; }
+  }
 }
 
 function readWhatsAppVariations(prefix) {
@@ -13818,7 +14082,7 @@ function renderAdminWhatsAppList() {
         <div style="display:flex;"><span style="flex:1;">Atendente com IA</span><b>${s.aiAgent && s.aiAgent.enabled ? 'Ligado' : 'Desligado'}</b></div>
         <div style="display:flex;"><span style="flex:1;">Enviadas hoje</span><b>${sentToday}</b></div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="huv-btn" onclick="toggleWhatsAppSettings('${jsLogin}')">Configurações</button><button class="huv-btn" onclick="openAiAgent('${jsLogin}')">🤖 Atendente IA</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="huv-btn" onclick="toggleWhatsAppSettings('${jsLogin}')">Configurações</button><button class="huv-btn" onclick="openAiAgent('${jsLogin}')">${uiIco('bot')} Atendente IA</button></div>
       <div id="wa-settings-${id}" style="display:none;"></div>
     </div>`;
   }).join('');
@@ -13846,7 +14110,7 @@ function toggleWhatsAppSettings(login) {
     <div style="border-top:1px solid var(--border);padding-top:4px;">
       <div style="${section}">Mensagens</div>
       <div style="${hint}">Cadastre variações da mesma mensagem: a cada envio uma é sorteada, o que reduz o risco de bloqueio. Use {primeiro_nome}, {nome}, {rede_social} e {origem}.</div>
-      ${whatsappVariationsHtml('wa-' + id, getWhatsAppTemplates(act))}
+      ${whatsappVariationsHtml('wa-' + id, getWhatsAppTemplates(act), act)}
 
       ${waHasMultiple(act) ? `<div style="${section}">WhatsApp da 1ª mensagem automática</div>${waLinePickerHtml(act, 'wa-first-lines-' + id, s.firstMessageLines, 'Por qual WhatsApp sai a 1ª mensagem?')}` : ''}
 
@@ -14093,8 +14357,8 @@ function aiLeadBtnHtml(lead, kind) {
   const resume = st === 'paused' || st === 'idle';
   const idle = st === 'idle';
   const why = resume ? (lead.aiPausedReason ? ' (' + lead.aiPausedReason + ')' : '') : '';
-  if (kind === 'card') return `<button class="card-btn ${resume ? 'card-btn-ai-off' : 'card-btn-ai-on'}" onclick="toggleLeadAi('${id}', ${resume})" title="${idle ? 'Ativar o atendimento da IA neste lead' : resume ? 'Reativar o atendimento da IA' + escapeHtml(why) : 'Pausar a IA neste lead'}">${idle ? '🤖 Ativar' : resume ? '🤖 Reativar' : '⏸ IA'}</button>`;
-  return `<button class="chat-pill ${resume ? 'active' : ''}" onclick="toggleLeadAi('${id}', ${resume})" title="${idle ? 'Ativar a IA neste lead' : resume ? 'A IA está parada neste lead' + escapeHtml(why) : 'A IA está atendendo este lead'}">${idle ? '🤖 Ativar IA' : resume ? '🤖 Reativar IA' : '⏸ Pausar IA'}</button>`;
+  if (kind === 'card') return `<button class="card-btn ${resume ? 'card-btn-ai-off' : 'card-btn-ai-on'}" onclick="toggleLeadAi('${id}', ${resume})" title="${idle ? 'Ativar o atendimento da IA neste lead' : resume ? 'Reativar o atendimento da IA' + escapeHtml(why) : 'Pausar a IA neste lead'}">${idle ? uiIco('bot', 13) + ' Ativar' : resume ? uiIco('bot', 13) + ' Reativar' : uiIco('pause', 13) + ' IA'}</button>`;
+  return `<button class="chat-pill ${resume ? 'active' : ''}" onclick="toggleLeadAi('${id}', ${resume})" title="${idle ? 'Ativar a IA neste lead' : resume ? 'A IA está parada neste lead' + escapeHtml(why) : 'A IA está atendendo este lead'}">${idle ? uiIco('bot') + ' Ativar IA' : resume ? uiIco('bot') + ' Reativar IA' : uiIco('pause') + ' Pausar IA'}</button>`;
 }
 async function toggleLeadAi(leadId, resume) {
   const lead = (typeof getLeads === 'function' ? getLeads() : []).find(l => l.id === leadId) || (_leadsCache || []).find(l => l.id === leadId);
@@ -14720,9 +14984,9 @@ function renderAgenteIaView() {
   box.innerHTML = head + `<div class="huv-grid">
     <article class="huv-card">
       <div class="huv-card-head">
-        <div class="huv-avatar" style="background:var(--amber-dim);color:var(--amber);font-size:20px;">🤖</div>
+        <div class="huv-avatar" style="background:var(--amber-dim);color:var(--amber);font-size:20px;">${uiIco('bot', 22)}</div>
         <div style="flex:1;min-width:0;"><div class="huv-name">${escapeHtml(a.name || 'Atendente IA')}</div><div class="huv-sub">Responde em: ${escapeHtml(stageNames.join(', ') || 'nenhuma coluna')}</div></div>
-        <span style="font-weight:700;font-size:13px;color:${a.enabled ? 'var(--green)' : 'var(--muted)'};">${a.enabled ? '● ' : '⏸ '}${state}</span>
+        <span style="font-weight:700;font-size:13px;color:${a.enabled ? 'var(--green)' : 'var(--muted)'};">${a.enabled ? '● ' : uiIco('pause', 12) + ' '}${state}</span>
       </div>
       <div class="huv-stats">
         <div><div class="huv-stat-label">Leads atendidos</div><div class="huv-stat-value">${served}</div></div>
@@ -14731,8 +14995,8 @@ function renderAgenteIaView() {
       </div>
       <div class="huv-actions">
         <button class="huv-btn primary" onclick="openAiAgentForNav()">Editar</button>
-        <button class="huv-btn" onclick="toggleAiAgentRun()">${a.enabled ? '⏸ Pausar' : '▶ Iniciar'}</button>
-        <button class="huv-btn" onclick="openAiSimPopup()">💬 Conversa teste</button>
+        <button class="huv-btn" onclick="toggleAiAgentRun()">${a.enabled ? uiIco('pause') + ' Pausar' : uiIco('play') + ' Iniciar'}</button>
+        <button class="huv-btn" onclick="openAiSimPopup()">${uiIco('message')} Conversa teste</button>
       </div>
     </article>
   </div>`;
@@ -15024,7 +15288,7 @@ function captureRuleRowHtml(act, rule) {
         ${stages.map(s => `<option value="${escapeHtml(s.id)}" ${(rule.stage || 'novo') === s.id ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
       </select>
       <input class="field-input wa-rule-origem" style="${input}flex:1;min-width:150px;" placeholder="Campanha / origem (opcional)" value="${escapeHtml(rule.origem || '')}">
-      <label class="integ-toggle" style="font-size:12px;white-space:nowrap;" title="Quem mandar esta frase passa a ser atendido pelo agente de IA"><input type="checkbox" class="wa-rule-ai" ${rule.ai ? 'checked' : ''}> 🤖 Acionar a IA</label>
+      <label class="integ-toggle" style="font-size:12px;white-space:nowrap;" title="Quem mandar esta frase passa a ser atendido pelo agente de IA"><input type="checkbox" class="wa-rule-ai" ${rule.ai ? 'checked' : ''}> ${uiIco('bot', 13)} Acionar a IA</label>
       <button style="${wbtn}background:transparent;color:#f87171;border-color:#f87171;" onclick="this.closest('.wa-rule').remove()" title="Remover">✕</button>
     </div>`;
 }
@@ -15116,7 +15380,7 @@ async function loadWhatsAppQr(act, line) {
 function onWhatsAppConnected() {
   clearInterval(_whatsappPoll);
   _whatsappPoll = null;
-  setWhatsAppQrBody('<div style="font-size:40px;">✅</div><div style="font-weight:600;color:var(--text);">WhatsApp conectado!</div>');
+  setWhatsAppQrBody('<div style="color:var(--green);">' + uiIco('checkCircle', 44) + '</div><div style="font-weight:600;color:var(--text);">WhatsApp conectado!</div>');
   setTimeout(closeWhatsAppQrModal, 1800);
 }
 
@@ -15410,12 +15674,12 @@ window.saveFieldsConfig = saveFieldsConfig;
 function showToast(msg, type = 'info', duration = 3500, opts) {
   const container = document.getElementById('toast-container');
   if (!container) { alert(msg); return; }
-  const icons = { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' };
+  const icons = { success: 'checkCircle', error: 'xCircle', info: 'info', warning: 'alert' };
   const toast = document.createElement('div');
   toast.className = 'toast ' + type;
   const icon = document.createElement('span');
   icon.className = 'toast-icon';
-  icon.textContent = icons[type] || 'ℹ️';
+  icon.innerHTML = uiIco(icons[type] || 'info', 16);
   const text = document.createElement('span');
   text.className = 'toast-msg';
   text.textContent = String(msg || '');
@@ -15782,7 +16046,7 @@ function renderKanban() {
   let qtdFechado = 0;
   leads.forEach(l => {
     if (['fechado','fechou'].includes(getArteAzulejoStageForBoard(l, filterAct)) && l.valor) {
-      const raw = String(l.valor).replace(/[^0-9,.]/g,'').replace(',','.');
+      const raw = String(l.valor).replace(/[^0-9,.]/g,'').replace(/\.(?=\d{3})/g,'').replace(',','.'); // "3.100" = 3100, "1.500,00" = 1500
       const val = parseFloat(raw);
       if (!isNaN(val) && val > 0) { totalFechado += val; qtdFechado++; }
     }
@@ -15842,14 +16106,14 @@ function renderKanban() {
       const autoBtn = document.createElement('button');
       autoBtn.className = 'col-auto-btn' + (colAuto ? (colAuto.active ? ' on' : ' off') : '');
       autoBtn.title = colAuto ? `Automação desta coluna: ${colAuto.name || 'sem nome'} (${colAuto.active ? 'ligada' : 'desligada'}). Clique para editar.` : 'Criar automação para esta coluna';
-      autoBtn.innerHTML = '⚡' + (colAuto ? `<span>${escapeHtml(limitText(colAuto.name || 'Fluxo', 12))}</span>` : '');
+      autoBtn.innerHTML = uiIco('bolt', 13) + (colAuto ? `<span>${escapeHtml(limitText(colAuto.name || 'Fluxo', 12))}</span>` : '');
       autoBtn.addEventListener('click', e => { e.stopPropagation(); openColumnAutomation(stage.id); });
       headerLeft.appendChild(autoBtn);
       if (stageLeads.length) {
         const bulkBtn = document.createElement('button');
         bulkBtn.className = 'col-auto-btn';
         bulkBtn.title = 'Mover leads desta coluna em massa';
-        bulkBtn.innerHTML = '⇄'; bulkBtn.style.padding = '1px 8px';
+        bulkBtn.innerHTML = uiIco('swap', 13); bulkBtn.style.padding = '1px 8px';
         bulkBtn.addEventListener('click', e => { e.stopPropagation(); openBulkMove(stage.id); });
         headerLeft.appendChild(bulkBtn);
       }
@@ -15857,7 +16121,7 @@ function renderKanban() {
         const playBtn = document.createElement('button');
         playBtn.className = 'col-auto-btn on';
         playBtn.title = 'Começar a automação com os ' + stageLeads.length + ' lead(s) que já estão nesta coluna';
-        playBtn.innerHTML = '▶'; playBtn.style.padding = '1px 8px';
+        playBtn.innerHTML = uiIco('play', 12); playBtn.style.padding = '1px 8px';
         playBtn.addEventListener('click', e => { e.stopPropagation(); startColumnAutomation(stage.id, stage.label, colAuto.name, stageLeads.length); });
         headerLeft.appendChild(playBtn);
       }
@@ -15962,7 +16226,7 @@ function renderKanban() {
       cardHTML += `<div class="card-phone">${escapeHtml(lead.phone || 'Sem telefone')}</div>`;
       if (lead.email) cardHTML += `<div class="card-email">${escapeHtml(lead.email)}</div>`;
       if (lead.obs) cardHTML += renderLeadObservationHtml(lead.obs);
-      if (lead.proximaAcao) cardHTML += `<div class="card-proxima">⏰ ${escapeHtml(limitText(lead.proximaAcao, 120))}${lead.proximaData ? ' · ' + new Date(lead.proximaData + 'T12:00:00').toLocaleDateString('pt-BR') : ''}</div>`;
+      if (lead.proximaAcao) cardHTML += `<div class="card-proxima">${uiIco('clock', 12)} ${escapeHtml(limitText(lead.proximaAcao, 120))}${lead.proximaData ? ' · ' + new Date(lead.proximaData + 'T12:00:00').toLocaleDateString('pt-BR') : ''}</div>`;
       const waPhone = onlyDigits(lead.phone);
       const waLink = waPhone ? `https://wa.me/55${waPhone}` : '';
       cardHTML += `<div class="card-actions">
@@ -17095,17 +17359,17 @@ function renderWhatsAppAlert() {
 
   const parts = [];
   if (server) {
-    parts.push(`<div><b>⚠️ Servidor do WhatsApp fora do ar</b> ${escapeHtml(waAlertTime(server.since))}. O computador ou servidor onde ele roda pode estar desligado ou sem internet. Enquanto isso, nenhum cliente envia nem recebe mensagens pelo CRM.</div>`);
+    parts.push(`<div><b>${uiIco('alert', 14)} Servidor do WhatsApp fora do ar</b> ${escapeHtml(waAlertTime(server.since))}. O computador ou servidor onde ele roda pode estar desligado ou sem internet. Enquanto isso, nenhum cliente envia nem recebe mensagens pelo CRM.</div>`);
   }
   if (isAdmin) {
     if (down.length) {
-      parts.push(`<div style="margin-top:${server ? 8 : 0}px;"><b>⚠️ WhatsApp desconectado ${down.length > 1 ? `(${down.length} clientes)` : ''}</b> — é preciso ler o QR Code de novo:</div>`);
+      parts.push(`<div style="margin-top:${server ? 8 : 0}px;"><b>${uiIco('alert', 14)} WhatsApp desconectado ${down.length > 1 ? `(${down.length} clientes)` : ''}</b> — é preciso ler o QR Code de novo:</div>`);
       parts.push(down.map(s => { const act = s.act || s.id.split('__')[0]; const line = s.line || 'main'; return `<div class="wa-alert-row"><span>• <b>${escapeHtml(getClientDisplayName(act) || act)}${line !== 'main' ? ' · ' + escapeHtml(waLineLabel(act, line)) : ''}</b> — ${s.loggedOut ? 'desconectado pelo celular' : 'sem conexão'} ${escapeHtml(waAlertTime(s.since))}</span><button class="wa-alert-btn" onclick="openWaReconnect('${escapeJsString(act)}','${escapeJsString(line)}')">Reconectar</button></div>`; }).join(''));
     }
   } else if (down.length) {
     const s = down[0];
     const sLine = s.line || 'main';
-    parts.push(`<div><b>⚠️ Seu WhatsApp${sLine !== 'main' ? ' "' + escapeHtml(waLineLabel(s.act || s.id, sLine)) + '"' : ''} foi desconectado do CRM</b> ${escapeHtml(waAlertTime(s.since))}.</div>
+    parts.push(`<div><b>${uiIco('alert', 14)} Seu WhatsApp${sLine !== 'main' ? ' "' + escapeHtml(waLineLabel(s.act || s.id, sLine)) + '"' : ''} foi desconectado do CRM</b> ${escapeHtml(waAlertTime(s.since))}.</div>
       <div style="margin-top:4px;">Enquanto estiver desconectado, as mensagens do WhatsApp não viram card no kanban, o Chat não recebe mensagens e a 1ª mensagem automática não sai. Leia o QR Code de novo para voltar a funcionar.</div>
       <div style="margin-top:8px;"><button class="wa-alert-btn" onclick="openWaReconnect('${escapeJsString(s.act || s.id.split('__')[0])}','${escapeJsString(sLine)}')">Reconectar agora</button></div>`);
   }
@@ -17424,8 +17688,8 @@ function renderR2Alert() {
   el.style.borderColor = level === 3 ? '' : '#E0A43A';
   const n = v => v.toLocaleString('pt-BR');
   const msg = level === 3
-    ? `<b>⛔ Prospecção pausada até o dia 1º</b><br>As buscas deste mês chegaram a ${n(reads)} de ${n(limit)} leituras grátis do armazenamento (R2). Para não gerar cobrança, a Prospecção ficou bloqueada e volta sozinha no próximo mês.`
-    : `<b>⚠️ Prospecção usou ${Math.floor(pct)}% do limite grátis do mês</b><br>${n(reads)} de ${n(limit)} leituras do armazenamento (R2). Ao chegar em 90%, a Prospecção é pausada automaticamente até o dia 1º, sem cobrança.`;
+    ? `<b>${uiIco('ban', 14)} Prospecção pausada até o dia 1º</b><br>As buscas deste mês chegaram a ${n(reads)} de ${n(limit)} leituras grátis do armazenamento (R2). Para não gerar cobrança, a Prospecção ficou bloqueada e volta sozinha no próximo mês.`
+    : `<b>${uiIco('alert', 14)} Prospecção usou ${Math.floor(pct)}% do limite grátis do mês</b><br>${n(reads)} de ${n(limit)} leituras do armazenamento (R2). Ao chegar em 90%, a Prospecção é pausada automaticamente até o dia 1º, sem cobrança.`;
   el.innerHTML = `<button class="wa-alert-close" title="Esconder até o próximo nível" onclick="_r2AlertHiddenLevel=${level};renderR2Alert()">×</button><div>${msg}</div>`;
 }
 
@@ -17602,7 +17866,7 @@ function onMobileClientChange() {
 // ===== Logins extras do cliente: o admin escolhe quais áreas cada login enxerga =====
 const SUB_LOGIN_VIEWS = [
   ['report', 'Dashboard'], ['analise', 'Atendimento'], ['crm', 'Funil de vendas'], ['chat', 'Chat'], ['contatos', 'Contatos'],
-  ['automacoes', 'Automações'], ['capi', 'Conversões Meta'], ['instagram', 'Instagram'], ['posts', 'Postagens'], ['prospeccao', 'Prospecção'], ['campanhas', 'Campanhas'], ['cadencia', 'Cadência'], ['whatsapp', 'Conexões']
+  ['automacoes', 'Automações'], ['capi', 'Conversões Meta'], ['instagram', 'Instagram'], ['posts', 'Postagens'], ['prospeccao', 'Prospecção'], ['campanhas', 'Campanhas'], ['cadencia', 'Cadência'], ['whatsapp', 'Conexões'], ['modelos', 'Modelos oficiais']
 ];
 let SUB_LOGINS = [];
 let _subVault = {};
@@ -17886,6 +18150,8 @@ function onCrmClientChange() {
 }
 
 </script>
+<script src="ajuda-ia.js?v=3" defer></script>
+<script src="modelos.js?v=1" defer></script>
 </body>
 </html>
 
