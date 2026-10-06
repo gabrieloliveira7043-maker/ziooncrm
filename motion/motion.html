@@ -1,0 +1,93 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1080px;height:1920px;overflow:hidden;background:#070B16;font-family:Inter,sans-serif;color:#EEF1FA}
+#stage{position:relative;width:1080px;height:1920px;overflow:hidden;background:radial-gradient(900px 900px at 50% 30%,#13204a 0%,#070B16 70%)}
+.glow{position:absolute;width:900px;height:900px;border-radius:50%;background:radial-gradient(circle,rgba(91,123,255,.35),transparent 65%);filter:blur(40px)}
+.abs{position:absolute;left:0;right:0;text-align:center}
+.big{font-size:118px;font-weight:800;line-height:1.05;letter-spacing:-3px}
+.acc{color:#8EA6FF}
+.card{position:absolute;width:300px;height:120px;border-radius:22px;background:#131B31;border:2px solid rgba(160,185,255,.18);padding:20px 24px;font-size:28px;font-weight:600}
+.card small{display:block;color:#838DAA;font-weight:500;font-size:22px;margin-top:8px}
+.col{position:absolute;top:560px;width:320px;height:900px;border-radius:28px;background:rgba(13,19,36,.85);border:2px solid rgba(160,185,255,.1)}
+.col h4{position:absolute;top:24px;left:28px;font-size:28px;color:#B2BBD3;font-weight:600}
+.pill{position:absolute;left:90px;right:90px;height:150px;border-radius:75px;background:#131B31;border:2px solid rgba(160,185,255,.2);font-size:50px;font-weight:700;display:flex;align-items:center;padding-left:60px;gap:30px}
+.pill i{width:70px;height:70px;border-radius:50%;background:#5B7BFF;display:inline-block}
+.stat{position:absolute;left:90px;right:90px;height:300px;border-radius:40px;background:#0D1324;border:2px solid rgba(160,185,255,.15);padding:44px 54px}
+.stat .l{font-size:34px;color:#838DAA;font-weight:600}.stat .v{font-size:110px;font-weight:800;letter-spacing:-3px}
+.bar{position:absolute;left:54px;bottom:40px;height:14px;border-radius:7px;background:linear-gradient(90deg,#5B7BFF,#8EA6FF)}
+#logo{transform-origin:center top;position:absolute;width:260px;height:260px;border-radius:60px;left:410px}
+</style></head><body><div id="stage">
+<div class="glow" id="g1" style="left:90px;top:200px"></div>
+<img id="logo" src="logo.png">
+<div class="abs big" id="s1a" style="top:760px">Seus leads<br>estão <span class="acc">se perdendo?</span></div>
+<div class="abs" id="s2t" style="top:290px;font-size:84px;font-weight:800;letter-spacing:-2px">Cada lead no<br><span class="acc">lugar certo</span></div>
+<div id="board"></div>
+<div class="abs" id="s3t" style="top:290px;font-size:84px;font-weight:800;letter-spacing:-2px">Números em<br><span class="acc">tempo real</span></div>
+<div id="stats"></div>
+<div class="abs" id="s4t" style="top:290px;font-size:84px;font-weight:800;letter-spacing:-2px">Tudo em <span class="acc">um só lugar</span></div>
+<div id="pills"></div>
+<div class="abs" id="s5a" style="top:1010px;font-size:130px;font-weight:800;letter-spacing:-4px">Zioon CRM</div>
+<div class="abs" id="s5b" style="top:1180px;font-size:48px;color:#B2BBD3;font-weight:500">Mais organização. Mais vendas.</div>
+<div class="abs" id="cta" style="top:1380px"><span style="display:inline-block;padding:36px 90px;border-radius:80px;background:#5B7BFF;font-size:52px;font-weight:700">Conheça o Zioon</span></div>
+</div><script>
+const $=id=>document.getElementById(id);
+const clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
+const ease=x=>1-Math.pow(1-clamp(x),3);
+const back=x=>{x=clamp(x);const c=1.70158;return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2)};
+// helper: element visible in [a,b] with fade in/out
+function vis(el,t,a,b,y0=60){const i=ease((t-a)/.5),o=1-ease((t-(b-.4))/.4);const k=Math.min(i,o);el.style.opacity=k;el.style.transform=`translateY(${(1-i)*y0}px) scale(${.96+.04*i})`;}
+// build board
+const cols=['Novo','Contato','Proposta'];
+const names=['Marina S.','Carlos A.','Julia F.','Pedro L.','Ana B.','Rafael M.'];
+const board=$('board');
+cols.forEach((c,i)=>{const d=document.createElement('div');d.className='col';d.style.left=(30+i*345)+'px';d.innerHTML=`<h4>${c}</h4>`;board.appendChild(d)});
+const cards=names.map((n,i)=>{const d=document.createElement('div');d.className='card';d.innerHTML=`${n}<small>Lead · Instagram</small>`;board.appendChild(d);return d});
+// stats
+const stats=[['Leads no mês',1284,'',.8],['Custo por lead',4.82,'R$ ',.45],['Vendas fechadas',137,'',.65]];
+const sEls=stats.map((s,i)=>{const d=document.createElement('div');d.className='stat';d.style.top=(600+i*360)+'px';d.innerHTML=`<div class="l">${s[0]}</div><div class="v"></div><div class="bar"></div>`;$('stats').appendChild(d);return d});
+// pills
+const labels=['Funil de vendas','Relatórios em PDF','Assistente com IA'];
+const pEls=labels.map((l,i)=>{const d=document.createElement('div');d.className='pill';d.style.top=(560+i*220)+'px';d.innerHTML=`<i></i>${l}`;$('pills').appendChild(d);return d});
+window.render=function(t){
+ // glow drifts
+ $('g1').style.transform=`translate(${Math.sin(t*.6)*120}px,${Math.cos(t*.5)*160+ t*20}px)`;
+ // logo: center intro -> top
+ const lt=ease((t-.1)/.7), mv=ease((t-2.2)/.7);
+ const ly=(1-mv)*420+ (mv)*50; 
+ $('logo').style.top=(ly)+'px';
+ let lo=lt; if(t>13.3){lo=1-ease((t-13.3)/.4)} if(t>=12.0&&t<13.3){lo=1}
+ $('logo').style.opacity=t>=12?(t<13.3?0:ease((t-13.7)/.4)):lo;
+ // scene 5 logo placement
+ if(t>=13){ $('logo').style.top='640px'; $('logo').style.transform=`scale(${.7+.3*back((t-13.6)/.7)})`;}
+ else $('logo').style.transform=`scale(${(.6+.4*back((t-.1)/.8))*(1-.45*mv)})`;
+ // s1
+ vis($('s1a'),t,0.7,2.7,80);
+ // s2 board 2.9-6.3
+ const b=$('board');vis(b,t,2.9,6.5,40);
+ vis($('s2t'),t,2.9,6.5,40);
+ const dest=[0,0,1,1,2,2];
+ cards.forEach((c,i)=>{
+  const t0=3.3+i*.18, p=ease((t-t0)/.5);
+  let col=0; // flows Novo -> Contato -> Proposta
+  const mv1=ease((t-(4.4+i*.12))/.6), mv2=dest[i]==2?ease((t-(5.2+i*.1))/.6):0;
+  const cx=30+10+ (dest[i]>=1?mv1*345:0)+ (dest[i]==2?mv2*345:0);
+  const y=560+80+ i*135 + (1-p)*-200;
+  c.style.left=cx+'px';c.style.top=y+'px';c.style.opacity=p;
+ });
+ // s3
+ vis($('s3t'),t,6.4,9.6,40);vis($('stats'),t,6.4,9.6,40);
+ sEls.forEach((e,i)=>{const p=ease((t-(6.8+i*.25))/1.4);const s=stats[i];
+  const v=s[1]*p;e.querySelector('.v').textContent=s[2]+(s[2]?v.toFixed(2).replace('.',','):Math.round(v).toLocaleString('pt-BR'));
+  e.querySelector('.bar').style.width=(p*s[3]*(1080-180-108))+'px';
+  e.style.opacity=ease((t-(6.6+i*.2))/.4);});
+ // s4
+ vis($('s4t'),t,9.5,12.5,40);$('pills').style.opacity=1;
+ pEls.forEach((e,i)=>{const p=back((t-(9.8+i*.3))/.6);const o=1-ease((t-12.1)/.4);e.style.opacity=clamp(p)*o;e.style.transform=`translateX(${(1-clamp(p))*-400}px)`;});
+ // s5
+ const p5=ease((t-13.2)/.5);
+ $('s5a').style.opacity=p5;$('s5a').style.transform=`translateY(${(1-p5)*50}px)`;
+ const p6=ease((t-13.6)/.5);$('s5b').style.opacity=p6;$('s5b').style.transform=`translateY(${(1-p6)*40}px)`;
+ const p7=back((t-14.0)/.6);$('cta').style.opacity=clamp(p7);$('cta').style.transform=`scale(${.8+.2*clamp(p7)})`;
+};
+window.render(0);
+</script></body></html>
