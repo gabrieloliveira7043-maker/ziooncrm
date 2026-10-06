@@ -278,3 +278,153 @@ html.tema-novo .crm-new-lead-banner { border-radius: 10px; }
   html.tema-novo .kanban-card .card-actions { gap: 4px; }
   html.tema-novo .mnav-sheet-item { border-radius: 12px; font-weight: 600; }
 }
+
+/* ---------- 10. Chat ---------- */
+html.tema-novo .chat-wrap { border-radius: 14px; border-color: var(--border); }
+html.tema-novo .chat-side { padding: 16px 16px 0; }
+html.tema-novo .chat-side > div:first-child > div:first-child { font-family: var(--font-display); font-size: 20px !important; letter-spacing: -0.01em; }
+html.tema-novo #chat-search { height: 36px; border-radius: 8px; font-size: 13px; }
+html.tema-novo :is(#chat-filters, #chat-tag-filter) { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; gap: 6px !important; }
+html.tema-novo :is(#chat-filters, #chat-tag-filter)::-webkit-scrollbar { display: none; }
+html.tema-novo .chat-pill { border-radius: 99px; font-weight: 600; font-size: 12px; padding: 5px 11px; color: var(--muted2); flex: none; }
+html.tema-novo .chat-pill:hover { background: var(--n-hover); color: var(--text); }
+html.tema-novo .chat-pill.active { background: var(--accent-glow); border-color: transparent; color: var(--accent2); }
+html.tema-novo .chat-list { margin: 0 -16px; }
+html.tema-novo .chat-row { position: relative; gap: 12px; padding: 12px 16px; border-bottom: none; transition: background-color .15s var(--n-ease); }
+html.tema-novo .chat-row + .chat-row::before { content: ""; position: absolute; top: 0; left: 66px; right: 16px; height: 1px; background: var(--border); }
+html.tema-novo .chat-row:hover { background: var(--n-hover); }
+html.tema-novo .chat-row.active { background: var(--accent-glow2); }
+html.tema-novo .chat-row.active::before, html.tema-novo .chat-row.active + .chat-row::before { display: none; }
+html.tema-novo .chat-avatar { width: 38px; height: 38px; font-size: 12.5px; font-weight: 600; color: var(--muted2); background: var(--surface3); }
+html.tema-novo .chat-row-name { font-size: 13.5px; font-weight: 600; letter-spacing: -0.005em; }
+html.tema-novo .chat-row-time { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+html.tema-novo .chat-row.unread .chat-row-time { color: var(--accent2); font-weight: 600; }
+html.tema-novo .chat-row-preview { font-size: 12.5px; color: var(--muted); }
+html.tema-novo .chat-row.unread .chat-row-preview { color: var(--muted2); }
+html.tema-novo .chat-unread { background: var(--btn-bg); color: var(--btn-text); font-size: 11px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
+html.tema-novo .chat-row-tags { gap: 4px; margin-top: 6px; }
+html.tema-novo .chat-tag { font-size: 11px; font-weight: 600; border-radius: 99px; padding: 2px 8px; display: inline-flex; align-items: center; gap: 4px; }
+html.tema-novo .chat-head { padding: 14px 18px; gap: 10px; }
+html.tema-novo .chat-msgs { padding: 18px 20px; gap: 6px; }
+html.tema-novo .chat-day { font-size: 11.5px; font-weight: 600; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 99px; padding: 3px 12px; }
+html.tema-novo .chat-bubble { border-radius: 14px; padding: 9px 12px; font-size: 13.5px; line-height: 1.5; max-width: min(70%, 560px); }
+html.tema-novo .chat-bubble.in { background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); border-top-left-radius: 4px; }
+html.tema-novo .chat-bubble.out { background: color-mix(in srgb, var(--accent) 15%, var(--surface)); border-top-right-radius: 4px; }
+html.tema-novo .chat-meta { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+html.tema-novo .chat-note { border-radius: 12px; background: var(--amber-dim); border-color: transparent; }
+html.tema-novo .chat-sched { border-radius: 12px; }
+html.tema-novo .chat-input { gap: 4px; padding: 10px 12px; align-items: center; }
+html.tema-novo .chat-input textarea { min-width: 0; min-height: 40px; border-radius: 10px; padding: 9px 12px; }
+html.tema-novo .chat-input .chat-tool { width: 36px; height: 36px; padding: 0; border: none; border-radius: 8px; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; flex: none; cursor: pointer; }
+html.tema-novo .chat-input .chat-tool:hover { background: var(--n-hover); color: var(--text); }
+html.tema-novo .chat-input .chat-tool .ui-ico { margin: 0; }
+html.tema-novo #chat-send-btn { height: 40px; border-radius: 10px !important; padding: 0 16px !important; flex: none; }
+html.tema-novo .chat-qr-pop, html.tema-novo .chat-msg-menu { border-radius: 12px; border-color: transparent; box-shadow: var(--n-pop); }
+html.tema-novo .chat-msg-menu button { display: flex; align-items: center; gap: 8px; }
+html.tema-novo .chat-info { padding: 18px; }
+html.tema-novo .ci-label { font-weight: 700; letter-spacing: .08em; font-size: 10.5px; }
+html.tema-novo .ci-v { font-weight: 700; }
+html.tema-novo .ci-add { border-radius: 99px; font-weight: 600; }
+html.tema-novo :is(.chat-pill, .huv-btn, .ci-add, .btn-manage-stages, .pl-tab) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+html.tema-novo #chat-nav-badge { background: var(--btn-bg) !important; color: var(--btn-text) !important; }
+html.tema-novo .chat-info { width: 264px; }
+html.tema-novo .chat-input .chat-tool { width: 32px; height: 32px; }
+html.tema-novo .chat-input { gap: 2px; }
+html.tema-novo .chat-input textarea { margin-inline: 4px; }
+
+/* ---------- 11. Dashboard ---------- */
+html.tema-novo .page-meta { font-family: var(--font); font-size: 12.5px; color: var(--muted); }
+html.tema-novo .section-label { font-size: 12px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--muted2); }
+html.tema-novo .metrics-grid { gap: 12px; }
+html.tema-novo .metric-card { min-height: 0; padding: 18px 18px 16px; justify-content: flex-start; border-color: var(--border); }
+html.tema-novo .metric-card:hover { transform: none; border-color: var(--border2); }
+html.tema-novo .metric-icon { position: absolute; top: 16px; right: 16px; width: auto; height: auto; margin: 0; background: transparent !important; }
+html.tema-novo .metric-icon svg { stroke: var(--muted) !important; width: 16px; height: 16px; stroke-width: 1.75; }
+html.tema-novo .metric-label { font-size: 12.5px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--muted2); margin: 0 26px 10px 0; }
+html.tema-novo .metric-value { font-size: 26px; line-height: 1.1; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; }
+html.tema-novo .metric-sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
+html.tema-novo .metric-card.featured { background: color-mix(in srgb, var(--accent) 9%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+html.tema-novo .metric-card.featured :is(.metric-label, .metric-sub) { color: var(--accent2); opacity: 1; }
+html.tema-novo .metric-card.featured .metric-value { color: var(--text); }
+html.tema-novo .metric-card.featured .metric-icon svg { stroke: var(--accent2) !important; }
+html.tema-novo .metric-picker-btn { border-radius: 8px; font-weight: 600; }
+html.tema-novo .metric-picker-menu { border-radius: 12px; box-shadow: var(--n-pop); border-color: transparent; }
+html.tema-novo .chart-tab { border-radius: 99px; font-weight: 600; }
+html.tema-novo .chart-tab.active { background: var(--accent-glow); border-color: transparent; color: var(--accent2); }
+html.tema-novo .chart-type-btn { border-radius: 8px; }
+html.tema-novo :is(.campaigns-table, .an-table) th { font-size: 11.5px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--muted); background: transparent; }
+html.tema-novo :is(.campaigns-table, .an-table) td { font-variant-numeric: tabular-nums; }
+html.tema-novo thead { background: transparent; }
+html.tema-novo .topbar { border-bottom-color: var(--border); }
+html.tema-novo .welcome-icon { background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); color: var(--muted2); border-radius: 14px; }
+
+/* ---------- 12. Atendimento ---------- */
+html.tema-novo :is(.an-filters, .pr-filters, .ct-filters) label { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; color: var(--muted2); }
+html.tema-novo .an-kpi-label { font-weight: 600; color: var(--muted2); }
+html.tema-novo .an-kpi-value { font-weight: 700; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; }
+html.tema-novo .an-card-title { font-weight: 700; }
+html.tema-novo .an-pill { font-weight: 600; border-radius: 99px; }
+html.tema-novo .integ-empty { border-radius: 12px; border-color: var(--border); }
+
+/* ---------- 13. Clientes, Campanhas, Contatos e demais telas ---------- */
+html.tema-novo .huv-crumb { font-weight: 600; }
+html.tema-novo .huv-card { gap: 14px; padding: 16px; }
+html.tema-novo .huv-card-head { align-items: flex-start; flex-wrap: wrap; }
+html.tema-novo .huv-card-head > div:nth-child(2) { flex: 1 1 0; min-width: 0; }
+html.tema-novo .huv-avatar { width: 38px; height: 38px; font-weight: 700; font-size: 13px; }
+html.tema-novo .huv-name { font-size: 14.5px; }
+html.tema-novo .huv-sub { font-weight: 500; font-variant-numeric: tabular-nums; }
+html.tema-novo .huv-chip { font-weight: 600; font-size: 11px; padding: 3px 9px; }
+html.tema-novo .huv-stats { background: transparent; box-shadow: inset 0 0 0 1px var(--border); border-radius: 10px; }
+html.tema-novo .huv-stat-label { text-transform: none; letter-spacing: 0; font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html.tema-novo .huv-stat-value { font-weight: 700; font-variant-numeric: tabular-nums; }
+html.tema-novo .huv-pill { font-weight: 600; font-size: 12.5px; padding: 6px 13px; }
+html.tema-novo .huv-pill.active { background: var(--text); color: var(--bg); }
+html.tema-novo :is(.ct-head, .cp-head) { background: transparent; text-transform: none; letter-spacing: 0; font-size: 11.5px; font-weight: 600; }
+html.tema-novo :is(.ct-strong, .cp-name) { font-weight: 600; }
+html.tema-novo :is(.ct-row, .cp-row, .pr-row, .pr-one-row) { transition: background-color .15s var(--n-ease); }
+html.tema-novo :is(.ct-row, .pr-row):not(.ct-head):hover { background: var(--n-hover); }
+html.tema-novo .ct-stage { font-weight: 600; border-radius: 99px; }
+html.tema-novo .ct-chat { border-color: var(--border); background: transparent; border-radius: 8px; }
+html.tema-novo .cp-kpi-value { font-variant-numeric: tabular-nums; }
+html.tema-novo .cp-bar { height: 6px; background: var(--surface3); }
+html.tema-novo .cp-status { font-weight: 600; }
+html.tema-novo .cw-day { border-radius: 12px; }
+html.tema-novo .cw-item { border-radius: 8px; border-width: 1px; }
+html.tema-novo .cw-wd { font-weight: 600; letter-spacing: .06em; }
+html.tema-novo .cw-num { font-weight: 700; font-variant-numeric: tabular-nums; }
+html.tema-novo .wa-card-stats { background: transparent; box-shadow: inset 0 0 0 1px var(--border); font-weight: 600; }
+html.tema-novo .pr-tab.active, html.tema-novo .pl-tab.active { background: var(--btn-bg); color: var(--btn-text); }
+html.tema-novo :is(.pr-checks, .pr-kvs) { border-color: var(--border); border-radius: 12px; }
+html.tema-novo .pr-cnae-menu { border-radius: 12px; box-shadow: var(--n-pop); border-color: transparent; }
+
+/* Automações: editor de fluxo */
+html.tema-novo .flow-editor { border-radius: 14px; }
+html.tema-novo .flow-name { font-weight: 700; }
+html.tema-novo .flow-add { border-radius: 8px; font-weight: 600; background: transparent; }
+html.tema-novo .flow-add:hover { background: var(--n-hover); border-color: var(--border2); }
+html.tema-novo .flow-canvas { background-image: radial-gradient(var(--border) 1px, transparent 1px); }
+html.tema-novo .flow-node { border: 1px solid var(--border2); border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+html.tema-novo .flow-node.selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow2), 0 2px 8px rgba(0,0,0,.12); }
+html.tema-novo .flow-node-head { border-left-width: 3px; border-radius: 11px 11px 0 0; font-weight: 700; }
+html.tema-novo .flow-zoom button { border-radius: 8px; font-weight: 600; }
+html.tema-novo .flow-kinds button { border-radius: 8px; font-weight: 600; }
+html.tema-novo .auto-step { border-radius: 10px; border-color: var(--border); }
+
+/* Integrações, Conexões, Ajuda e Conta */
+html.tema-novo :is(.integ-title, .help-card h3) { font-weight: 700; letter-spacing: -0.005em; }
+html.tema-novo .integ-btn { border-radius: 8px; font-weight: 600; }
+html.tema-novo .help-tag { font-weight: 600; letter-spacing: .04em; border-radius: 99px; }
+html.tema-novo .help-chip { border-radius: 99px; font-weight: 600; }
+html.tema-novo #help-search-input { border-radius: 10px; }
+html.tema-novo .notifications-list, html.tema-novo .notification-item { border-color: var(--border); }
+html.tema-novo .metric-value { white-space: nowrap; }
+html.tema-novo.marca-zioon .metric-value { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+html.tema-novo .huv-stat-label { font-size: 11px; }
+html.tema-novo .huv-stats { gap: 6px; padding: 10px; }
+html.tema-novo .ct-cell { font-weight: 500; }
+@media (max-width: 768px) {
+  html.tema-novo .metric-value, html.tema-novo.marca-zioon .metric-value { font-size: 20px; }
+  html.tema-novo .metric-card { padding: 14px; }
+  html.tema-novo .mobile-header .mobile-header-sub { font-family: var(--font); }
+}
