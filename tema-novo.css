@@ -468,3 +468,40 @@ html.tema-novo[data-paleta][data-theme="light"] {
 /* No claro da Zioon o menu é azul-marinho: o destaque do menu usa a cor clara da combinação */
 html.tema-novo.marca-zioon[data-paleta][data-theme="light"] { --n-side-brand: var(--pa); }
 html.tema-novo[data-paleta="grafite"][data-theme="light"] .sidebar .nav-item.active svg { stroke: #FFFFFF; }
+
+/* ---------- 15. "CRM inteiro": a combinação tinge fundo, menu, cartões e colunas ---------- */
+/* Os neutros viram uma mistura da cor escolhida com o cinza-base; o texto continua com o mesmo contraste. */
+html.tema-novo[data-paleta][data-paleta-total] {
+  --bg: color-mix(in srgb, var(--pa) 7%, #0A0B0E);
+  --surface: color-mix(in srgb, var(--pa) 9%, #121318);
+  --surface2: color-mix(in srgb, var(--pa) 11%, #181920);
+  --surface3: color-mix(in srgb, var(--pa) 15%, #20222A);
+  --col-bg: color-mix(in srgb, var(--pa) 8%, #0F1014);
+  --border: color-mix(in srgb, var(--pa) 18%, rgba(255,255,255,0.05));
+  --border2: color-mix(in srgb, var(--pa) 26%, rgba(255,255,255,0.09));
+  --sidebar-bg: color-mix(in srgb, var(--pa) 16%, #07080A);
+  --n-side-bg: color-mix(in srgb, var(--pa) 16%, #07080A);
+  --n-side-line: color-mix(in srgb, var(--pa) 22%, rgba(255,255,255,.05));
+  --n-side-field: color-mix(in srgb, var(--pa) 14%, rgba(255,255,255,.03));
+  --n-side-active: color-mix(in srgb, var(--pa) 22%, rgba(255,255,255,.06));
+  --n-side-hover: color-mix(in srgb, var(--pa) 12%, rgba(255,255,255,.04));
+}
+html.tema-novo[data-paleta][data-paleta-total][data-theme="light"] {
+  --bg: color-mix(in srgb, var(--pl) 7%, #F6F6F3);
+  --surface: color-mix(in srgb, var(--pl) 2%, #FFFFFF);
+  --surface2: color-mix(in srgb, var(--pl) 5%, #FAFAF8);
+  --surface3: color-mix(in srgb, var(--pl) 11%, #EEEEEA);
+  --col-bg: color-mix(in srgb, var(--pl) 9%, #EFEFEB);
+  --border: color-mix(in srgb, var(--pl) 15%, #E6E4DE);
+  --border2: color-mix(in srgb, var(--pl) 24%, #D8D5CE);
+  /* No claro, o menu lateral fica na cor escolhida, em tom profundo */
+  --sidebar-bg: color-mix(in srgb, var(--pl) 78%, #000000);
+  --n-side-bg: color-mix(in srgb, var(--pl) 78%, #000000);
+  --n-side-line: rgba(255,255,255,.12);
+  --n-side-field: rgba(255,255,255,.09);
+  --n-side-hover: rgba(255,255,255,.08);
+  --n-side-active: rgba(255,255,255,.15);
+  --n-side-text: rgba(255,255,255,.82);
+  --n-side-muted: rgba(255,255,255,.55);
+  --n-side-brand: #FFFFFF;
+}

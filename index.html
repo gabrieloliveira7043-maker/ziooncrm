@@ -1194,6 +1194,11 @@ html[data-theme="light"] .login-overlay { background: var(--paper); }
 .paleta-head { display:flex; gap:12px; align-items:flex-start; margin-bottom:16px; color:var(--muted2); }
 .paleta-titulo { font-size:15px; font-weight:700; color:var(--text); }
 .paleta-sub { font-size:12.5px; color:var(--muted); margin-top:2px; line-height:1.5; }
+.paleta-alcance { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
+.paleta-alcance button { display:flex; flex-direction:column; gap:2px; text-align:left; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:transparent; color:var(--text); font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
+.paleta-alcance button small { font-size:11.5px; font-weight:500; color:var(--muted); }
+.paleta-alcance button:hover { background:var(--surface2); }
+.paleta-alcance button.on { border-color:var(--text); background:var(--surface2); }
 .paleta-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(92px, 1fr)); gap:8px; }
 .paleta-op { display:flex; flex-direction:column; align-items:center; gap:8px; padding:12px 6px 10px; border-radius:12px; border:1px solid var(--border); background:transparent; color:var(--text); cursor:pointer; font:inherit; transition:border-color .15s, background-color .15s; }
 .paleta-op:hover { background:var(--surface2); }
@@ -2601,9 +2606,9 @@ td { font-family: var(--font); font-size: 13px; }
   } catch (e) {}
 })();
 </script>
-<link rel="stylesheet" href="tema-novo.css?v=4">
+<link rel="stylesheet" href="tema-novo.css?v=5">
 <script src="icones.js?v=3"></script>
-<script src="cores.js?v=1"></script>
+<script src="cores.js?v=2"></script>
 </head>
 <body>
 
@@ -3659,7 +3664,8 @@ td { font-family: var(--font); font-size: 13px; }
         <div style="font-size:13px; color:var(--muted); margin-bottom:28px;">Altere sua senha de acesso ao relatório.</div>
 
         <div class="paleta-card">
-          <div class="paleta-head"><i data-ico="palette" data-size="18"></i><div><div class="paleta-titulo">Cores do CRM</div><div class="paleta-sub">Escolha a cor de destaque. A escolha fica guardada neste aparelho e vale no tema claro e no escuro.</div></div></div>
+          <div class="paleta-head"><i data-ico="palette" data-size="18"></i><div><div class="paleta-titulo">Cores do CRM</div><div class="paleta-sub">Escolha a cor e onde ela aparece. A escolha fica guardada neste aparelho e vale no tema claro e no escuro.</div></div></div>
+          <div id="paleta-alcance" class="paleta-alcance" role="group" aria-label="Onde a cor aparece"></div>
           <div id="paleta-picker" class="paleta-grid"></div>
         </div>
 

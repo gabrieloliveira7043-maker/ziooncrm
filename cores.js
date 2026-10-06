@@ -1,7 +1,7 @@
 // Combinações de cores do CRM. A escolha fica guardada neste aparelho e muda a cor de destaque
 // (botões, item aberto do menu, etiquetas ativas, foco). As cores de cada combinação estão no tema-novo.css.
 (function () {
-  var CHAVE = 'crm_paleta';
+  var CHAVE = 'crm_paleta', CHAVE_TOTAL = 'crm_paleta_total';
   var PALETAS = [
     { id: 'dourado',   nome: 'Dourado',   escuro: '#C9A24A', claro: '#8A6A1F' },
     { id: 'marinho',   nome: 'Marinho',   escuro: '#5B7BFF', claro: '#001645' },
@@ -21,24 +21,39 @@
   function atual() {
     try { return localStorage.getItem(CHAVE) || PADRAO; } catch (e) { return PADRAO; }
   }
-  // A cor padrão da marca não leva atributo: vale exatamente o visual da marca.
-  function aplica(id) {
-    if (!id || id === PADRAO) html.removeAttribute('data-paleta');
-    else html.setAttribute('data-paleta', id);
+  // "CRM inteiro": a cor tinge fundo, menu, cartões e colunas. Desligado, muda só os destaques.
+  function total() {
+    try { return localStorage.getItem(CHAVE_TOTAL) === '1'; } catch (e) { return false; }
   }
-  aplica(atual());
+  // Só destaques com a cor da marca: sem atributo, vale exatamente o visual da marca.
+  function aplica() {
+    var id = atual(), t = total();
+    if (id === PADRAO && !t) html.removeAttribute('data-paleta');
+    else html.setAttribute('data-paleta', id);
+    if (t) html.setAttribute('data-paleta-total', ''); else html.removeAttribute('data-paleta-total');
+  }
+  aplica();
 
   window.escolherPaleta = function (id) {
     try { localStorage.setItem(CHAVE, id); } catch (e) {}
-    aplica(id);
+    aplica();
+    window.renderPaletas();
+  };
+  window.escolherAlcancePaleta = function (inteiro) {
+    try { localStorage.setItem(CHAVE_TOTAL, inteiro ? '1' : '0'); } catch (e) {}
+    aplica();
     window.renderPaletas();
   };
 
   window.renderPaletas = function () {
     var box = document.getElementById('paleta-picker');
     if (!box) return;
-    var sel = atual();
+    var sel = atual(), t = total();
     var claro = html.getAttribute('data-theme') === 'light';
+    var alcance = document.getElementById('paleta-alcance');
+    if (alcance) alcance.innerHTML =
+      '<button type="button" class="' + (t ? '' : 'on') + '" aria-pressed="' + !t + '" onclick="escolherAlcancePaleta(false)">Só os destaques<small>botões, ícones e itens ativos</small></button>' +
+      '<button type="button" class="' + (t ? 'on' : '') + '" aria-pressed="' + t + '" onclick="escolherAlcancePaleta(true)">CRM inteiro<small>fundo, menu, cartões e colunas</small></button>';
     box.innerHTML = PALETAS.map(function (p) {
       var on = p.id === sel;
       return '<button type="button" class="paleta-op' + (on ? ' on' : '') + '" onclick="escolherPaleta(\'' + p.id + '\')" aria-pressed="' + on + '" title="' + p.nome + '">' +
