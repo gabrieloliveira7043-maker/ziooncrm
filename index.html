@@ -7712,6 +7712,7 @@ function aiCampaignCopy() {
   if (!_campaignDraft) return;
   openAiCopyModal({
     act: _campaignDraft.act, kind: 'campaign', count: 4, title: 'Mensagens da campanha com IA',
+    baseText: (document.getElementById('camp-var-0')?.value || '').trim(),
     hint: 'A IA escreve 4 variações diferentes da mesma mensagem (cada contato recebe uma sorteada, o que ajuda contra bloqueio).',
     onResult: (texts, tip) => {
       for (let i = 0; i < WHATSAPP_MAX_VARIATIONS; i++) { const el = document.getElementById('camp-var-' + i); if (el) el.value = texts[i] || ''; }
@@ -10558,15 +10559,39 @@ function readAiBrief(prefix, act) {
 // Janela de copy com IA (campanhas e blocos do fluxo). onResult(texts, tip).
 let _aiCopyCtx = null;
 function openAiCopyModal(opts) {
-  _aiCopyCtx = opts;
+  _aiCopyCtx = { ...opts, mode: 'brief' };
+  const maxVar = Math.max(1, (opts.maxTotal || WHATSAPP_MAX_VARIATIONS) - 1);
   openHuvenModal(opts.title || 'Escrever com IA', `
-    <div class="integ-muted" style="font-size:12.5px;margin-bottom:10px;">${escapeHtml(opts.hint || 'Conte o objetivo e a IA escreve as mensagens. Você revisa antes de usar.')}</div>
-    ${aiBriefFieldsHtml('ai-copy', opts.act)}
+    <div class="pr-tabs" style="margin-bottom:12px;">
+      <button class="pr-tab active" id="ai-copy-mode-brief" onclick="setAiCopyMode('brief')">A partir do objetivo</button>
+      <button class="pr-tab" id="ai-copy-mode-base" onclick="setAiCopyMode('base')">A partir de uma mensagem minha</button>
+    </div>
+    <div id="ai-copy-brief-box">
+      <div class="integ-muted" style="font-size:12.5px;margin-bottom:10px;">${escapeHtml(opts.hint || 'Conte o objetivo e a IA escreve as mensagens. Você revisa antes de usar.')}</div>
+      ${aiBriefFieldsHtml('ai-copy', opts.act)}
+    </div>
+    <div id="ai-copy-base-box" style="display:none;">
+      <div class="integ-muted" style="font-size:12.5px;margin-bottom:10px;">Cole ou escreva a sua mensagem. A IA cria variações com outras palavras, mantendo a oferta, o tom e o pedido de ação. A sua mensagem continua como a primeira.</div>
+      <label class="field-label">Sua mensagem</label>
+      <textarea class="field-input" id="ai-copy-base" rows="5" maxlength="2000" style="width:100%;box-sizing:border-box;resize:vertical;margin-bottom:10px;" placeholder="Ex.: Oi {primeiro_nome}! Vi que você se interessou pelo plano premium. Posso te mandar os detalhes?">${escapeHtml(opts.baseText || '')}</textarea>
+      <label class="field-label">Quantas variações</label>
+      <select class="field-input" id="ai-copy-count" style="width:auto;margin-bottom:12px;">${Array.from({ length: maxVar }, (_, i) => i + 1).map(n => `<option value="${n}" ${n === maxVar ? 'selected' : ''}>${n}</option>`).join('')}</select>
+    </div>
     <button class="btn-save" id="ai-copy-btn" style="width:auto;padding:9px 16px;" onclick="runAiCopy()">Gerar mensagens</button> <span id="ai-copy-fb" class="integ-muted"></span>`, 560);
+}
+function setAiCopyMode(mode) {
+  if (!_aiCopyCtx) return;
+  _aiCopyCtx.mode = mode;
+  document.getElementById('ai-copy-mode-brief').classList.toggle('active', mode === 'brief');
+  document.getElementById('ai-copy-mode-base').classList.toggle('active', mode === 'base');
+  document.getElementById('ai-copy-brief-box').style.display = mode === 'brief' ? '' : 'none';
+  document.getElementById('ai-copy-base-box').style.display = mode === 'base' ? '' : 'none';
+  document.getElementById('ai-copy-btn').textContent = mode === 'base' ? 'Gerar variações' : 'Gerar mensagens';
 }
 async function runAiCopy() {
   const o = _aiCopyCtx;
   if (!o) return;
+  if (o.mode === 'base') return runAiCopyFromBase(o);
   const brief = readAiBrief('ai-copy', o.act);
   const fb = document.getElementById('ai-copy-fb');
   const btn = document.getElementById('ai-copy-btn');
@@ -10576,6 +10601,21 @@ async function runAiCopy() {
     const r = await window._fb.whatsapp('/ai/copy', o.act, { kind: o.kind, count: o.count, brief, context: o.context || '' });
     closeHuvenModal();
     o.onResult(r.texts, r.tip);
+  } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = e.message; btn.disabled = false; }
+}
+// Modo "a partir de uma mensagem minha": devolve [mensagem da pessoa, ...variações] para quem abriu a janela.
+async function runAiCopyFromBase(o) {
+  const base = (document.getElementById('ai-copy-base').value || '').trim();
+  const count = +document.getElementById('ai-copy-count').value || 1;
+  const fb = document.getElementById('ai-copy-fb');
+  const btn = document.getElementById('ai-copy-btn');
+  if (base.length < 10) { fb.style.color = 'var(--red)'; fb.textContent = 'Escreva a mensagem base.'; return; }
+  btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'Gerando variações... (uns 5 segundos)';
+  try {
+    const texts = await requestAiVariations(o.act, base, count, o.kind);
+    if (!texts.length) throw new Error('A IA não devolveu variações. Tente de novo.');
+    closeHuvenModal();
+    o.onResult([base, ...texts], '');
   } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = e.message; btn.disabled = false; }
 }
 
@@ -11083,6 +11123,7 @@ function aiFlowNodeCopy() {
   const nodeId = n.id;
   openAiCopyModal({
     act: _flow.act, kind: 'message', count: 2, title: 'Texto desta mensagem com IA', context: flowNodeContext(nodeId),
+    maxTotal: 3, baseText: ((n.data && n.data.templates) || [])[0] || '',
     hint: 'A IA escreve esta mensagem considerando a posição dela no fluxo (as anteriores, a espera e se o lead respondeu).',
     onResult: texts => {
       const node = _flow && _flow.nodes.find(x => x.id === nodeId);
@@ -13775,7 +13816,7 @@ async function renderWhatsAppView() {
     adminPanel.style.display = 'none';
     clientPanel.style.display = 'block';
     subtitle.textContent = 'Conecte o número de WhatsApp que vai falar com os seus leads.';
-    document.getElementById('whatsapp-own-variations').innerHTML = whatsappVariationsHtml('wa-own', getWhatsAppTemplates(profile.act));
+    document.getElementById('whatsapp-own-variations').innerHTML = whatsappVariationsHtml('wa-own', getWhatsAppTemplates(profile.act), profile.act);
     document.getElementById('whatsapp-own-template-feedback').textContent = '';
     renderOwnWhatsAppSection();
   }
@@ -13833,12 +13874,52 @@ function getWhatsAppTemplates(act) {
   return list.length ? list : [getFirstMessageTemplate(act)];
 }
 
-function whatsappVariationsHtml(prefix, templates) {
+function whatsappVariationsHtml(prefix, templates, act) {
   const rows = [];
   for (let i = 0; i < WHATSAPP_MAX_VARIATIONS; i++) {
     rows.push(`<textarea class="field-input" id="${prefix}-var-${i}" rows="3" style="resize:vertical;width:100%;box-sizing:border-box;font-size:13px;margin-bottom:8px;" placeholder="${i === 0 ? 'Mensagem principal' : 'Variação ' + (i + 1) + ' (opcional)'}">${escapeHtml(templates[i] || '')}</textarea>`);
   }
+  rows.push(`<button type="button" class="ci-add ai-var-btn" id="${prefix}-ai-var" onclick="aiVariationsFrom('${escapeJsString(prefix)}', '${escapeJsString(act || '')}')">${uiIco('sparkles', 13)} Gerar variações com IA a partir da mensagem principal</button>`);
   return rows.join('');
+}
+
+// ----- Variações com IA a partir de uma mensagem que a pessoa escreveu -----
+// Usa a mesma rota de copy com IA (/ai/copy): a mensagem base vai como pedido e como contexto.
+function aiVariationBrief(base) {
+  return {
+    objetivo: 'Criar variações da MENSAGEM BASE para enviar no WhatsApp sem repetir o mesmo texto. Cada variação diz a mesma coisa com outras palavras: mesma oferta, mesmo tom, mesmo pedido de ação e tamanho parecido. Não invente preços, prazos, nomes ou informações que não estão na mensagem base. Mantenha exatamente como estão as variáveis entre chaves, como {primeiro_nome} e {nome}.',
+    publico: '', oferta: '', tom: 'o mesmo da mensagem base', cta: 'o mesmo da mensagem base',
+    extra: 'MENSAGEM BASE:\n' + base
+  };
+}
+async function requestAiVariations(act, base, count, kind) {
+  const r = await window._fb.whatsapp('/ai/copy', act, { kind: kind || 'campaign', count, brief: aiVariationBrief(base), context: 'MENSAGEM BASE (reescreva em variações):\n' + base });
+  const norm = t => String(t || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const seen = new Set([norm(base)]);
+  return (r.texts || []).map(t => String(t || '').trim()).filter(t => t && !seen.has(norm(t)) && seen.add(norm(t))).slice(0, count);
+}
+async function aiVariationsFrom(prefix, act) {
+  if (prefix === 'camp' && _campaignDraft) act = _campaignDraft.act;
+  if (!act) return showToast('Escolha o cliente no topo do menu.', 'warning');
+  const baseEl = document.getElementById(prefix + '-var-0');
+  const base = (baseEl && baseEl.value || '').trim();
+  if (base.length < 10) { showToast('Escreva primeiro a mensagem principal (o primeiro campo). A IA cria as variações a partir dela.', 'warning', 6000); if (baseEl) baseEl.focus(); return; }
+  const others = [];
+  for (let i = 1; i < WHATSAPP_MAX_VARIATIONS; i++) { const el = document.getElementById(prefix + '-var-' + i); if (el) others.push(el); }
+  if (others.some(el => el.value.trim()) && !confirm('As variações já preenchidas serão trocadas pelas da IA. Continuar?')) return;
+  const btn = document.getElementById(prefix + '-ai-var');
+  const label = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Gerando variações... (uns 5 segundos)'; }
+  try {
+    const texts = await requestAiVariations(act, base, others.length);
+    if (!texts.length) throw new Error('A IA não devolveu variações. Tente de novo.');
+    others.forEach((el, i) => { el.value = texts[i] || ''; });
+    showToast(`${texts.length} variação(ões) criadas a partir da sua mensagem. Revise antes de salvar.`, 'success', 7000);
+  } catch (e) {
+    showToast('Não foi possível gerar as variações: ' + e.message, 'error', 7000);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = label; }
+  }
 }
 
 function readWhatsAppVariations(prefix) {
@@ -13911,7 +13992,7 @@ function toggleWhatsAppSettings(login) {
     <div style="border-top:1px solid var(--border);padding-top:4px;">
       <div style="${section}">Mensagens</div>
       <div style="${hint}">Cadastre variações da mesma mensagem: a cada envio uma é sorteada, o que reduz o risco de bloqueio. Use {primeiro_nome}, {nome}, {rede_social} e {origem}.</div>
-      ${whatsappVariationsHtml('wa-' + id, getWhatsAppTemplates(act))}
+      ${whatsappVariationsHtml('wa-' + id, getWhatsAppTemplates(act), act)}
 
       ${waHasMultiple(act) ? `<div style="${section}">WhatsApp da 1ª mensagem automática</div>${waLinePickerHtml(act, 'wa-first-lines-' + id, s.firstMessageLines, 'Por qual WhatsApp sai a 1ª mensagem?')}` : ''}
 
