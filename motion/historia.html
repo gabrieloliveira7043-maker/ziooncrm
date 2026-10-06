@@ -32,11 +32,13 @@ svg.av{position:absolute}
 <div class="t" id="t2" style="top:130px;font-size:150px" ><span id="clock">23:40</span></div>
 <div class="t" id="t2b" style="top:330px;font-size:60px;letter-spacing:-1px;font-weight:700">O dono dorme. <span class="red">Os leads não.</span></div>
 <div class="t" id="t3" style="top:150px;font-size:92px">Mas a <span class="acc">IA da Zioon</span><br>atende por você</div>
+<div class="t" id="tE" style="top:150px;font-size:80px">E já cai <span class="acc">sozinho</span><br>na agenda do vendedor</div>
 <div class="t" id="t4" style="top:130px;font-size:92px">No dia seguinte:<br><span class="acc">agenda cheia</span></div>
 <div id="phone"><div class="notch"></div>
  <div class="pane" id="pA"></div>
  <div class="pane" id="pB"></div>
  <div class="pane" id="pC"></div>
+ <div class="pane" id="pE"></div>
  <div class="pane" id="pD"></div>
 </div>
 <div class="t" id="cnt" style="top:1665px;font-size:64px;letter-spacing:-1px"></div>
@@ -82,20 +84,24 @@ const card=document.createElement('div');card.className='card';card.style.top='1
 $('pD').innerHTML='<div class="hdr">Agenda · Hoje</div>';
 const hrs=[['08:30','Clínica Vida','Reunião de apresentação'],['10:00','João Silva','Reunião de apresentação'],['11:30','Studio Fit','Reunião de apresentação'],['14:00','Paula Ribeiro','Reunião de apresentação'],['16:30','Carlos Alves','Reunião de apresentação']];
 const mt=hrs.map((h,i)=>{const s=document.createElement('div');s.className='slot';s.style.top=(180+i*190)+'px';s.innerHTML=`<span class="h">${h[0]}</span>`;$('pD').appendChild(s);const m=document.createElement('div');m.className='mt';m.style.top=(180+i*190)+'px';m.innerHTML=`${h[0]} · ${h[1]}<small>${h[2]}</small>`;$('pD').appendChild(m);return m});
+$('pE').innerHTML='<div class="hdr">Agenda · Vendedor Lucas <small style="color:#8EA6FF">● Calendar</small></div>';
+['08:30','10:00','11:30','14:00'].forEach((h,i)=>{const sl=document.createElement('div');sl.className='slot';sl.style.top=(180+i*190)+'px';sl.innerHTML=`<span class="h">${h}</span>`;$('pE').appendChild(sl)});
+const ev=document.createElement('div');ev.className='mt';ev.style.top='370px';ev.style.height='170px';ev.innerHTML='10:00 · João Silva<small>Reunião de apresentação · lead da IA</small>';$('pE').appendChild(ev);
+const ok=document.createElement('div');ok.className='card';ok.style.top='960px';ok.innerHTML='Adicionado automaticamente<small>Sem ninguém digitar nada. Lembrete enviado ao vendedor.</small>';$('pE').appendChild(ok);
 function fmt(m){m=Math.floor(m)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')}
 window.render=function(t){
- const night=clamp(Math.min(ease((t-3.7)/.6),1-ease((t-15.3)/.6)));
+ const night=clamp(Math.min(ease((t-3.7)/.6),1-ease((t-17.9)/.6)));
  $('bgnight').style.opacity=night;$('stars').style.opacity=night;
  // titles
  show($('t1'),t,.2,3.9);
  const nb=win(t,3.9,8.0);show($('t2'),t,3.9,8.0,30);show($('t2b'),t,4.4,8.0,30);
  $('clock').textContent=fmt(23*60+40+ clamp((t-3.9)/3.5)*212);
  show($('t3'),t,8.0,15.0,40);
- show($('t4'),t,15.2,19.4,40);
+ show($('tE'),t,15.0,17.9,40);show($('t4'),t,17.9,22.0,40);
  // phone
- const pv=win(t,.4,19.4,.6,.5);$('phone').style.opacity=pv;$('phone').style.transform=`translateY(${(1-ease((t-.4)/.7))*120}px)`;
+ const pv=win(t,.4,22.0,.6,.5);$('phone').style.opacity=pv;$('phone').style.transform=`translateY(${(1-ease((t-.4)/.7))*120}px)`;
  $('pA').style.opacity=win(t,.4,4.4,.1,.4);$('pB').style.opacity=win(t,4.3,8.6,.4,.4);
- $('pC').style.opacity=win(t,8.1,15.4,.4,.4);$('pD').style.opacity=win(t,15.2,19.4,.4,.4);
+ $('pC').style.opacity=win(t,8.1,15.4,.4,.4);$('pE').style.opacity=win(t,15.0,17.9,.4,.4);$('pD').style.opacity=win(t,17.7,22.0,.4,.4);
  nA.forEach((n,i)=>{const p=back((t-(1+i*.45))/.5);n.style.opacity=clamp(p);n.style.transform=`translateY(${(1-clamp(p))*-60}px) scale(${.9+.1*clamp(p)})`});
  nB.forEach((n,i)=>{const p=back((t-(4.7+i*.5))/.5);n.style.opacity=clamp(p);n.style.transform=`translateY(${(1-clamp(p))*-60}px)`});
  // counters
@@ -107,11 +113,11 @@ window.render=function(t){
  $('cnt').innerHTML=ct;$('cnt').style.left=(t>=4.2&&t<8.4)?'290px':'60px';$('cnt').style.fontSize=(t>=4.2&&t<8.4)?'50px':'64px';$('cnt').style.opacity=ck;
  // owner
  const asleep=t>=4.2&&t<15.4;
- const ov=(t>=4.2&&t<8.4)?win(t,4.4,8.4):(t>=15.2&&t<19.4?win(t,15.4,19.4):0);
+ const ov=(t>=4.2&&t<8.4)?win(t,4.4,8.4):(t>=17.8&&t<22.0?win(t,18.0,22.0):0);
  $('owner').style.opacity=ov;
- $('owner').style.top=(t>=15.2?'1630px':'1620px');
- $('eyesShut').style.display=(t<15.6)?'':'none';$('eyesOpen').style.display=(t<15.6)?'none':'';
- $('mouth').style.display=(t<15.6)?'none':'';
+ $('owner').style.top=(t>=17.8?'1630px':'1620px');
+ $('eyesShut').style.display=(t<18.2)?'':'none';$('eyesOpen').style.display=(t<18.2)?'none':'';
+ $('mouth').style.display=(t<18.2)?'none':'';
  $('zzz').style.opacity=(t>=4.2&&t<8.4)?win(t,4.6,8.4)*(.6+.4*Math.sin(t*5)):0;
  $('zzz').style.transform=`translateY(${-Math.sin(t*3)*8}px)`;
  // chat
@@ -121,14 +127,17 @@ window.render=function(t){
  tw.forEach(w=>{if(t>=w[0]&&t<w[1]){tv=1;typ.style.top=w[2]+'px'}});typ.style.opacity=tv;
  // last AI line after customer's ok
  const cp=back((t-14.3)/.5);card.style.opacity=clamp(cp);card.style.transform=`scale(${.9+.1*clamp(cp)})`;
+ // sync pane
+ const ep=back((t-15.6)/.6);ev.style.opacity=clamp(ep);ev.style.transform=`translateY(${(1-clamp(ep))*-200}px) scale(${.9+.1*clamp(ep)})`;
+ const op=back((t-16.5)/.5);ok.style.opacity=clamp(op);ok.style.transform=`scale(${.9+.1*clamp(op)})`;
  // agenda
- mt.forEach((m,i)=>{const p=back((t-(15.8+i*.4))/.5);m.style.opacity=clamp(p);m.style.transform=`translateX(${(1-clamp(p))*300}px)`});
+ mt.forEach((m,i)=>{const p=back((t-(18.4+i*.4))/.5);m.style.opacity=clamp(p);m.style.transform=`translateX(${(1-clamp(p))*300}px)`});
  // final
- const f=ease((t-19.6)/.5);
- $('presenter').style.opacity=f;$('presenter').style.transform=`scale(${.8+.2*back((t-19.6)/.7)})`;
- const b=back((t-20.2)/.6);$('bubble').style.opacity=clamp(b);$('bubble').style.transform=`scale(${.85+.15*clamp(b)})`;
- const l=ease((t-21)/.5);$('logo').style.opacity=l;$('brand').style.opacity=l;
- const cc=back((t-21.6)/.6);$('cta').style.opacity=clamp(cc);$('cta').style.transform=`scale(${.85+.15*clamp(cc)})`;
+ const f=ease((t-22.2)/.5);
+ $('presenter').style.opacity=f;$('presenter').style.transform=`scale(${.8+.2*back((t-22.2)/.7)})`;
+ const b=back((t-22.8)/.6);$('bubble').style.opacity=clamp(b);$('bubble').style.transform=`scale(${.85+.15*clamp(b)})`;
+ const l=ease((t-23.6)/.5);$('logo').style.opacity=l;$('brand').style.opacity=l;
+ const cc=back((t-24.2)/.6);$('cta').style.opacity=clamp(cc);$('cta').style.transform=`scale(${.85+.15*clamp(cc)})`;
 };
 window.render(0);
 </script></body></html>
