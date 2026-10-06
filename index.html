@@ -7695,10 +7695,10 @@ function campaignDispatchHtml() {
   const num = (field, value, min, max) => `<input type="number" class="field-input" id="camp-${field}" value="${value}" min="${min}" max="${max}" style="width:80px;padding:4px 8px;font-size:12px;">`;
   return `
     <div style="display:flex;flex-direction:column;gap:8px;">
-      <label style="${lbl}"><span style="${rowLabel}">Máximo por dia</span>${num('daily', d.dailyLimit, 1, 1000)} mensagens</label>
-      <label style="${lbl}"><span style="${rowLabel}">Máximo por hora</span>${num('hourly', d.hourlyLimit, 1, 60)} mensagens</label>
-      <label style="${lbl}"><span style="${rowLabel}">Intervalo entre envios</span>${num('minint', d.minIntervalSec, 15, 3600)} a ${num('maxint', d.maxIntervalSec, 15, 3600)} segundos (sorteado)</label>
-      <label style="${lbl}"><span style="${rowLabel}">"Digitando..." / "Gravando..."</span>${num('typmin', d.typingMinSec, 1, 30)} a ${num('typmax', d.typingMaxSec, 1, 30)} segundos</label>
+      <label data-qronly style="${lbl}"><span style="${rowLabel}">Máximo por dia</span>${num('daily', d.dailyLimit, 1, 1000)} mensagens</label>
+      <label data-qronly style="${lbl}"><span style="${rowLabel}">Máximo por hora</span>${num('hourly', d.hourlyLimit, 1, 60)} mensagens</label>
+      <label data-qronly style="${lbl}"><span style="${rowLabel}">Intervalo entre envios</span>${num('minint', d.minIntervalSec, 15, 3600)} a ${num('maxint', d.maxIntervalSec, 15, 3600)} segundos (sorteado)</label>
+      <label data-qronly style="${lbl}"><span style="${rowLabel}">"Digitando..." / "Gravando..."</span>${num('typmin', d.typingMinSec, 1, 30)} a ${num('typmax', d.typingMaxSec, 1, 30)} segundos</label>
       <label style="${lbl}"><span style="${rowLabel}">Horário de envio</span>das ${num('start', d.startHour, 0, 23)} às ${num('end', d.endHour, 1, 24)} h (Brasília)</label>
     </div>
     <div style="margin-top:12px;font-size:12px;color:var(--text);display:flex;flex-direction:column;gap:8px;">
@@ -7708,9 +7708,9 @@ function campaignDispatchHtml() {
         <input type="time" class="field-input" id="camp-start-time" value="09:00" style="width:auto;padding:4px 8px;font-size:12px;" disabled>
       </label>
     </div>
-    <label style="${lbl}margin-top:10px;"><input type="checkbox" id="camp-check" checked> Conferir se o número tem WhatsApp antes de enviar</label>
-    <label style="${lbl}margin-top:6px;"><input type="checkbox" id="camp-warmup"> Número novo (aquecimento: 20/dia nos dias 1–3, 50/dia nos dias 4–7, 100/dia nos dias 8–14)</label>
-    <button style="${wbtn}background:transparent;margin-top:10px;" onclick="resetCampaignDispatch()">Voltar ao recomendado</button>`;
+    <label data-qronly style="${lbl}margin-top:10px;"><input type="checkbox" id="camp-check" checked> Conferir se o número tem WhatsApp antes de enviar</label>
+    <label data-qronly style="${lbl}margin-top:6px;"><input type="checkbox" id="camp-warmup"> Número novo (aquecimento: 20/dia nos dias 1–3, 50/dia nos dias 4–7, 100/dia nos dias 8–14)</label>
+    <button data-qronly style="${wbtn}background:transparent;margin-top:10px;" onclick="resetCampaignDispatch()">Voltar ao recomendado</button>`;
 }
 
 function resetCampaignDispatch() {
@@ -8374,15 +8374,26 @@ function renderCampaignSummary() {
   const n = _campaignDraft.recipients.length;
   const read = readCampaignDispatch();
   const d = read.dispatch || WHATSAPP_DISPATCH_DEFAULTS;
-  const perDay = Math.max(1, Math.min(d.warmup ? 20 : Number(d.dailyLimit) || 100, (Number(d.endHour) - Number(d.startHour)) * (Number(d.hourlyLimit) || 20)));
+  const cloudMode = typeof campMode === 'function' && campMode() === 'cloud';
+  const cloudLines = cloudMode ? Math.max(1, campChosenLines().length) : 0;
+  const perDay = cloudMode
+    ? Math.max(1, (Number(d.endHour) - Number(d.startHour)) * 60 * 3 * cloudLines)
+    : Math.max(1, Math.min(d.warmup ? 20 : Number(d.dailyLimit) || 100, (Number(d.endHour) - Number(d.startHour)) * (Number(d.hourlyLimit) || 20)));
   const days = Math.ceil(n / perDay);
   const hidden = _campaignDraft.recipients.filter(r => !r.phone).length;
   summary.innerHTML = n
     ? `<b>${n} contato(s)</b> na lista${_campaignDraft.duplicates ? ` · ${_campaignDraft.duplicates} repetido(s) removido(s)` : ''}${_campaignDraft.invalid ? ` · ${_campaignDraft.invalid} sem telefone válido` : ''}${hidden ? ` · ${hidden} com número oculto` : ''}.
-       <div style="color:var(--muted);font-size:12px;margin-top:4px;">Com as configurações abaixo (até ${perDay} por dia${d.warmup ? ' no início do aquecimento' : ''}), leva cerca de ${days} dia(s) de envio.</div>`
+       <div style="color:var(--muted);font-size:12px;margin-top:4px;">${cloudMode
+         ? `Pela API oficial saem cerca de ${180 * cloudLines} por hora, dentro do horário de envio: leva cerca de ${n <= 180 * cloudLines ? 'até 1 hora' : Math.ceil(n / (180 * cloudLines)) + ' hora(s)'}${days > 1 ? ` (${days} dia(s))` : ''}.`
+         : `Com as configurações abaixo (até ${perDay} por dia${d.warmup ? ' no início do aquecimento' : ''}), leva cerca de ${days} dia(s) de envio.`}</div>`
     : '<span style="color:var(--muted);">Nenhum contato na lista ainda.</span>';
   const source = _campaignDraft.source;
   const warnings = [];
+  if (cloudMode) {
+    risk.innerHTML = '⚠️ ' + escapeHtml('A Meta limita quantas pessoas diferentes cada número oficial pode chamar por dia (começa em 250 e sobe conforme a qualidade das conversas). Passando disso, os envios do dia falham e aparecem como erro na campanha.');
+    risk.style.display = 'block';
+    return;
+  }
   if (source === 'groups' || source === 'contacts') warnings.push('Mandar mensagem para quem não pediu contato (participantes de grupos, contatos antigos) é o que mais leva o WhatsApp a bloquear números. Prefira pessoas que conhecem a empresa e costumam responder.');
   if (read.dispatch && (d.minIntervalSec < 30 || d.hourlyLimit > 30)) warnings.push('Intervalos abaixo de 30 s ou mais de 30 mensagens por hora aumentam bastante o risco de bloqueio.');
   if (n > 300 && !d.warmup) warnings.push('Lista grande: se o número for novo, marque "Número novo (aquecimento)".');
@@ -13657,8 +13668,10 @@ function renderCampMode() {
   ['contacts', 'groups'].forEach(k => { const b = document.getElementById('camp-src-' + k); if (b) b.style.display = mode === 'cloud' ? 'none' : ''; });
   if (mode === 'cloud' && ['contacts', 'groups'].includes(d.source)) selectCampaignSource('crm');
   const hint = document.getElementById('camp-dispatch-hint');
+  document.querySelectorAll('#campaign-editor [data-qronly]').forEach(el => { el.style.display = mode === 'cloud' ? 'none' : ''; });
+  if (typeof renderCampaignSummary === 'function') renderCampaignSummary();
   if (hint) hint.textContent = mode === 'cloud'
-    ? 'Na API oficial não há risco de bloqueio: limites por dia e por hora e intervalo não se aplicam. Valem os dias e o horário de envio.'
+    ? 'Na API oficial não há trava contra bloqueio: sai direto, só dentro do horário de envio.'
     : 'Já vêm com o recomendado contra bloqueio. Ajuste antes de iniciar; valem só para esta campanha.';
   renderCampCloudBox();
 }
