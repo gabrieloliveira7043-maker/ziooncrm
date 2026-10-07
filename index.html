@@ -10993,7 +10993,7 @@ function flowNodeSummary(n) {
   if (n.type === 'trigger') return `Quando o lead entrar em <b>${escapeHtml(autoStageLabel(act, d.stage))}</b>`;
   if (n.type === 'wait') return `Esperar <b>${Number(d.amount) || 0} ${FLOW_UNITS[d.unit] || 'horas'}</b>`;
   if (n.type === 'move') return d.stage ? `Mover para <b>${escapeHtml(autoStageLabel(act, d.stage))}</b>` : '<span style="color:var(--red);">Escolha a coluna</span>';
-  if (n.type === 'condition') return 'O lead respondeu no WhatsApp desde que entrou no fluxo?';
+  if (n.type === 'condition') return Number(d.waitAmount) > 0 ? `Respondeu em até <b>${Number(d.waitAmount)} ${FLOW_UNITS[d.waitUnit || 'h'] || 'horas'}</b>?` : 'O lead respondeu no WhatsApp desde que entrou no fluxo?';
   if (n.type === 'ai') return 'A IA assume a conversa, qualifica e marca a reunião.';
   const kind = d.kind || 'text';
   const txt = (d.templates || []).find(Boolean) || '';
@@ -11249,6 +11249,8 @@ function renderFlowInspector() {
       <div class="integ-muted" style="margin-top:8px;">Este bloco encerra o fluxo: não precisa ligar nada na saída.</div>
       ${ag.enabled ? '' : '<div class="integ-muted" style="margin-top:8px;color:var(--amber);">Atenção: o Agente de IA deste cliente está pausado ou não foi configurado. Ligue na página Agente de IA, senão ninguém responde.</div>'}`;
   } else if (n.type === 'condition') {
+    html += `<label class="auto-label">Esperar a resposta por</label><div style="display:flex;gap:6px;margin-bottom:6px;"><input type="number" min="0" class="field-input" value="${Number(d.waitAmount) || 0}" style="width:90px;" oninput="setFlowData('waitAmount', Math.max(0, Number(this.value) || 0))"><select class="field-input" onchange="setFlowData('waitUnit', this.value)">${['min', 'h', 'd'].map(u => `<option value="${u}" ${(d.waitUnit || 'h') === u ? 'selected' : ''}>${FLOW_UNITS[u] || u}</option>`).join('')}</select></div>
+      <div class="integ-muted" style="margin-bottom:10px;">Se o lead responder dentro desse tempo, o fluxo segue na hora pelo <b style="color:#1FA855;">Sim</b>. Se o tempo acabar sem resposta, segue pelo <b style="color:#D5563F;">Não</b>. Com 0, confere na hora.</div>`;
     html += `<div class="integ-muted">Confere se o lead mandou alguma mensagem no WhatsApp desde que entrou neste fluxo. Ligue a saída <b style="color:#1FA855;">Sim</b> e a saída <b style="color:#D5563F;">Não</b> aos próximos blocos.</div>
       ${_flow.stopOnReply !== false ? '<div class="integ-muted" style="margin-top:8px;color:var(--amber);">Atenção: com "Parar quando o lead responder" ligado, o fluxo para antes de chegar aqui quando ele responde. Desligue essa regra à esquerda para usar o caminho "Sim".</div>' : ''}`;
   } else if (n.type === 'message') {
