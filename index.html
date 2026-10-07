@@ -14169,7 +14169,7 @@ function toggleWhatsAppSettings(login) {
 const AI_AGENT_DEFAULTS = {
   enabled: false, name: '', business: '', tone: '', goal: '', rules: '',
   stages: ['novo'], stopOnHuman: true, hoursOn: false, from: '08:00', to: '18:00', days: [1, 2, 3, 4, 5],
-  maxReplies: 6, delaySec: 10, qualifiedStage: '', handoffOn: true, autoLead: false, onlyTriggered: false, openWithForm: false, hearAudio: true, igOn: false, mediaOn: false, media: [], examples: '',
+  maxReplies: 6, delaySec: 10, qualifiedStage: '', handoffOn: true, autoLead: false, onlyTriggered: false, triggerPhrases: [], openWithForm: false, hearAudio: true, igOn: false, mediaOn: false, media: [], examples: '',
   calendar: { enabled: false, minutes: 30, days: [1, 2, 3, 4, 5], from: '09:00', to: '18:00', daysAhead: 7, noticeHours: 4, meet: true, title: 'Call de apresentação', commitment: true, askEmail: true },
   handoffMessage: 'Vou pedir para um atendente da equipe continuar com você por aqui, tudo bem?'
 };
@@ -14278,7 +14278,10 @@ function openAiAgent(login, actDirect) {
     <div class="ai-sec"><div class="ai-t">Em quais colunas do funil ela responde</div>
       <div class="ai-h">Só leads que estão nas colunas marcadas recebem resposta da IA.</div>
       <label class="ai-switch" style="margin-top:8px;"><span>Responder só quem for ativado por uma frase ou automação</span><input type="checkbox" id="ai-onlytrig" ${a.onlyTriggered ? 'checked' : ''}></label>
-      <div class="ai-h" style="margin-top:4px;">Ligado: a IA ignora as colunas e só atende o contato que mandou uma frase marcada com "Acionar a IA" (Conexões, captura de leads) ou que passou pelo bloco "Agente de IA entra" de uma automação.</div>
+      <div class="ai-h" style="margin-top:4px;">Ligado: a IA ignora as colunas e só atende o contato que mandou uma das frases abaixo, uma frase marcada com "Acionar a IA" (Conexões, captura de leads) ou que passou pelo bloco "Agente de IA entra" de uma automação.</div>
+      <div class="ai-t" style="margin-top:12px;font-size:13px;">Frases que acionam a IA</div>
+      <div class="ai-h">Uma por linha. Se a mensagem do contato tiver uma delas (maiúsculas e acentos não importam), a IA passa a atender essa pessoa. Funciona mesmo com a captura de leads de Conexões desligada. Se o contato ainda não for lead, o card é criado na primeira coluna marcada acima.</div>
+      <textarea class="field-input" id="ai-triggers" rows="4" style="margin-top:6px;resize:vertical;" placeholder="quero mais informações sobre o crm&#10;vim do anúncio">${escapeHtml((Array.isArray(a.triggerPhrases) ? a.triggerPhrases : []).join('\n'))}</textarea>
       <label class="ai-switch" style="margin-top:8px;"><span>Abrir a conversa com as respostas do formulário</span><input type="checkbox" id="ai-openform" ${a.openWithForm ? 'checked' : ''}></label>
       <div class="ai-h" style="margin-top:4px;">Quando alguém preencher um formulário de página, a IA manda a primeira mensagem no WhatsApp já usando o que a pessoa respondeu (empresa, equipe, volume de leads...) e continua a conversa. Precisa da opção "1ª mensagem automática" ligada em Conexões.</div>
       <label class="ai-switch" style="margin-top:8px;"><span>Atender também quem ainda não é lead (cria o card na primeira coluna marcada)</span><input type="checkbox" id="ai-autolead" ${a.autoLead ? 'checked' : ''}></label>
@@ -14348,6 +14351,7 @@ function readAiAgent() {
       noticeHours: Math.min(72, Math.max(0, v('ai-cal-notice') === '' ? 4 : Number(v('ai-cal-notice')))),
       meet: ov.querySelector('#ai-cal-meet').checked, commitment: ov.querySelector('#ai-cal-commit').checked, askEmail: ov.querySelector('#ai-cal-askmail').checked, title: v('ai-cal-title').trim() || 'Call de apresentação'
     },
+    triggerPhrases: (ov.querySelector('#ai-triggers').value || '').split('\n').map(x => x.trim()).filter(Boolean).slice(0, 30).map(x => x.slice(0, 200)),
     handoffOn: ov.querySelector('#ai-handoff-on').checked, mediaOn: ov.querySelector('#ai-media-on').checked, examples: (ov.querySelector('#ai-examples').value || '').slice(0, 10000), media: _aiMedia.map(m => ({ id: m.id, type: m.type, url: m.url, mimetype: m.mimetype || '', fileName: m.fileName || '', title: String(m.title || '').trim(), when: String(m.when || '').trim() })), autoLead: ov.querySelector('#ai-autolead').checked, onlyTriggered: ov.querySelector('#ai-onlytrig').checked, openWithForm: ov.querySelector('#ai-openform').checked, hearAudio: ov.querySelector('#ai-hearaudio').checked, igOn: ov.querySelector('#ai-igon').checked,
     qualifiedStage: v('ai-qstage'), handoffMessage: v('ai-handoff').trim() || AI_AGENT_DEFAULTS.handoffMessage
   };
