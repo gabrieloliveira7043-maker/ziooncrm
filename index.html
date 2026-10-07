@@ -12561,7 +12561,7 @@ function renderChatHeader() {
     </div>
     <button class="chat-pill" onclick="openChatTags()">${uiIco('tag')} Etiquetas</button>
     ${lead ? `<button class="chat-pill" onclick="openMoveModal('${escapeJsString(lead.id)}')">Mover no funil</button>` : ''}
-    ${lead ? aiLeadBtnHtml(lead, 'chat') : ''}
+    ${lead && aiLeadState(lead) === 'active' ? aiLeadBtnHtml(lead, 'chat') : `<button class="chat-pill" onclick="chatAiTakeover()" title="A IA passa a atender esta conversa e responde a última mensagem do contato">${uiIco('bot')} IA assumir</button>`}
     ${assignBtn}`;
 }
 
@@ -14417,6 +14417,22 @@ async function toggleLeadAi(leadId, resume) {
   } catch (e) { showToast('Erro: ' + e.message, 'error'); }
 }
 window.toggleLeadAi = toggleLeadAi;
+
+// Chat: a IA assume esta conversa (cria o card se o contato ainda não for lead e já responde a última mensagem).
+async function chatAiTakeover() {
+  if (!_chatAct || !_chatOpenKey) return;
+  const key = _chatOpenKey;
+  showToast('A IA está assumindo a conversa...', 'info', 4000);
+  try {
+    const r = await window._fb.whatsapp('/whatsapp/ai-takeover', _chatAct, { chatKey: key });
+    const c = _chatItems.find(x => x.id === key) || { id: key };
+    const lead = chatLeadFor(c, chatLeadIndex(_chatAct));
+    if (lead) Object.assign(lead, { aiTakeover: true, aiPaused: false, aiReplies: 0, aiPausedReason: '' });
+    showToast(r.replied ? 'A IA assumiu e já respondeu a última mensagem.' : (r.created ? 'Card criado e a IA assumiu: ela responde a próxima mensagem do contato.' : 'A IA assumiu: ela responde a próxima mensagem do contato.'), 'success', 6000);
+    if (_chatOpenKey === key) renderChatHeader();
+  } catch (e) { showToast('Não deu: ' + e.message, 'error', 7000); }
+}
+window.chatAiTakeover = chatAiTakeover;
 
 // ===== Conversões Meta (API de Conversões): avisa a Meta quando o lead chega numa coluna =====
 const CAPI_EVENT_OPTIONS = [
