@@ -11416,7 +11416,7 @@ async function renderIntegLp(skipLoad) {
 function inboundKeyCardHtml(k) {
   const url = INBOUND_BASE_URL + k.id;
   const id = escapeJsString(k.id);
-  const stage = (getStages(k.act).find(s => s.id === k.stage) || {}).label || k.stage || 'Novo lead';
+  const stage = (k.pipeline && k.pipeline !== 'principal' ? pipelineName(k.act, k.pipeline) + ' › ' : '') + ((getStages(k.act, k.pipeline || 'principal').find(s => s.id === k.stage) || {}).label || k.stage || 'Novo lead');
   const on = k.active !== false;
   return `<div class="integ-card">
     <div class="integ-card-head">
@@ -11443,13 +11443,33 @@ function openNewInboundKey() {
   box.innerHTML = `<div class="integ-card" style="border-color:var(--accent);">
     <div class="integ-title" style="margin-bottom:10px;">Nova integração de landing page</div>
     <div class="integ-grid">
-      <label>Cliente<select class="field-input" id="inb-act" onchange="document.getElementById('inb-stage').innerHTML = integStageOptions(this.value)">${integClientOptions(act, 'Escolha o cliente')}</select></label>
+      <label>Cliente<select class="field-input" id="inb-act" onchange="inbRefreshTarget(true)">${integClientOptions(act, 'Escolha o cliente')}</select></label>
       <label>Nome da LP<input class="field-input" id="inb-name" placeholder="Ex.: LP Implante outubro"></label>
-      <label>Coluna onde o lead entra<select class="field-input" id="inb-stage">${integStageOptions(act)}</select></label>
+      <label>Pipeline<select class="field-input" id="inb-pipeline" onchange="inbRefreshTarget(false)">${inbPipelineOptions(act)}</select></label>
+      <label>Coluna onde o lead entra<select class="field-input" id="inb-stage">${inbStageOptions(act, 'principal')}</select></label>
       <label>Origem no card (opcional)<input class="field-input" id="inb-origem" placeholder="Landing page - nome da LP"></label>
     </div>
     <div class="integ-row"><button class="integ-btn primary" onclick="createInboundKey()">Criar endereço</button><button class="integ-btn" onclick="document.getElementById('integ-new').innerHTML=''">Cancelar</button></div>
   </div>`;
+}
+
+// Pipeline e coluna da integração (cada pipeline tem as suas colunas).
+function inbPipelineOptions(act, selected) {
+  if (!act) return '<option value="principal">Principal</option>';
+  return pipelineList(act).map(p => `<option value="${escapeHtml(p.id)}" ${p.id === (selected || 'principal') ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
+}
+
+function inbStageOptions(act, pipeline, selected) {
+  const stages = act ? (getStages(act, pipeline || 'principal') || []) : STAGES_DEFAULT;
+  const sel = selected || (stages[0] && stages[0].id);
+  return stages.map(s => `<option value="${escapeHtml(s.id)}" ${s.id === sel ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('');
+}
+
+function inbRefreshTarget(clientChanged) {
+  const act = document.getElementById('inb-act').value;
+  const pl = document.getElementById('inb-pipeline');
+  if (clientChanged) pl.innerHTML = inbPipelineOptions(act);
+  document.getElementById('inb-stage').innerHTML = inbStageOptions(act, pl.value);
 }
 
 function randomKey(len) {
@@ -11464,7 +11484,7 @@ async function createInboundKey() {
   if (!act) { showToast('Escolha o cliente.', 'warning'); return; }
   if (!name) { showToast('Dê um nome para a LP.', 'warning'); return; }
   const key = randomKey(28);
-  const data = { act, name, stage: document.getElementById('inb-stage').value || 'novo', origem: document.getElementById('inb-origem').value.trim(), active: true, count: 0, createdAt: new Date().toISOString() };
+  const data = { act, name, pipeline: document.getElementById('inb-pipeline').value || 'principal', stage: document.getElementById('inb-stage').value || 'novo', origem: document.getElementById('inb-origem').value.trim(), active: true, count: 0, createdAt: new Date().toISOString() };
   try {
     await window._fb.saveInboundKey(key, data);
     _inboundKeys.push({ id: key, ...data });
