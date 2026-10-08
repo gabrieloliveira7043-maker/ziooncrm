@@ -745,6 +745,8 @@ tr:hover td { background: var(--surface2); }
     .sub-view input:focus-visible + .sub-box { box-shadow: 0 0 0 3px rgba(212,175,55,.35); }
     .sub-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .sub-av { flex: 0 0 34px; width: 34px; height: 34px; border-radius: 50%; background: var(--accent-glow, rgba(212,175,55,.15)); color: var(--gold); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
+    .rename-box { border: 1px dashed var(--border2); border-radius: 10px; padding: 10px 12px; }
+    .rename-note { font-size: 11.5px; color: var(--muted); margin: 6px 0 2px; }
     .sub-id { font-size: 11.5px; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
     .sub-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .sub-actions .sub-newpass { width: 150px; }
@@ -2596,6 +2598,48 @@ td { font-family: var(--font); font-size: 13px; }
       const uid = await findUidByLogin(login);
       if (!uid) throw new Error('Login não encontrado.');
       await updateDoc(doc(db, 'users', uid), { perms: views ? { views } : null });
+    },
+    // Só admin. Troca o login de acesso (o nome usado para entrar): cria o novo no Firebase Auth com a senha dada,
+    // copia o perfil, leva junto os logins extras (se for o principal) e a senha do cofre, e apaga o antigo.
+    async renameLogin(oldLogin, newLogin, pass, fixed) {
+      if (await findUidByLogin(newLogin)) throw new Error('Esse login já existe. Escolha outro.');
+      const oldUid = await findUidByLogin(oldLogin);
+      if (!oldUid) throw new Error('Login não encontrado.');
+      const oldSnap = await getDoc(doc(db, 'users', oldUid));
+      const oldUser = oldSnap.exists() ? oldSnap.data() : {};
+      const extraSnap = await getDoc(doc(db, 'extra_clients', oldLogin));
+      const extra = extraSnap.exists() ? extraSnap.data() : {
+        name: oldUser.personName || oldUser.name || '', act: oldUser.act || '', adAccount: oldUser.adAccount || '', layout: oldUser.layout || 'default'
+      };
+      if (fixed) extra.fixed = true;
+      const secondary = initializeApp(firebaseConfig, 'huven-rename-' + Date.now());
+      let uid;
+      try {
+        const secondaryAuth = getAuth(secondary);
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, loginToEmail(newLogin), pass);
+        uid = cred.user.uid;
+        await signOut(secondaryAuth);
+      } finally {
+        await deleteApp(secondary);
+      }
+      await setDoc(doc(db, 'users', uid), { ...oldUser, login: newLogin });
+      // renamedFrom: os clientes que vêm do código continuam lá com o login antigo; essa lista os esconde.
+      const renamedFrom = [...(Array.isArray(extra.renamedFrom) ? extra.renamedFrom : []), oldLogin];
+      await setDoc(doc(db, 'extra_clients', newLogin), { ...extra, uid, renamedFrom });
+      await saveToVault(newLogin, pass);
+      if (!oldUser.parentLogin) {
+        const subsUsers = await getDocs(query(collection(db, 'users'), where('parentLogin', '==', oldLogin)));
+        for (const d of subsUsers.docs) await updateDoc(d.ref, { parentLogin: newLogin });
+        const subsExtra = await getDocs(query(collection(db, 'extra_clients'), where('parentLogin', '==', oldLogin)));
+        for (const d of subsExtra.docs) await updateDoc(d.ref, { parentLogin: newLogin });
+      }
+      let warning = '';
+      try { await callAdminApi('/delete-user', { login: oldLogin }); }
+      catch (e) { warning = 'O login antigo não foi apagado no servidor (' + e.message + '), mas ele não abre mais o CRM.'; }
+      await deleteDoc(doc(db, 'users', oldUid));
+      await deleteDoc(doc(db, 'extra_clients', oldLogin)).catch(() => {});
+      await deleteDoc(doc(db, 'admin_vault', oldLogin)).catch(() => {});
+      return { warning };
     },
     async updateSubLogin(login, personName, perms) {
       const uid = await findUidByLogin(login);
@@ -7272,8 +7316,10 @@ async function renderAdminLogins() {
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <span style="${labelStyle}">Login:</span>
         <span class="mono" style="font-size:12px;color:var(--text);">${id}</span>
+        <button class="integ-btn" onclick="toggleRenameLogin(this)">Trocar login</button>
         ${c.adAccount ? '' : '<span style="font-size:11px;color:#fbbf24;">sem conta de anúncios</span>'}
       </div>
+      ${renameLoginHtml(c.login)}
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <label style="display:flex;align-items:center;gap:6px;flex:1;min-width:180px;">
           <span style="${labelStyle}">Nome:</span>
@@ -7369,7 +7415,9 @@ function subLoginsHtml(parentLogin) {
         <div class="sub-row"><div class="sub-av">${escapeHtml((sl.name || '?').trim().charAt(0).toUpperCase())}</div>
           <input class="field-input sub-name" value="${escapeHtml(sl.name)}" style="flex:1;min-width:140px;">
           <span class="mono sub-id">${escapeHtml(sl.login)}</span>
+          <button class="integ-btn" onclick="toggleRenameLogin(this)">Trocar login</button>
           ${pass ? `<button class="integ-btn" onclick="copyText(_subVault['${lj}'], 'Senha copiada')">Copiar senha</button>` : ''}</div>
+        ${renameLoginHtml(sl.login)}
         ${subViewChecks(views)}
         <div class="sub-actions">
           <button class="integ-btn primary" onclick="saveSubLogin('${lj}', this)">Salvar acessos</button>
@@ -7421,6 +7469,61 @@ async function createSubLogin(parentLogin, btn) {
     showToast(`Login "${login}" criado para ${name}.`, 'success');
     refreshSubBox(parentLogin);
   } catch (e) { btn.disabled = false; subMsg(btn, 'Erro: ' + e.message, false); }
+}
+
+// ----- Trocar o login de acesso (o nome usado para entrar) de um cliente ou de um login extra -----
+function cleanLoginInput(v) {
+  return String(v || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9._-]/g, '');
+}
+function renameLoginHtml(login) {
+  const hasPass = !!(_subVault && _subVault[login]);
+  return `<div class="rename-box" style="display:none;">
+    <div class="sub-new-t">Novo login para quem hoje entra com <b class="mono">${escapeHtml(login)}</b></div>
+    <div class="sub-grid">
+      <input class="field-input rename-new mono" placeholder="Novo login (ex.: maria.petland)" autocomplete="off">
+      ${hasPass ? '' : '<input class="field-input rename-pass mono" placeholder="Senha (mín. 6)" autocomplete="off">'}
+    </div>
+    <div class="rename-note">${hasPass ? 'A senha continua a mesma.' : 'A senha atual não está guardada no cofre, então defina uma senha para o novo login.'} O login antigo para de funcionar.</div>
+    <div class="sub-actions"><button class="integ-btn primary" onclick="renameLogin('${escapeJsString(login)}', this)">Salvar novo login</button><span class="sub-msg"></span></div>
+  </div>`;
+}
+function toggleRenameLogin(btn) {
+  const scope = btn.closest('.sub-item') || btn.parentElement.parentElement;
+  const box = scope.querySelector('.rename-box');
+  if (!box) return;
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  if (box.style.display === 'block') box.querySelector('.rename-new').focus();
+}
+async function renameLogin(oldLogin, btn) {
+  const box = btn.closest('.rename-box');
+  const msg = (text, ok) => { const m = box.querySelector('.sub-msg'); m.textContent = text; m.style.color = ok ? 'var(--green)' : 'var(--red)'; };
+  const newLogin = cleanLoginInput(box.querySelector('.rename-new').value);
+  const passInput = box.querySelector('.rename-pass');
+  const pass = passInput ? passInput.value : (_subVault[oldLogin] || '');
+  if (!newLogin) return msg('Informe o novo login (letras, números, ponto ou traço).', false);
+  if (newLogin === oldLogin) return msg('O novo login é igual ao atual.', false);
+  if (newLogin === 'admin' || CREDENTIALS[newLogin] || SUB_LOGINS.some(x => x.login === newLogin)) return msg('Esse login já existe.', false);
+  if (pass.length < 6) return msg('A senha precisa ter pelo menos 6 caracteres.', false);
+  const sub = SUB_LOGINS.find(x => x.login === oldLogin);
+  if (!await showConfirm(`Quem entra com "${oldLogin}" passa a entrar com "${newLogin}". O login antigo para de funcionar e, se a pessoa estiver com o CRM aberto, vai precisar entrar de novo. Leads e conversas não mudam.`, 'Trocar login', 'Trocar')) return;
+  btn.disabled = true; msg('Trocando...', true);
+  try {
+    const r = await window._fb.renameLogin(oldLogin, newLogin, pass, !sub && FIXED_CLIENT_LOGINS.includes(oldLogin));
+    if (sub) sub.login = newLogin;
+    else {
+      CREDENTIALS[newLogin] = CREDENTIALS[oldLogin];
+      delete CREDENTIALS[oldLogin];
+      SUB_LOGINS.forEach(x => { if (x.parentLogin === oldLogin) x.parentLogin = newLogin; });
+      if (_mainLoginPerms && oldLogin in _mainLoginPerms) { _mainLoginPerms[newLogin] = _mainLoginPerms[oldLogin]; delete _mainLoginPerms[oldLogin]; }
+    }
+    _subVault[newLogin] = pass;
+    delete _subVault[oldLogin];
+    showToast(r && r.warning ? r.warning : `Login trocado: agora é "${newLogin}".`, r && r.warning ? 'warning' : 'success');
+    renderAdminLogins();
+  } catch (e) {
+    btn.disabled = false;
+    msg('Erro: ' + (/email-already-in-use/.test(e.code || e.message) ? 'esse login já existe.' : e.message), false);
+  }
 }
 
 async function saveSubLogin(login, btn) {
@@ -14487,7 +14590,7 @@ function capiRuleRowHtml(act, r) {
   const sel = known ? r.event : (r.event ? '__custom' : 'Purchase');
   const custom = !known && r.event ? r.event : '';
   return `<div class="capi-rule">
-    <select class="field-input capi-stage">${stages.map(s => `<option value="${escapeHtml(s.id)}" ${r.stage === s.id ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}</select>
+    <select class="field-input capi-stage">${autoStageOptions(act, r.stage || (stages[0] && stages[0].id))}</select>
     <span class="capi-arrow">→</span>
     <select class="field-input capi-event" onchange="this.parentNode.querySelector('.capi-custom').style.display = this.value === '__custom' ? '' : 'none'">${CAPI_EVENT_OPTIONS.map(([k, l]) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <input class="field-input capi-custom" style="${sel === '__custom' ? '' : 'display:none;'}" placeholder="NomeDoEvento" value="${escapeHtml(custom)}">
@@ -18005,6 +18108,7 @@ async function loadExtraClients() {
     const extras = await window._fb.getExtraClients();
     SUB_LOGINS = extras.filter(c => c.parentLogin);
     extras.filter(c => !c.parentLogin).forEach(c => {
+      (c.renamedFrom || []).forEach(old => { if (CREDENTIALS[old] && CREDENTIALS[old].act === c.act) delete CREDENTIALS[old]; });
       CREDENTIALS[c.login] = { pass: null, act: c.act };
       CLIENT_NAMES[c.act] = c.name;
       if (c.adAccount !== undefined) AD_ACCOUNTS[c.act] = c.adAccount || '';
