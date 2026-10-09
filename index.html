@@ -9855,7 +9855,7 @@ async function renderProspeccaoView() {
     <div class="pr-filters">
       <label>Estado<select class="field-input" id="pr-uf" onchange="prosUfChange()"><option value="">Escolha</option>${PR_UFS.map(u => `<option value="${u}">${u}</option>`).join('')}</select></label>
       <label style="flex:2;min-width:260px;position:relative;">Atividade (CNAE)<input class="field-input" id="pr-cnae" placeholder="Digite: odontologia, academia... ou deixe vazio para todas as atividades" autocomplete="off" oninput="prosCnaeSuggest()" onfocus="prosCnaeSuggest()" onblur="setTimeout(prosCnaeHide, 200)" onkeydown="if(event.key==='Enter'){event.preventDefault();prosCnaeHide();prosSearch();}"><div id="pr-cnae-menu" class="pr-cnae-menu"></div></label>
-      <label>Cidade<select class="field-input" id="pr-city"><option value="">Todas do estado</option></select></label>
+      <label style="position:relative;">Cidade<input class="field-input" id="pr-city-q" placeholder="Todas do estado · digite o nome" autocomplete="off" oninput="prosCitySuggest()" onfocus="prosCitySuggest()" onblur="setTimeout(prosCityBlur, 200)" onkeydown="prosCityKey(event)"><select id="pr-city" hidden><option value="">Todas do estado</option></select><div id="pr-city-menu" class="pr-cnae-menu"></div></label>
       <label>Bairro<input class="field-input" id="pr-bairro" placeholder="Opcional"></label>
       <label>Porte da empresa<select class="field-input" id="pr-porte" onchange="if(_prRows.length) prosApplyFilters()">
         <option value="">Todos os portes</option>
@@ -10119,6 +10119,64 @@ function prosUfChange() {
   const present = (idx.porEstado || {})[uf] || {};
   document.getElementById('pr-cnae').value = '';
   document.getElementById('pr-city').innerHTML = '<option value="">Todas do estado</option>' + ((idx.municipios || {})[uf] || []).map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  const cq = document.getElementById('pr-city-q');
+  if (cq) cq.value = '';
+}
+
+// Cidade pelo nome: sugere enquanto digita (sem acento, começo do nome primeiro).
+// Sem estado escolhido, procura em todos e, ao escolher, já marca o estado da cidade.
+let _prCitySug = [];
+function prosCityMatches(text) {
+  const idx = _prIndex || {};
+  const q = prosNorm(text).trim().replace(/\s+/g, ' ');
+  if (!q) return [];
+  const uf = document.getElementById('pr-uf').value;
+  const ufs = uf ? [uf] : Object.keys(idx.municipios || {});
+  const starts = [], has = [];
+  ufs.forEach(u => ((idx.municipios || {})[u] || []).forEach(c => {
+    const n = prosNorm(c);
+    if (n.startsWith(q)) starts.push([u, c]); else if (n.includes(q)) has.push([u, c]);
+  }));
+  const byName = (a, b) => a[1].length - b[1].length || a[1].localeCompare(b[1], 'pt-BR');
+  return [...starts.sort(byName), ...has.sort(byName)];
+}
+function prosCitySuggest() {
+  const menu = document.getElementById('pr-city-menu');
+  const text = document.getElementById('pr-city-q').value;
+  if (!_prIndex) { menu.classList.remove('open'); return; }
+  if (!text.trim()) { document.getElementById('pr-city').value = ''; menu.classList.remove('open'); return; }
+  const uf = document.getElementById('pr-uf').value;
+  _prCitySug = prosCityMatches(text).slice(0, 30);
+  menu.innerHTML = _prCitySug.length
+    ? _prCitySug.map(([u, c], i) => `<div class="pr-cnae-opt" onmousedown="event.preventDefault();prosPickCity(${i})"><b>${escapeHtml(c)}</b>${uf ? '' : `<span>${u}</span>`}</div>`).join('')
+    : `<div class="pr-cnae-empty">Nenhuma cidade encontrada${uf ? ' em ' + uf : ''}.</div>`;
+  menu.classList.add('open');
+}
+function prosPickCity(i) {
+  const pick = _prCitySug[i];
+  if (!pick) return;
+  const [u, c] = pick;
+  const ufSel = document.getElementById('pr-uf');
+  if (ufSel.value !== u) { ufSel.value = u; prosUfChange(); }
+  document.getElementById('pr-city').value = c;
+  document.getElementById('pr-city-q').value = c;
+  document.getElementById('pr-city-menu').classList.remove('open');
+}
+function prosCityKey(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (document.getElementById('pr-city-menu').classList.contains('open') && _prCitySug.length) prosPickCity(0);
+  } else if (e.key === 'Escape') document.getElementById('pr-city-menu').classList.remove('open');
+}
+// Ao sair do campo: nome exato (sem acento) vale; senão volta para a cidade já escolhida.
+function prosCityBlur() {
+  document.getElementById('pr-city-menu').classList.remove('open');
+  const input = document.getElementById('pr-city-q'), sel = document.getElementById('pr-city');
+  const text = input.value.trim();
+  if (!text) { sel.value = ''; return; }
+  const exact = prosCityMatches(text).filter(([, c]) => prosNorm(c) === prosNorm(text));
+  if (exact.length === 1) { _prCitySug = exact; prosPickCity(0); return; }
+  input.value = sel.value;
 }
 
 // Aceita "8630504 - Atividade..." ou um pedaço do nome da atividade.
