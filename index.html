@@ -1934,6 +1934,9 @@ td { font-family: var(--font); font-size: 13px; }
 .pr-cnae-opt { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
 .pr-cnae-opt:last-child { border-bottom: none; }
 .pr-cnae-opt:hover { background: var(--surface2); }
+.pr-cnae-opt.on { background: var(--surface2); box-shadow: inset 3px 0 0 var(--accent); }
+.pr-city-input { padding-right: 34px !important; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important; background-repeat: no-repeat !important; background-position: right 12px center !important; }
+.pr-city-input:focus { cursor: text; }
 .pr-cnae-opt b { font-size: 13px; color: var(--text); font-weight: 700; }
 .pr-cnae-opt span { font-size: 11.5px; color: var(--muted); font-weight: 600; }
 .pr-cnae-empty { padding: 12px; font-size: 12.5px; color: var(--muted); font-weight: 600; text-transform: none; letter-spacing: 0; }
@@ -9855,7 +9858,7 @@ async function renderProspeccaoView() {
     <div class="pr-filters">
       <label>Estado<select class="field-input" id="pr-uf" onchange="prosUfChange()"><option value="">Escolha</option>${PR_UFS.map(u => `<option value="${u}">${u}</option>`).join('')}</select></label>
       <label style="flex:2;min-width:260px;position:relative;">Atividade (CNAE)<input class="field-input" id="pr-cnae" placeholder="Digite: odontologia, academia... ou deixe vazio para todas as atividades" autocomplete="off" oninput="prosCnaeSuggest()" onfocus="prosCnaeSuggest()" onblur="setTimeout(prosCnaeHide, 200)" onkeydown="if(event.key==='Enter'){event.preventDefault();prosCnaeHide();prosSearch();}"><div id="pr-cnae-menu" class="pr-cnae-menu"></div></label>
-      <label style="position:relative;">Cidade<input class="field-input" id="pr-city-q" placeholder="Todas do estado · digite o nome" autocomplete="off" oninput="prosCitySuggest()" onfocus="prosCitySuggest()" onblur="setTimeout(prosCityBlur, 200)" onkeydown="prosCityKey(event)"><select id="pr-city" hidden><option value="">Todas do estado</option></select><div id="pr-city-menu" class="pr-cnae-menu"></div></label>
+      <label style="position:relative;">Cidade<input class="field-input pr-city-input" id="pr-city-q" placeholder="Todas do estado" autocomplete="off" oninput="prosCitySuggest()" onfocus="prosCitySuggest(true)" onclick="prosCitySuggest(true)" onblur="setTimeout(prosCityBlur, 200)" onkeydown="prosCityKey(event)"><select id="pr-city" hidden><option value="">Todas do estado</option></select><div id="pr-city-menu" class="pr-cnae-menu"></div></label>
       <label>Bairro<input class="field-input" id="pr-bairro" placeholder="Opcional"></label>
       <label>Porte da empresa<select class="field-input" id="pr-porte" onchange="if(_prRows.length) prosApplyFilters()">
         <option value="">Todos os portes</option>
@@ -10140,17 +10143,25 @@ function prosCityMatches(text) {
   const byName = (a, b) => a[1].length - b[1].length || a[1].localeCompare(b[1], 'pt-BR');
   return [...starts.sort(byName), ...has.sort(byName)];
 }
-function prosCitySuggest() {
+// all = clicou no campo: mostra a lista inteira do estado (como um seletor), com a cidade escolhida marcada.
+function prosCitySuggest(all) {
   const menu = document.getElementById('pr-city-menu');
+  const sel = document.getElementById('pr-city');
   const text = document.getElementById('pr-city-q').value;
   if (!_prIndex) { menu.classList.remove('open'); return; }
-  if (!text.trim()) { document.getElementById('pr-city').value = ''; menu.classList.remove('open'); return; }
   const uf = document.getElementById('pr-uf').value;
-  _prCitySug = prosCityMatches(text).slice(0, 30);
+  const showAll = !text.trim() || (all && text === sel.value);
+  if (!text.trim()) sel.value = '';
+  if (showAll) {
+    if (!uf) { _prCitySug = []; menu.innerHTML = '<div class="pr-cnae-empty">Escolha o estado para ver a lista de cidades, ou digite o nome da cidade para buscar em todos os estados.</div>'; menu.classList.add('open'); return; }
+    _prCitySug = [[uf, ''], ...((_prIndex.municipios || {})[uf] || []).map(c => [uf, c])];
+  } else _prCitySug = prosCityMatches(text).slice(0, 40);
   menu.innerHTML = _prCitySug.length
-    ? _prCitySug.map(([u, c], i) => `<div class="pr-cnae-opt" onmousedown="event.preventDefault();prosPickCity(${i})"><b>${escapeHtml(c)}</b>${uf ? '' : `<span>${u}</span>`}</div>`).join('')
+    ? _prCitySug.map(([u, c], i) => `<div class="pr-cnae-opt${showAll && c === sel.value ? ' on' : ''}" onmousedown="event.preventDefault();prosPickCity(${i})"><b>${c ? escapeHtml(c) : 'Todas do estado'}</b>${uf ? '' : `<span>${u}</span>`}</div>`).join('')
     : `<div class="pr-cnae-empty">Nenhuma cidade encontrada${uf ? ' em ' + uf : ''}.</div>`;
   menu.classList.add('open');
+  const on = menu.querySelector('.pr-cnae-opt.on');
+  menu.scrollTop = on ? on.offsetTop - 8 : 0;
 }
 function prosPickCity(i) {
   const pick = _prCitySug[i];
