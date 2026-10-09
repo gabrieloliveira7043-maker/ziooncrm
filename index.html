@@ -10451,6 +10451,16 @@ function prosSelectedRows() {
   return sel.length ? sel : [];
 }
 
+// Nome do arquivo com a cidade das empresas exportadas: "Prospeccao - Campinas SP" (sem acento: alguns navegadores trocam o nome todo por "download").
+// Mais de uma cidade: até 3 pelo nome; acima disso, "Várias cidades" com o estado.
+function prosExportName(rows) {
+  const titulo = s => String(s || '').toLowerCase().replace(/(^|\s)\S/g, m => m.toUpperCase()).replace(/ (D[aeo]s?|E) /g, m => m.toLowerCase());
+  const lugares = [...new Set(rows.map(r => (r.municipio ? titulo(r.municipio) : '') + (r.uf ? ' ' + r.uf : '')).filter(x => x.trim()))];
+  const ufs = [...new Set(rows.map(r => r.uf).filter(Boolean))];
+  const onde = !lugares.length ? '' : lugares.length <= 3 ? lugares.join(', ') : 'Varias cidades' + (ufs.length && ufs.length <= 3 ? ' ' + ufs.join(', ') : '');
+  return ('Prospeccao' + (onde ? ' - ' + onde : '')).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\\/:*?"<>|]/g, '').slice(0, 120);
+}
+
 function prosExport() {
   const rows = prosSelectedRows().length ? prosSelectedRows() : _prFiltered;
   if (!rows.length) return showToast('Nada para exportar.', 'warning');
@@ -10458,7 +10468,7 @@ function prosExport() {
   const csv = PR_COLS.join(';') + '\n' + rows.map(r => PR_COLS.map(c => esc(c === 'cnpj' ? prosFmtCnpj(r.cnpj) : c === 'porte' && r.porte === 'Demais' ? 'Médio/grande porte' : r[c])).join(';')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
-  a.download = 'prospeccao.csv';
+  a.download = prosExportName(rows) + '.csv';
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
