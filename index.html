@@ -11076,6 +11076,33 @@ function openColumnAutomation(stageId) {
 }
 
 // Proteção contra bloqueio do número, igual à das campanhas. O horário de envio é o de "Enviar só em horário comercial".
+// Automação nova já vem alternando; as que existiam antes continuam como estavam (número fixo por contato).
+function flowLineMode() { return _flow.lineMode === 'contato' || _flow.lineMode === 'alternar' ? _flow.lineMode : (_flow.id ? 'contato' : 'alternar'); }
+
+function flowLinesHtml() {
+  const act = _flow.act;
+  const lines = waLines(act);
+  const title = '<div class="ci-label" style="margin-top:16px;">WhatsApp que envia</div>';
+  if (lines.length < 2) return title + `<div class="integ-muted" style="margin-top:2px;">Envia pelo número ${escapeHtml(lines[0] ? lines[0].label : 'Principal')}. Conecte outro número em Conexões para poder escolher ou alternar entre eles.</div>`;
+  const sel = (Array.isArray(_flow.lines) ? _flow.lines : []).filter(id => lines.some(l => l.id === id));
+  const chosen = sel.length ? sel : [lines[0].id];
+  const mode = flowLineMode();
+  const names = chosen.map(id => waLineLabel(act, id));
+  const example = names.length === 2 ? `1º lead pelo ${names[0]}, 2º pelo ${names[1]}, 3º pelo ${names[0]} de novo, e assim por diante.` : `1º lead pelo ${names[0]}, 2º pelo ${names[1]}, 3º pelo ${names[2]}... e depois volta ao primeiro.`;
+  return title + `<div style="margin-top:2px;" onchange="setFlowLines()">${lines.map(l => `<label class="integ-toggle"><input type="checkbox" name="flow-lines" value="${escapeHtml(l.id)}" ${chosen.includes(l.id) ? 'checked' : ''}> ${escapeHtml(l.label)}${waIsCloud(l.id) ? ' <span class="integ-muted">(API oficial)</span>' : ''}</label>`).join('')}</div>
+    ${chosen.length > 1 ? `<label class="auto-label" style="display:block;margin-top:6px;">Como usar os números<select class="field-input" style="margin-top:4px;" onchange="_flow.lineMode = this.value; _flow._dirty = true; renderFlowEditor()">
+        <option value="alternar" ${mode === 'alternar' ? 'selected' : ''}>Alternar (um lead em cada número)</option>
+        <option value="contato" ${mode === 'contato' ? 'selected' : ''}>Sortear (número fixo por contato)</option>
+      </select></label>
+      <div class="integ-muted" style="margin-top:6px;line-height:1.5;">${mode === 'alternar' ? escapeHtml(example) : 'O número de cada contato é sorteado e fica sempre o mesmo para ele.'} Todas as mensagens desta automação para o mesmo lead saem do mesmo número. Se um número cair ou chegar no limite, a mensagem sai pelo próximo. Lead que já conversa por um número continua nele.</div>` : '<div class="integ-muted" style="margin-top:4px;">Marque mais de um número para alternar entre eles.</div>'}`;
+}
+
+function setFlowLines() {
+  _flow.lines = readWaLinePicker('flow-lines') || [waDefaultLine(_flow.act)];
+  _flow._dirty = true;
+  renderFlowEditor();
+}
+
 function flowDispatchHtml() {
   const d = { ...WHATSAPP_DISPATCH_DEFAULTS, ...(_flow.dispatch || {}) };
   const num = (k, min, max) => `<input type="number" class="field-input" min="${min}" max="${max}" value="${d[k]}" style="width:62px;padding:5px;" onchange="setFlowDispatch('${k}', this.value)">`;
@@ -11143,6 +11170,7 @@ function renderFlowEditor() {
           ${_flow.stopOnReply !== false ? `<label class="auto-label" style="display:block;margin-top:6px;">e mover para<select class="field-input" style="margin-top:4px;" onchange="_flow.onReply = { moveTo: this.value }; _flow._dirty = true">${autoStageOptions(act, (_flow.onReply || {}).moveTo, 'Não mover')}</select></label>` : '<div class="integ-muted" style="margin-top:6px;">Use o bloco "Respondeu?" para decidir o caminho.</div>'}
           <label class="integ-toggle" style="margin-top:10px;align-items:flex-start;"><input type="checkbox" ${_flow.hours && _flow.hours.enabled ? 'checked' : ''} onchange="_flow.hours = { ..._flow.hours, enabled: this.checked }; _flow._dirty = true"> Enviar só em horário comercial</label>
           <div style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:12px;color:var(--muted2);">das <input type="number" class="field-input" min="0" max="23" value="${(_flow.hours || {}).start ?? 8}" style="width:58px;padding:5px;" onchange="_flow.hours = { ..._flow.hours, start: Number(this.value) }; _flow._dirty = true"> às <input type="number" class="field-input" min="1" max="24" value="${(_flow.hours || {}).end ?? 20}" style="width:58px;padding:5px;" onchange="_flow.hours = { ..._flow.hours, end: Number(this.value) }; _flow._dirty = true"> h</div>
+          ${flowLinesHtml()}
           ${flowDispatchHtml()}
           <div class="integ-muted" style="margin-top:14px;">Arraste os blocos para organizar. Para ligar, puxe a bolinha da direita de um bloco até outro. Clique na ✕ da linha para desligar.</div>
         </aside>
@@ -11425,7 +11453,7 @@ function renderFlowInspector() {
   if (n.type === 'trigger') {
     html += `<label class="auto-label">Quando o lead entrar na coluna<select class="field-input" onchange="setFlowData('stage', this.value)">${autoStageOptions(act, d.stage)}</select></label>
       <div class="integ-muted" style="margin-top:8px;">Vale para leads novos e para cards arrastados ou movidos para essa coluna depois que a automação for salva.</div>
-      <div style="margin-top:12px;" onchange="_flow.lines = readWaLinePicker('flow-lines') || [waDefaultLine(_flow.act)]; _flow._dirty = true;">${waLinePickerHtml(act, 'flow-lines', _flow.lines, 'Enviar as mensagens por qual WhatsApp?')}</div>`;
+      ${waHasMultiple(act) ? '<div class="integ-muted" style="margin-top:12px;">O número que envia as mensagens fica em <b>WhatsApp que envia</b>, na coluna da esquerda.</div>' : ''}`;
   } else if (n.type === 'wait') {
     html += `<label class="auto-label">Esperar</label><div style="display:flex;gap:6px;"><input type="number" min="0" class="field-input" value="${Number(d.amount) || 0}" style="width:90px;" oninput="setFlowData('amount', Math.max(0, Number(this.value) || 0))"><select class="field-input" onchange="setFlowData('unit', this.value)">${Object.entries(FLOW_UNITS).map(([k, l]) => `<option value="${k}" ${d.unit === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       <div class="integ-muted" style="margin-top:8px;">Se cair fora do horário comercial do fluxo, a espera termina no começo do próximo horário.</div>`;
@@ -11510,6 +11538,7 @@ async function saveFlow() {
     onReply: { moveTo: (f.onReply || {}).moveTo || '', moveToLabel: (f.onReply || {}).moveTo ? autoStageLabel(act, f.onReply.moveTo) : '' },
     hours: { enabled: !!(f.hours && f.hours.enabled), start: Number((f.hours || {}).start ?? 8), end: Number((f.hours || {}).end ?? 20) },
     lines: Array.isArray(f.lines) && f.lines.length ? f.lines : [waDefaultLine(act)],
+    lineMode: flowLineMode(),
     dispatch: f.dispatch ? { dailyLimit: Number(f.dispatch.dailyLimit), hourlyLimit: Number(f.dispatch.hourlyLimit), minIntervalSec: Number(f.dispatch.minIntervalSec), maxIntervalSec: Number(f.dispatch.maxIntervalSec), typingMinSec: Number(f.dispatch.typingMinSec), typingMaxSec: Number(f.dispatch.typingMaxSec), checkNumber: f.dispatch.checkNumber !== false } : null,
     nodes: f.nodes.map(n => ({ id: n.id, type: n.type, x: n.x, y: n.y, data: JSON.parse(JSON.stringify(n.data || {})) })),
     edges: f.edges.map(e => ({ from: e.from, port: e.port || 'out', to: e.to })),
