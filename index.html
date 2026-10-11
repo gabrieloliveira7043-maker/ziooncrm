@@ -3182,10 +3182,6 @@ td { font-family: var(--font); font-size: 13px; }
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Exportar Excel
           </button>
-                    <button class="btn-manage-stages" onclick="openFirstMessageModal()" style="margin-right:8px;" title="Personalizar primeira mensagem">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            1ª mensagem
-          </button><button class="btn-manage-stages" onclick="document.getElementById('import-csv-input').click()" style="margin-right:8px;" title="Importar leads de CSV">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             Importar
           </button>
@@ -3687,8 +3683,8 @@ td { font-family: var(--font); font-size: 13px; }
           <section class="help-card" data-view="whatsapp">
             <div class="help-tag">Primeira mensagem</div>
             <div class="help-demo hs hs-first" aria-hidden="true"><div class="hs-b out v1">Olá {primeiro_nome}, tudo bem?</div><div class="hs-b out v2">Oi {primeiro_nome}! Vi seu cadastro.</div><div class="hs-b out v3">{primeiro_nome}, posso te ajudar?</div></div>
-            <h3>Mensagem automática para leads novos</h3>
-            <ol><li>Abra <b>Conexões</b> e vá em <b>Primeira mensagem</b>.</li><li>Cadastre várias versões do texto: a cada envio uma é sorteada, o que ajuda a evitar bloqueio.</li><li>Use as variáveis <code>{primeiro_nome}</code>, <code>{nome}</code>, <code>{rede_social}</code> e <code>{origem}</code>.</li><li>Salve. Vale para todo lead novo que chegar com WhatsApp ativo.</li></ol>
+            <h3>Primeira mensagem para leads novos</h3>
+            <ol><li>Abra <b>Automações</b> e crie uma automação na coluna <b>Novo lead</b>.</li><li>Coloque um bloco de mensagem com várias versões do texto: a cada envio uma é sorteada, o que ajuda a evitar bloqueio.</li><li>Use as variáveis <code>{primeiro_nome}</code>, <code>{nome}</code>, <code>{rede_social}</code> e <code>{origem}</code>.</li><li>Em <b>WhatsApp que envia</b>, escolha o número ou marque vários para alternar. Salve e deixe a automação ligada.</li></ol>
           </section>
           <section class="help-card" data-view="prospeccao">
             <div class="help-tag">Prospecção</div>
@@ -3946,21 +3942,11 @@ td { font-family: var(--font); font-size: 13px; }
               <span id="whatsapp-own-status" style="font-size:13px;"></span>
               <span id="whatsapp-own-actions" style="display:flex; gap:8px;"></span>
             </div>
-            <div id="whatsapp-own-auto" style="font-size:12px; color:var(--muted); margin-top:12px;"></div>
           </div>
           <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--r2); padding:24px;">
             <div style="font-size:15px; font-weight:600; color:var(--text); margin-bottom:6px;">Facebook e formulários de anúncio</div>
             <div style="font-size:12px; color:var(--muted); margin-bottom:12px; line-height:1.5;">Conecte o seu Facebook e escolha as páginas: quem preencher os formulários dos seus anúncios cai direto no funil.</div>
             <div id="fb-connect-own"></div>
-          </div>
-          <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--r2); padding:24px;">
-            <div style="font-size:15px; font-weight:600; color:var(--text); margin-bottom:6px;">Primeira mensagem</div>
-            <div style="font-size:12px; color:var(--muted); margin-bottom:12px; line-height:1.5;">Enviada aos leads novos. Cadastre variações: a cada envio uma é sorteada, o que ajuda a evitar bloqueio do número. Use {primeiro_nome}, {nome}, {rede_social} e {origem}.</div>
-            <div id="whatsapp-own-variations"></div>
-            <div style="display:flex; align-items:center; gap:10px; margin-top:4px;">
-              <button class="btn-save" style="width:auto; padding:10px 20px;" onclick="saveOwnWhatsAppTemplate()">Salvar mensagem</button>
-              <span id="whatsapp-own-template-feedback" style="font-size:12px;"></span>
-            </div>
           </div>
         </div>
 
@@ -14192,8 +14178,6 @@ async function renderWhatsAppView() {
     adminPanel.style.display = 'none';
     clientPanel.style.display = 'block';
     subtitle.textContent = 'Conecte o número de WhatsApp que vai falar com os seus leads.';
-    document.getElementById('whatsapp-own-variations').innerHTML = whatsappVariationsHtml('wa-own', getWhatsAppTemplates(profile.act), profile.act);
-    document.getElementById('whatsapp-own-template-feedback').textContent = '';
     renderOwnWhatsAppSection();
   }
 }
@@ -14211,10 +14195,6 @@ async function renderOwnWhatsAppSection() {
   status.style.width = '100%';
   renderWaLinesBox(act, status);
   renderFbConnectBox(act, document.getElementById('fb-connect-own'));
-  const auto = WHATSAPP_SETTINGS[act] && WHATSAPP_SETTINGS[act].autoFirstMessage;
-  document.getElementById('whatsapp-own-auto').textContent = auto
-    ? 'Mensagem automática para leads novos: ativada.'
-    : 'Mensagem automática para leads novos: desativada (a Zioon ativa para você).';
 }
 
 // Selo no card do lead: situação do envio automático e número oculto pelo WhatsApp.
@@ -14335,8 +14315,6 @@ function renderAdminWhatsAppList() {
       <div class="wa-card-stats">
         <div style="display:flex;"><span style="flex:1;">Enviadas hoje</span><b>${sentToday}</b></div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="huv-btn" onclick="toggleWhatsAppSettings('${jsLogin}')">Configurações</button></div>
-      <div id="wa-settings-${id}" style="display:none;"></div>
     </div>`;
   }).join('');
   refreshAdminWhatsAppStates();
@@ -16604,9 +16582,8 @@ function renderKanban() {
         <button class="card-btn kc-icon" onclick="openMoveModal('${safeLeadId}')" title="Mover" aria-label="Mover"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
         <button class="card-btn kc-icon" onclick="showHistory('${safeLeadId}')" title="Histórico" aria-label="Histórico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2"/></svg></button>
         ${aiLeadBtnHtml(lead, 'card')}
-        ${(waLink || lead.whatsappJid) ? ((lead.whatsappFirstMessageAt || lead.source === 'whatsapp')
+        ${(waLink || lead.whatsappJid)
           ? `<button class="card-btn card-btn-whatsapp" onclick="openLeadChat('${safeLeadId}')" title="Abrir conversa no Chat do CRM"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.112.554 4.094 1.523 5.812L.057 23.997l6.305-1.654A11.954 11.954 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 0 1-5.012-1.376l-.36-.214-3.733.979 1-3.647-.235-.374A9.818 9.818 0 0 1 2.182 12C2.182 6.58 6.58 2.182 12 2.182S21.818 6.58 21.818 12 17.42 21.818 12 21.818z"/></svg></button>`
-          : `<button class="card-btn card-btn-first-msg" onclick="openFirstWhatsAppMessage('${lead.id}')" title="Enviar primeira mensagem no WhatsApp"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.112.554 4.094 1.523 5.812L.057 23.997l6.305-1.654A11.954 11.954 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 0 1-5.012-1.376l-.36-.214-3.733.979 1-3.647-.235-.374A9.818 9.818 0 0 1 2.182 12C2.182 6.58 6.58 2.182 12 2.182S21.818 6.58 21.818 12 17.42 21.818 12 21.818z"/></svg><span>1ª msg</span></button>`)
         : ''}
         <button class="card-btn kc-icon del" onclick="deleteLead('${safeLeadId}')" title="Excluir" aria-label="Excluir"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>
       </div>
