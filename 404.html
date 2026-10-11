@@ -1367,6 +1367,13 @@ html[data-theme="light"] .login-overlay { background: var(--paper); }
 .capi-rule { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 12px; padding: 10px; margin-bottom: 8px; }
 .capi-rule .field-input { width: auto; flex: 1; min-width: 120px; padding: 7px 10px; font-size: 12.5px; }
 .capi-arrow { color: var(--muted); font-weight: 700; }
+.capi-origins { position: relative; flex: 1; min-width: 150px; }
+.capi-origins > summary { list-style: none; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.capi-origins > summary::-webkit-details-marker { display: none; }
+.capi-origins > summary::after { content: '▾'; float: right; margin-left: 6px; color: var(--muted); }
+.capi-origins-menu { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; min-width: 240px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 2px; }
+.capi-origins-menu label { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 5px 6px; border-radius: 6px; cursor: pointer; color: var(--text); }
+.capi-origins-menu label:hover { background: var(--hover, rgba(127,127,127,.08)); }
 .capi-test { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
 .capi-log { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
 .capi-log-row { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--text); padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; }
@@ -14583,6 +14590,40 @@ const CAPI_EVENT_OPTIONS = [
   ['__custom', 'Outro nome...']
 ];
 let _capi = { rules: [], tokenSet: false };
+// Mesmos ids do worker (CAPI_ORIGINS). Nenhuma marcada ou todas marcadas = vale para qualquer origem.
+const CAPI_ORIGIN_OPTIONS = [
+  ['landing', 'Landing page'], ['meta_leadads', 'Formulário da Meta (Lead Ads)'], ['whatsapp', 'WhatsApp'],
+  ['instagram', 'Instagram'], ['manual', 'Criado à mão no CRM'], ['importado', 'Importado (contatos / prospecção)']
+];
+
+function capiOriginsLabel(sel) {
+  if (!sel.length || sel.length === CAPI_ORIGIN_OPTIONS.length) return 'Todas as origens';
+  if (sel.length === 1) return (CAPI_ORIGIN_OPTIONS.find(([k]) => k === sel[0]) || [, sel[0]])[1];
+  return sel.length + ' origens';
+}
+
+function capiOriginsChanged(input) {
+  const box = input.closest('.capi-origins');
+  const all = box.querySelector('.capi-src-all');
+  const items = [...box.querySelectorAll('.capi-src')];
+  if (input === all) items.forEach(i => { i.checked = all.checked; });
+  else all.checked = items.every(i => i.checked);
+  // Desmarcar tudo vira "todas": não existe regra que não vale para nenhuma origem.
+  if (!items.some(i => i.checked)) { items.forEach(i => { i.checked = true; }); all.checked = true; }
+  box.querySelector('.capi-origins-label').textContent = capiOriginsLabel(items.filter(i => i.checked).map(i => i.value));
+}
+
+function capiOriginsHtml(sources) {
+  const sel = Array.isArray(sources) && sources.length ? sources : CAPI_ORIGIN_OPTIONS.map(([k]) => k);
+  const all = sel.length === CAPI_ORIGIN_OPTIONS.length;
+  return `<details class="capi-origins">
+      <summary class="field-input" title="De quais origens o lead precisa vir para o evento sair"><span class="capi-origins-label">${escapeHtml(capiOriginsLabel(all ? [] : sel))}</span></summary>
+      <div class="capi-origins-menu">
+        <label><input type="checkbox" class="capi-src-all" ${all ? 'checked' : ''} onchange="capiOriginsChanged(this)"> <b>Todas as origens</b></label>
+        ${CAPI_ORIGIN_OPTIONS.map(([k, l]) => `<label><input type="checkbox" class="capi-src" value="${k}" ${sel.includes(k) ? 'checked' : ''} onchange="capiOriginsChanged(this)"> ${l}</label>`).join('')}
+      </div>
+    </details>`;
+}
 
 function capiRuleRowHtml(act, r) {
   const stages = (typeof getAllStages === 'function' ? getAllStages(act) : getStages(act)) || [];
@@ -14594,6 +14635,7 @@ function capiRuleRowHtml(act, r) {
     <span class="capi-arrow">→</span>
     <select class="field-input capi-event" onchange="this.parentNode.querySelector('.capi-custom').style.display = this.value === '__custom' ? '' : 'none'">${CAPI_EVENT_OPTIONS.map(([k, l]) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <input class="field-input capi-custom" style="${sel === '__custom' ? '' : 'display:none;'}" placeholder="NomeDoEvento" value="${escapeHtml(custom)}">
+    ${capiOriginsHtml(r.sources)}
     <label class="integ-toggle" title="Só envia quando o valor do card estiver preenchido"><input type="checkbox" class="capi-val" ${r.requireValue ? 'checked' : ''}> Só com valor</label>
     <button class="btn-remove" type="button" onclick="this.closest('.capi-rule').remove()">Remover</button>
   </div>`;
@@ -14646,7 +14688,7 @@ async function renderCapiView() {
           <div class="cfgc-sub">Quando o lead chegar na coluna, o evento sai uma única vez, com o valor do card e os dados do cliente (nome, e-mail, telefone), todos criptografados.</div>
           <div id="capi-rules">${rules.map(r => capiRuleRowHtml(act, r)).join('')}</div>
           <button class="huv-btn" style="margin-top:8px;" onclick="capiAddRule()">+ Adicionar evento</button>
-          <div class="integ-muted" style="margin-top:10px;line-height:1.55;">Para Compra, deixe "Só com valor" ligado: se o card ainda não tem o valor, o envio espera você preencher.</div>
+          <div class="integ-muted" style="margin-top:10px;line-height:1.55;">Para Compra, deixe "Só com valor" ligado: se o card ainda não tem o valor, o envio espera você preencher.<br>Em <b>origens</b>, escolha de onde o lead precisa ter vindo para o evento sair. Ex.: "Novo lead → Lead" só para Landing page, para lead criado à mão não contar como Lead nas campanhas.</div>
         </section>
         <section class="cfgc-card">
           <div class="cfgc-card-title">Últimos envios</div>
@@ -14665,7 +14707,8 @@ function capiAddRule() {
 function capiReadRules() {
   return [...document.querySelectorAll('#capi-rules .capi-rule')].map(row => {
     const ev = row.querySelector('.capi-event').value;
-    return { stage: row.querySelector('.capi-stage').value, event: ev === '__custom' ? row.querySelector('.capi-custom').value.trim() : ev, requireValue: row.querySelector('.capi-val').checked };
+    const src = [...row.querySelectorAll('.capi-src:checked')].map(i => i.value);
+    return { stage: row.querySelector('.capi-stage').value, event: ev === '__custom' ? row.querySelector('.capi-custom').value.trim() : ev, requireValue: row.querySelector('.capi-val').checked, sources: src.length === CAPI_ORIGIN_OPTIONS.length ? [] : src };
   }).filter(r => r.stage && r.event);
 }
 async function saveCapi(btn) {
