@@ -10539,7 +10539,7 @@ async function renderAutomacoesView() {
   if (_flow) return renderFlowEditor();
   if (!act) { box.innerHTML = '<div class="integ-empty">Escolha o cliente no topo do menu para ver e criar as automações dele.</div>'; return; }
   box.innerHTML = '<div class="integ-muted">Carregando...</div>';
-  try { _flowList = await window._fb.listAutomations(act); }
+  try { _flowList = await window._fb.listAutomations(act); await ensureWaSettings(act); }
   catch (e) { box.innerHTML = `<div class="integ-error">Erro: ${escapeHtml(e.message)}</div>`; return; }
   const leads = (_leadsCache || []).filter(l => leadMatchesClient(l, act));
   box.innerHTML = `
@@ -10579,7 +10579,8 @@ async function renderAutomacoesView() {
           </div>
         </article>`;
       }).join('') : '<div class="integ-empty" style="grid-column:1/-1;">Nenhuma automação ainda. Clique em "+ Nova automação" para montar o primeiro fluxo.</div>'}
-    </div>`;
+    </div>
+    ${autoCaptureHtml(act)}`;
 }
 
 // ===== ANDAMENTO DA AUTOMAÇÃO (quantos receberam cada mensagem, quantos responderam, o que falta) =====
@@ -14185,7 +14186,7 @@ async function renderWhatsAppView() {
   if (profile.role === 'admin') {
     clientPanel.style.display = 'none';
     adminPanel.style.display = 'block';
-    subtitle.textContent = 'Conecte o WhatsApp de cada cliente, ative a mensagem automática no "Novo lead" e ajuste o texto de cada um.';
+    subtitle.textContent = 'Conecte o WhatsApp de cada cliente. Mensagens automáticas e captura de leads ficam em Automações.';
     renderAdminWhatsAppList();
   } else {
     adminPanel.style.display = 'none';
@@ -14323,8 +14324,6 @@ function renderAdminWhatsAppList() {
     const jsLogin = escapeJsString(c.login);
     const s = WHATSAPP_SETTINGS[c.act] || {};
     const sentToday = s.sentDate === today ? Number(s.sentCount) || 0 : 0;
-    const capture = s.leadCapture && s.leadCapture.enabled;
-    const rules = s.leadCapture && Array.isArray(s.leadCapture.rules) ? s.leadCapture.rules.filter(r => r && r.phrase).length : 0;
     const t = huvTone(c.act);
     return `
     <div class="wa-card" id="wa-card-${id}">
@@ -14334,12 +14333,9 @@ function renderAdminWhatsAppList() {
       </div>
       <div class="wa-lines" data-wa-lines="${escapeHtml(c.act)}"></div>
       <div class="wa-card-stats">
-        <label class="sw-row" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><span style="flex:1;">1ª mensagem automática no "Novo lead"</span><input type="checkbox" onchange="toggleWhatsAppAuto('${jsLogin}', this)" ${s.autoFirstMessage ? 'checked' : ''}></label>
-        <div style="display:flex;"><span style="flex:1;">Captura de leads pelo WhatsApp</span><b>${capture ? (rules ? rules + (rules > 1 ? ' regras' : ' regra') : 'Ligada') : 'Desligada'}</b></div>
-        <div style="display:flex;"><span style="flex:1;">Atendente com IA</span><b>${s.aiAgent && s.aiAgent.enabled ? 'Ligado' : 'Desligado'}</b></div>
         <div style="display:flex;"><span style="flex:1;">Enviadas hoje</span><b>${sentToday}</b></div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="huv-btn" onclick="toggleWhatsAppSettings('${jsLogin}')">Configurações</button><button class="huv-btn" onclick="openAiAgent('${jsLogin}')">${uiIco('bot')} Atendente IA</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="huv-btn" onclick="toggleWhatsAppSettings('${jsLogin}')">Configurações</button></div>
       <div id="wa-settings-${id}" style="display:none;"></div>
     </div>`;
   }).join('');
@@ -14356,7 +14352,6 @@ function toggleWhatsAppSettings(login) {
   if (card) card.classList.add('wide');
 
   const s = WHATSAPP_SETTINGS[act] || {};
-  const capture = s.leadCapture || {};
   const id = escapeHtml(login);
   const jsLogin = escapeJsString(login);
   const section = 'font-size:13px;font-weight:600;color:var(--text);margin:14px 0 6px;';
@@ -14370,12 +14365,6 @@ function toggleWhatsAppSettings(login) {
       ${whatsappVariationsHtml('wa-' + id, getWhatsAppTemplates(act), act)}
 
       ${waHasMultiple(act) ? `<div style="${section}">WhatsApp da 1ª mensagem automática</div>${waLinePickerHtml(act, 'wa-first-lines-' + id, s.firstMessageLines, 'Por qual WhatsApp sai a 1ª mensagem?')}` : ''}
-
-      <div style="${section}">Captura de leads pelo WhatsApp</div>
-      <div style="${hint}">Quando alguém mandar uma mensagem que bata com uma das identificações abaixo, o card é criado com o nome e o telefone, na coluna escolhida. Maiúsculas e acentos não importam; vale a primeira identificação da lista que bater. Quem responder "sair" ou "parar" deixa de receber mensagens automáticas.</div>
-      <label style="${lbl}margin-bottom:8px;"><input type="checkbox" id="wa-capture-${id}" ${capture.enabled ? 'checked' : ''}> Criar lead automaticamente com a mensagem da campanha</label>
-      <div id="wa-rules-${id}">${captureRulesFromSettings(capture).map(r => captureRuleRowHtml(act, r)).join('')}</div>
-      <button style="${wbtn}background:transparent;margin-top:4px;" onclick="addCaptureRule('${jsLogin}')">+ Adicionar identificação</button>
 
       <div style="display:flex;align-items:center;gap:10px;margin-top:14px;">
         <button style="${wbtn}" onclick="saveAdminWhatsAppSettings('${jsLogin}')">Salvar configurações</button>
@@ -15642,17 +15631,52 @@ function captureRuleRowHtml(act, rule) {
     </div>`;
 }
 
-function addCaptureRule(login) {
-  const act = CREDENTIALS[login] && CREDENTIALS[login].act;
-  const box = document.getElementById('wa-rules-' + login);
+// Seção "Captura de leads pelo WhatsApp" da tela Automações. Grava em whatsapp_settings/{act}.leadCapture.
+function autoCaptureHtml(act) {
+  const capture = (WHATSAPP_SETTINGS[act] || {}).leadCapture || {};
+  return `<section class="cfgc-card" style="margin-top:18px;">
+      <div class="cfgc-card-title">Captura de leads pelo WhatsApp</div>
+      <div class="cfgc-sub">Quando alguém mandar uma mensagem que bata com uma das identificações abaixo, o card é criado com o nome e o telefone, na coluna escolhida. Maiúsculas e acentos não importam; vale a primeira identificação da lista que bater. Quem responder "sair" ou "parar" deixa de receber mensagens automáticas.</div>
+      <label class="integ-toggle" style="margin:4px 0 10px;"><input type="checkbox" id="auto-capture-on" ${capture.enabled ? 'checked' : ''}> Criar lead automaticamente com a mensagem da campanha</label>
+      <div id="auto-capture-rules">${captureRulesFromSettings(capture).map(r => captureRuleRowHtml(act, r)).join('')}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px;">
+        <button class="huv-btn" onclick="addAutoCaptureRule()">+ Adicionar identificação</button>
+        <button class="btn-save" style="width:auto;padding:0 22px;" onclick="saveAutoCapture(this)">Salvar captura</button>
+        <span id="auto-capture-fb" style="font-size:13px;"></span>
+      </div>
+    </section>`;
+}
+
+function addAutoCaptureRule() {
+  const act = flowAct();
+  const box = document.getElementById('auto-capture-rules');
   if (!act || !box) return;
   box.insertAdjacentHTML('beforeend', captureRuleRowHtml(act, { phrase: '', match: 'contains', stage: 'novo', origem: '' }));
   const inputs = box.querySelectorAll('.wa-rule-phrase');
   inputs[inputs.length - 1].focus();
 }
 
-function readCaptureRules(login) {
-  const box = document.getElementById('wa-rules-' + login);
+async function saveAutoCapture(btn) {
+  const act = flowAct();
+  const fb = document.getElementById('auto-capture-fb');
+  const say = (t, ok) => { fb.textContent = t; fb.style.color = ok ? 'var(--green)' : 'var(--red)'; };
+  if (!act) return;
+  const rules = readCaptureRules();
+  const enabled = !!document.getElementById('auto-capture-on').checked;
+  if (enabled && !rules.length) return say('Informe pelo menos uma frase de identificação.', false);
+  // "phrases" continua sendo gravado para compatibilidade.
+  const data = { leadCapture: { enabled, rules, phrases: rules.map(r => r.phrase) } };
+  btn.disabled = true; say('Salvando...', true);
+  try {
+    await window._fb.saveWhatsAppSettings(act, data);
+    WHATSAPP_SETTINGS[act] = { ...(WHATSAPP_SETTINGS[act] || {}), ...data };
+    say('Captura salva.', true);
+  } catch (e) { say('Erro: ' + e.message, false); }
+  btn.disabled = false;
+}
+
+function readCaptureRules() {
+  const box = document.getElementById('auto-capture-rules');
   if (!box) return [];
   return [...box.querySelectorAll('.wa-rule')].map(row => ({
     phrase: row.querySelector('.wa-rule-phrase').value.trim(),
@@ -15672,13 +15696,9 @@ async function saveAdminWhatsAppSettings(login) {
 
   const templates = readWhatsAppVariations('wa-' + id);
   if (!templates.length) { feedback('#f87171', 'Escreva pelo menos uma mensagem.'); return; }
-  const rules = readCaptureRules(id);
-  const captureEnabled = !!document.getElementById('wa-capture-' + id)?.checked;
-  if (captureEnabled && !rules.length) { feedback('#f87171', 'Informe pelo menos uma frase de identificação.'); return; }
-
   // O ritmo de envio (limites, intervalo, horário) usa sempre os valores recomendados; não é editado aqui.
-  // "phrases" continua sendo gravado para compatibilidade.
-  const data = { templates, template: templates[0], leadCapture: { enabled: captureEnabled, rules, phrases: rules.map(r => r.phrase) } };
+  // A captura de leads é salva na tela Automações (saveAutoCapture).
+  const data = { templates, template: templates[0] };
   const firstLines = readWaLinePicker('wa-first-lines-' + id);
   if (firstLines) data.firstMessageLines = firstLines;
   try {
