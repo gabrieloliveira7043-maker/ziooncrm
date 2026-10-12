@@ -9392,16 +9392,62 @@ function renderClientSwitch() {
   }
 }
 
+// ===== ATUALIZAÇÃO AUTOMÁTICA =====
+// A cada 3 minutos (e quando a aba volta a ficar visível) pergunta ao servidor a "etiqueta" da página publicada.
+// Mudou = saiu versão nova: recarrega sozinho quando ninguém estiver digitando ou com uma janela aberta.
+// Se a pessoa estiver no meio de algo, aparece um aviso com o botão "Atualizar agora" e recarrega na próxima pausa.
+(function setupAutoUpdate() {
+  let base = null, pending = false;
+  try { const u = new URL(location.href); if (u.searchParams.has('v')) { u.searchParams.delete('v'); history.replaceState(null, '', u.pathname + (u.search || '') + u.hash); } } catch (e) {}
+  const tag = async () => {
+    try {
+      const r = await fetch(location.pathname + '?check=' + Date.now(), { method: 'HEAD', cache: 'no-store' });
+      return r.ok ? (r.headers.get('etag') || r.headers.get('last-modified') || '') : '';
+    } catch (e) { return ''; }
+  };
+  const busy = () => {
+    const a = document.activeElement;
+    if (a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !['checkbox', 'radio', 'button'].includes(a.type)) || a.isContentEditable)) return true;
+    return !!document.querySelector('#huven-modal, .modal-overlay.open, .modal.open, #move-modal.open, #confirm-modal.open, #campaign-editor[style*="block"]');
+  };
+  const reload = () => { location.replace(location.pathname + '?v=' + Date.now() + location.hash); };
+  const tryReload = () => {
+    if (!pending) return;
+    if (!busy() || document.visibilityState === 'hidden') reload();
+  };
+  const showBanner = () => {
+    if (document.getElementById('upd-banner')) return;
+    const b = document.createElement('div');
+    b.id = 'upd-banner';
+    b.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:10100;background:var(--surface);color:var(--text);border:1px solid var(--border2);border-radius:12px;padding:10px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35);display:flex;gap:10px;align-items:center;font-size:13px;';
+    b.innerHTML = 'Saiu uma versão nova do CRM. <button class="chat-pill active" onclick="location.replace(location.pathname + \'?v=\' + Date.now() + location.hash)">Atualizar agora</button>';
+    document.body.appendChild(b);
+  };
+  const check = async () => {
+    const t = await tag();
+    if (!t) return;
+    if (base === null) { base = t; return; }
+    if (t !== base) { pending = true; if (busy()) showBanner(); else reload(); }
+  };
+  check();
+  setInterval(() => { if (pending) tryReload(); else check(); }, 3 * 60 * 1000);
+  setInterval(tryReload, 20 * 1000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { if (pending) tryReload(); else check(); } });
+})();
+
 function toggleClientSwitcher(ev) {
   if (!isAdmin) return;
   if (ev) ev.stopPropagation();
   const pop = document.getElementById('client-switch-pop');
   const open = !pop.classList.contains('open');
+  if (open && pop.parentElement !== document.body) document.body.appendChild(pop);
   pop.classList.toggle('open', open);
   if (open) {
     const r = document.getElementById('client-switch').getBoundingClientRect();
     pop.style.top = (r.bottom + 8) + 'px';
-    pop.style.left = r.left + 'px';
+    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - Math.min(320, window.innerWidth - 16) - 8)) + 'px';
+    pop.style.width = Math.min(320, window.innerWidth - 16) + 'px';
+    pop.style.zIndex = '10050';
     pop.innerHTML = `
       <div class="csp-search"><input id="csp-search" placeholder="Buscar cliente..." oninput="renderClientSwitcherList()" autocomplete="off"></div>
       <div class="csp-list" id="csp-list"></div>
