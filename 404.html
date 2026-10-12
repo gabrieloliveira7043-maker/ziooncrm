@@ -11570,9 +11570,10 @@ function integClientOptions(selected, allLabel) {
     entries.map(([act, name]) => `<option value="${escapeHtml(act)}" ${act === selected ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('');
 }
 
+// Colunas de todos os pipelines do cliente (agrupadas pelo nome do pipeline quando há mais de um).
 function integStageOptions(act, selected) {
-  const stages = act ? getStages(act) : STAGES_DEFAULT;
-  return stages.map(s => `<option value="${escapeHtml(s.id)}" ${s.id === (selected || 'novo') ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('');
+  if (act) return autoStageOptions(act, selected || 'novo');
+  return STAGES_DEFAULT.map(s => `<option value="${escapeHtml(s.id)}" ${s.id === (selected || 'novo') ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('');
 }
 
 function integWhen(iso) {
