@@ -14664,7 +14664,15 @@ const CAPI_EVENT_OPTIONS = [
   ['Contact', 'Contato (Contact)'], ['CompleteRegistration', 'Cadastro completo'], ['SubmitApplication', 'Proposta enviada'], ['InitiateCheckout', 'Início de compra'],
   ['__custom', 'Outro nome...']
 ];
-let _capi = { rules: [], tokenSet: false };
+let _capi = { rules: [], tokenSet: false, pixelTokensSet: [] };
+
+// Pixel próprio da regra (opcional). Vazio = usa o Pixel do cliente.
+function capiRulePixelHtml(r) {
+  const pix = String(r.pixelId || '');
+  const saved = (_capi.pixelTokensSet || []).includes(pix);
+  return `<input class="field-input mono capi-rpixel" style="max-width:170px;" placeholder="Pixel (opcional)" title="Deixe vazio para usar o Pixel do cliente. Preencha para mandar este evento para outro Pixel (ex.: o Pixel de outra landing page)." value="${escapeHtml(pix)}" oninput="this.parentNode.querySelector('.capi-rtoken').style.display = this.value.trim() ? '' : 'none'">
+    <input class="field-input mono capi-rtoken" type="password" autocomplete="off" style="max-width:220px;${pix ? '' : 'display:none;'}" placeholder="${saved ? 'Token salvo. Deixe em branco para manter.' : 'Token deste Pixel (vazio = usa o do cliente)'}">`;
+}
 // Mesmos ids do worker (CAPI_ORIGINS). Nenhuma marcada ou todas marcadas = vale para qualquer origem.
 const CAPI_ORIGIN_OPTIONS = [
   ['landing', 'Landing page'], ['meta_leadads', 'Formulário da Meta (Lead Ads)'], ['whatsapp', 'WhatsApp'],
@@ -14711,6 +14719,7 @@ function capiRuleRowHtml(act, r) {
     <select class="field-input capi-event" onchange="this.parentNode.querySelector('.capi-custom').style.display = this.value === '__custom' ? '' : 'none'">${CAPI_EVENT_OPTIONS.map(([k, l]) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <input class="field-input capi-custom" style="${sel === '__custom' ? '' : 'display:none;'}" placeholder="NomeDoEvento" value="${escapeHtml(custom)}">
     ${capiOriginsHtml(r.sources)}
+    ${capiRulePixelHtml(r)}
     <label class="integ-toggle" title="Só envia quando o valor do card estiver preenchido"><input type="checkbox" class="capi-val" ${r.requireValue ? 'checked' : ''}> Só com valor</label>
     <button class="btn-remove" type="button" onclick="this.closest('.capi-rule').remove()">Remover</button>
   </div>`;
@@ -14725,7 +14734,7 @@ async function renderCapiView() {
   let c;
   try { c = await window._fb.whatsapp('/capi/get', act, {}); }
   catch (e) { box.innerHTML = `<div class="integ-error">Erro: ${escapeHtml(e.message)}</div>`; return; }
-  _capi = { rules: c.rules || [], tokenSet: !!c.tokenSet };
+  _capi = { rules: c.rules || [], tokenSet: !!c.tokenSet, pixelTokensSet: c.pixelTokensSet || [] };
   const rules = (c.rules && c.rules.length ? c.rules : [{ stage: 'fechado', event: 'Purchase', requireValue: true }]);
   const client = escapeHtml(getClientDisplayName(act) || act);
   box.innerHTML = `
@@ -14763,7 +14772,7 @@ async function renderCapiView() {
           <div class="cfgc-sub">Quando o lead chegar na coluna, o evento sai uma única vez, com o valor do card e os dados do cliente (nome, e-mail, telefone), todos criptografados.</div>
           <div id="capi-rules">${rules.map(r => capiRuleRowHtml(act, r)).join('')}</div>
           <button class="huv-btn" style="margin-top:8px;" onclick="capiAddRule()">+ Adicionar evento</button>
-          <div class="integ-muted" style="margin-top:10px;line-height:1.55;">Para Compra, deixe "Só com valor" ligado: se o card ainda não tem o valor, o envio espera você preencher.<br>Em <b>origens</b>, escolha de onde o lead precisa ter vindo para o evento sair. Ex.: "Novo lead → Lead" só para Landing page, para lead criado à mão não contar como Lead nas campanhas.</div>
+          <div class="integ-muted" style="margin-top:10px;line-height:1.55;">Para Compra, deixe "Só com valor" ligado: se o card ainda não tem o valor, o envio espera você preencher.<br>Em <b>origens</b>, escolha de onde o lead precisa ter vindo para o evento sair. Ex.: "Novo lead → Lead" só para Landing page, para lead criado à mão não contar como Lead nas campanhas.<br>Em <b>Pixel (opcional)</b>, informe outro Pixel quando aquele funil for de uma landing page com Pixel próprio. Vazio = usa o Pixel do cliente.</div>
         </section>
         <section class="cfgc-card">
           <div class="cfgc-card-title">Últimos envios</div>
@@ -14783,8 +14792,18 @@ function capiReadRules() {
   return [...document.querySelectorAll('#capi-rules .capi-rule')].map(row => {
     const ev = row.querySelector('.capi-event').value;
     const src = [...row.querySelectorAll('.capi-src:checked')].map(i => i.value);
-    return { stage: row.querySelector('.capi-stage').value, event: ev === '__custom' ? row.querySelector('.capi-custom').value.trim() : ev, requireValue: row.querySelector('.capi-val').checked, sources: src.length === CAPI_ORIGIN_OPTIONS.length ? [] : src };
+    const pix = (row.querySelector('.capi-rpixel') || {}).value || '';
+    return { stage: row.querySelector('.capi-stage').value, event: ev === '__custom' ? row.querySelector('.capi-custom').value.trim() : ev, requireValue: row.querySelector('.capi-val').checked, sources: src.length === CAPI_ORIGIN_OPTIONS.length ? [] : src, pixelId: pix.replace(/\D/g, '') };
   }).filter(r => r.stage && r.event);
+}
+function capiReadPixelTokens() {
+  const out = {};
+  document.querySelectorAll('#capi-rules .capi-rule').forEach(row => {
+    const pix = ((row.querySelector('.capi-rpixel') || {}).value || '').replace(/\D/g, '');
+    const tk = ((row.querySelector('.capi-rtoken') || {}).value || '').trim();
+    if (pix && tk) out[pix] = tk;
+  });
+  return out;
 }
 async function saveCapi(btn) {
   const fb = document.getElementById('capi-fb');
@@ -14794,7 +14813,8 @@ async function saveCapi(btn) {
   try {
     await window._fb.whatsapp('/capi/save', act, {
       enabled: document.getElementById('capi-on').checked, pixelId: document.getElementById('capi-pixel').value,
-      token: document.getElementById('capi-token').value, testCode: document.getElementById('capi-testcode').value, rules: capiReadRules()
+      token: document.getElementById('capi-token').value, testCode: document.getElementById('capi-testcode').value, rules: capiReadRules(),
+      pixelTokens: capiReadPixelTokens()
     });
     showToast('Conversões Meta salvas.', 'success');
     renderCapiView();
