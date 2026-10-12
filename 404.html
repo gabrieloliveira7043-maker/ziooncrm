@@ -1367,6 +1367,12 @@ html[data-theme="light"] .login-overlay { background: var(--paper); }
 .capi-rule { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 12px; padding: 10px; margin-bottom: 8px; }
 .capi-rule .field-input { width: auto; flex: 1; min-width: 120px; padding: 7px 10px; font-size: 12.5px; }
 .capi-arrow { color: var(--muted); font-weight: 700; }
+.capi-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.capi-tab { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 150px; padding: 9px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.capi-tab .mono { font-size: 11.5px; color: var(--muted); }
+.capi-tab.on { border-color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); }
+.capi-tab.add { justify-content: center; color: var(--muted); border-style: dashed; }
+.capi-tab-off { font-size: 11px; color: var(--red); }
 .capi-origins { position: relative; flex: 1; min-width: 150px; }
 .capi-origins > summary { list-style: none; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .capi-origins > summary::-webkit-details-marker { display: none; }
@@ -14664,15 +14670,7 @@ const CAPI_EVENT_OPTIONS = [
   ['Contact', 'Contato (Contact)'], ['CompleteRegistration', 'Cadastro completo'], ['SubmitApplication', 'Proposta enviada'], ['InitiateCheckout', 'Início de compra'],
   ['__custom', 'Outro nome...']
 ];
-let _capi = { rules: [], tokenSet: false, pixelTokensSet: [] };
-
-// Pixel próprio da regra (opcional). Vazio = usa o Pixel do cliente.
-function capiRulePixelHtml(r) {
-  const pix = String(r.pixelId || '');
-  const saved = (_capi.pixelTokensSet || []).includes(pix);
-  return `<input class="field-input mono capi-rpixel" style="max-width:170px;" placeholder="Pixel (opcional)" title="Deixe vazio para usar o Pixel do cliente. Preencha para mandar este evento para outro Pixel (ex.: o Pixel de outra landing page)." value="${escapeHtml(pix)}" oninput="this.parentNode.querySelector('.capi-rtoken').style.display = this.value.trim() ? '' : 'none'">
-    <input class="field-input mono capi-rtoken" type="password" autocomplete="off" style="max-width:220px;${pix ? '' : 'display:none;'}" placeholder="${saved ? 'Token salvo. Deixe em branco para manter.' : 'Token deste Pixel (vazio = usa o do cliente)'}">`;
-}
+let _capi = { act: '', pixels: [], log: [], sel: '' };
 // Mesmos ids do worker (CAPI_ORIGINS). Nenhuma marcada ou todas marcadas = vale para qualquer origem.
 const CAPI_ORIGIN_OPTIONS = [
   ['landing', 'Landing page'], ['meta_leadads', 'Formulário da Meta (Lead Ads)'], ['whatsapp', 'WhatsApp'],
@@ -14719,66 +14717,89 @@ function capiRuleRowHtml(act, r) {
     <select class="field-input capi-event" onchange="this.parentNode.querySelector('.capi-custom').style.display = this.value === '__custom' ? '' : 'none'">${CAPI_EVENT_OPTIONS.map(([k, l]) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <input class="field-input capi-custom" style="${sel === '__custom' ? '' : 'display:none;'}" placeholder="NomeDoEvento" value="${escapeHtml(custom)}">
     ${capiOriginsHtml(r.sources)}
-    ${capiRulePixelHtml(r)}
     <label class="integ-toggle" title="Só envia quando o valor do card estiver preenchido"><input type="checkbox" class="capi-val" ${r.requireValue ? 'checked' : ''}> Só com valor</label>
     <button class="btn-remove" type="button" onclick="this.closest('.capi-rule').remove()">Remover</button>
   </div>`;
 }
 
-async function renderCapiView() {
+// Abre a tela. selId: aba a mostrar ('__new' = cadastro de um Pixel novo).
+async function renderCapiView(selId) {
   const box = document.getElementById('capi-body');
   if (!box) return;
   const act = flowAct();
   if (!act) { box.innerHTML = '<div class="integ-empty">Escolha o cliente no topo do menu para configurar as conversões dele.</div>'; return; }
-  box.innerHTML = '<div class="integ-muted">Carregando...</div>';
+  if (_capi.act !== act) box.innerHTML = '<div class="integ-muted">Carregando...</div>';
   let c;
   try { c = await window._fb.whatsapp('/capi/get', act, {}); }
   catch (e) { box.innerHTML = `<div class="integ-error">Erro: ${escapeHtml(e.message)}</div>`; return; }
-  _capi = { rules: c.rules || [], tokenSet: !!c.tokenSet, pixelTokensSet: c.pixelTokensSet || [] };
-  const rules = (c.rules && c.rules.length ? c.rules : [{ stage: 'fechado', event: 'Purchase', requireValue: true }]);
+  const keep = _capi.act === act ? _capi.sel : '';
+  _capi = { act, pixels: c.pixels || [], log: c.log || [], sel: typeof selId === 'string' ? selId : keep };
+  if (_capi.sel !== '__new' && !_capi.pixels.some(px => px.id === _capi.sel)) _capi.sel = _capi.pixels[0] ? _capi.pixels[0].id : '__new';
+  capiRenderPage();
+}
+
+function capiSelect(id) { _capi.sel = id; capiRenderPage(); }
+
+function capiRenderPage() {
+  const box = document.getElementById('capi-body');
+  const act = _capi.act;
+  if (!box || !act) return;
+  const isNew = _capi.sel === '__new';
+  const px = isNew
+    ? { id: '', name: '', pixelId: '', enabled: true, testCode: '', tokenSet: false, rules: [{ stage: 'novo', event: 'Lead', requireValue: false, sources: ['landing'] }] }
+    : _capi.pixels.find(x => x.id === _capi.sel);
+  const rules = px.rules && px.rules.length ? px.rules : [{ stage: 'novo', event: 'Lead', requireValue: false }];
+  const firstId = (_capi.pixels[0] || {}).id;
+  // Envios antigos não têm "px": ficam na primeira aba.
+  const log = isNew ? [] : _capi.log.filter(l => (l.px || firstId) === px.id);
   const client = escapeHtml(getClientDisplayName(act) || act);
+  const tabs = _capi.pixels.map(x => `<button type="button" class="capi-tab ${x.id === _capi.sel ? 'on' : ''}" onclick="capiSelect('${escapeJsString(x.id)}')">
+      <b>${escapeHtml(x.name || 'Pixel')}</b><span class="mono">${escapeHtml(x.pixelId || 'sem número')}</span>${x.enabled === false ? '<span class="capi-tab-off">Desligado</span>' : ''}
+    </button>`).join('') + `<button type="button" class="capi-tab add ${isNew ? 'on' : ''}" onclick="capiSelect('__new')">+ Novo pixel</button>`;
   box.innerHTML = `
     <div class="huv-header" style="margin-bottom:18px;">
       <div style="flex:1;min-width:220px;">
         <div class="huv-crumb">${client}  /  Meta</div>
         <div class="huv-page-title" style="color:var(--text);">Conversões Meta</div>
-        <div class="integ-muted" style="margin-top:4px;">Avise a Meta quando o lead avançar no funil (compra, lead qualificado, agendamento). Ela passa a otimizar os anúncios para quem realmente fecha, e não só para quem preenche o formulário.</div>
+        <div class="integ-muted" style="margin-top:4px;">Avise a Meta quando o lead avançar no funil (lead, compra, agendamento). Cadastre um pixel por aba: cada landing page ou campanha pode ter o próprio pixel, com token, código de teste e eventos separados.</div>
       </div>
     </div>
+    <div class="capi-tabs">${tabs}</div>
     <div class="cfgc-grid">
       <section class="cfgc-card">
-        <div class="cfgc-card-title">Conexão com o pixel</div>
-        <div class="cfgc-sub">Cada cliente usa o próprio pixel (conjunto de dados) da Meta.</div>
-        <label class="ai-switch" style="margin-bottom:14px;"><span>Enviar eventos para a Meta</span><input type="checkbox" id="capi-on" ${c.enabled ? 'checked' : ''}></label>
-        <div class="field-group"><label class="field-label">ID do pixel (conjunto de dados)</label><input class="field-input mono" id="capi-pixel" placeholder="Ex: 123456789012345" value="${escapeHtml(c.pixelId || '')}"></div>
-        <div class="field-group"><label class="field-label">Token de acesso da API de Conversões</label><input class="field-input mono" id="capi-token" type="password" autocomplete="off" placeholder="${c.tokenSet ? escapeHtml(c.tokenHint) + ' salvo. Deixe em branco para manter.' : 'Cole o token gerado na Meta'}"></div>
-        <div class="field-group"><label class="field-label">Código de teste (opcional)</label><input class="field-input mono" id="capi-testcode" placeholder="Ex: TEST12345" value="${escapeHtml(c.testCode || '')}"></div>
-        <div class="integ-muted" style="line-height:1.55;">Onde achar: Gerenciador de Eventos da Meta, escolha o pixel, aba <b>Configurações</b>, seção <b>API de Conversões</b>, botão <b>Gerar token de acesso</b>. O código de teste fica na aba <b>Testar eventos</b>. O token é guardado só no servidor e não aparece de novo.</div>
+        <div class="cfgc-card-title">${isNew ? 'Novo pixel' : 'Configuração do pixel'}</div>
+        <div class="cfgc-sub">Dados do pixel (conjunto de dados) da Meta que vai receber os eventos desta aba.</div>
+        <label class="ai-switch" style="margin-bottom:14px;"><span>Enviar eventos para este pixel</span><input type="checkbox" id="capi-on" ${px.enabled !== false ? 'checked' : ''}></label>
+        <div class="field-group"><label class="field-label">Nome (para você identificar a aba)</label><input class="field-input" id="capi-name" maxlength="40" placeholder="Ex: LP Campinas, LP Growth" value="${escapeHtml(px.name || '')}"></div>
+        <div class="field-group"><label class="field-label">ID do pixel (conjunto de dados)</label><input class="field-input mono" id="capi-pixel" placeholder="Ex: 123456789012345" value="${escapeHtml(px.pixelId || '')}"></div>
+        <div class="field-group"><label class="field-label">Token de acesso da API de Conversões</label><input class="field-input mono" id="capi-token" type="password" autocomplete="off" placeholder="${px.tokenSet ? escapeHtml(px.tokenHint) + ' salvo. Deixe em branco para manter.' : 'Cole o token gerado na Meta para este pixel'}"></div>
+        <div class="field-group"><label class="field-label">Código de teste (opcional)</label><input class="field-input mono" id="capi-testcode" placeholder="Ex: TEST12345" value="${escapeHtml(px.testCode || '')}"></div>
+        <div class="integ-muted" style="line-height:1.55;">Onde achar: Gerenciador de Eventos da Meta, escolha o pixel, aba <b>Configurações</b>, seção <b>API de Conversões</b>, botão <b>Gerar token de acesso</b>. O código de teste fica na aba <b>Testar eventos</b>. Cada pixel tem o próprio token e o próprio código. O token é guardado só no servidor e não aparece de novo.</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
-          <button class="btn-save" style="width:auto;padding:0 22px;" onclick="saveCapi(this)">Salvar</button>
-          ${c.pixelId ? '<button class="huv-btn" onclick="disconnectCapi()">Desconectar</button>' : ''}
+          <button class="btn-save" style="width:auto;padding:0 22px;" onclick="saveCapi(this)">${isNew ? 'Cadastrar pixel' : 'Salvar'}</button>
+          ${isNew ? '' : '<button class="huv-btn" style="color:var(--red);border-color:var(--red);" onclick="disconnectCapi()">Excluir pixel</button>'}
         </div>
         <div id="capi-fb" style="font-size:13px;margin-top:10px;"></div>
-        <div class="capi-test">
+        ${isNew ? '' : `<div class="capi-test">
           <div class="cfgc-card-title" style="font-size:14px;">Testar</div>
-          <div class="cfgc-sub" style="margin-bottom:8px;">Manda um evento de teste. Ele só aparece na aba Testar eventos e não entra nos dados reais.</div>
+          <div class="cfgc-sub" style="margin-bottom:8px;">Manda um evento de teste para este pixel. Ele só aparece na aba Testar eventos e não entra nos dados reais.</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;"><select class="field-input" id="capi-test-event" style="width:auto;"><option value="Lead">Lead</option><option value="Purchase">Purchase (R$ 100)</option></select><button class="huv-btn" onclick="testCapi(this)">Enviar evento de teste</button></div>
           <div id="capi-test-out" style="font-size:13px;margin-top:8px;"></div>
-        </div>
+        </div>`}
       </section>
       <div style="display:flex;flex-direction:column;gap:18px;">
         <section class="cfgc-card">
           <div class="cfgc-card-title">Eventos por coluna</div>
-          <div class="cfgc-sub">Quando o lead chegar na coluna, o evento sai uma única vez, com o valor do card e os dados do cliente (nome, e-mail, telefone), todos criptografados.</div>
+          <div class="cfgc-sub">Quando o lead chegar na coluna, o evento sai uma única vez para este pixel, com o valor do card e os dados do cliente (nome, e-mail, telefone), todos criptografados.</div>
           <div id="capi-rules">${rules.map(r => capiRuleRowHtml(act, r)).join('')}</div>
           <button class="huv-btn" style="margin-top:8px;" onclick="capiAddRule()">+ Adicionar evento</button>
-          <div class="integ-muted" style="margin-top:10px;line-height:1.55;">Para Compra, deixe "Só com valor" ligado: se o card ainda não tem o valor, o envio espera você preencher.<br>Em <b>origens</b>, escolha de onde o lead precisa ter vindo para o evento sair. Ex.: "Novo lead → Lead" só para Landing page, para lead criado à mão não contar como Lead nas campanhas.<br>Em <b>Pixel (opcional)</b>, informe outro Pixel quando aquele funil for de uma landing page com Pixel próprio. Vazio = usa o Pixel do cliente.</div>
+          <div class="integ-muted" style="margin-top:10px;line-height:1.55;">Para Compra, deixe "Só com valor" ligado: se o card ainda não tem o valor, o envio espera você preencher.<br>Em <b>origens</b>, escolha de onde o lead precisa ter vindo para o evento sair. Ex.: "Novo lead → Lead" só para Landing page, para lead criado à mão não contar como Lead nas campanhas.</div>
         </section>
-        <section class="cfgc-card">
-          <div class="cfgc-card-title">Últimos envios</div>
+        ${isNew ? '' : `<section class="cfgc-card">
+          <div class="cfgc-card-title">Últimos envios deste pixel</div>
           <div class="cfgc-sub">Os envios são feitos a cada minuto.</div>
-          ${(c.log || []).length ? `<div class="capi-log">${c.log.map(l => `<div class="capi-log-row"><span class="capi-log-dot ${l.ok ? 'ok' : 'bad'}"></span><div style="flex:1;min-width:0;"><b>${escapeHtml(l.lead || 'Lead')}</b> · ${escapeHtml(l.event)}${l.value ? ' · R$ ' + Number(l.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : ''}<div class="integ-muted" style="font-size:11.5px;">${escapeHtml(new Date(l.at).toLocaleString('pt-BR'))} · ${escapeHtml(l.msg || '')}</div></div></div>`).join('')}</div>` : '<div class="integ-muted">Nenhum envio ainda.</div>'}
-        </section>
+          ${log.length ? `<div class="capi-log">${log.map(l => `<div class="capi-log-row"><span class="capi-log-dot ${l.ok ? 'ok' : 'bad'}"></span><div style="flex:1;min-width:0;"><b>${escapeHtml(l.lead || 'Lead')}</b> · ${escapeHtml(l.event)}${l.value ? ' · R$ ' + Number(l.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : ''}<div class="integ-muted" style="font-size:11.5px;">${escapeHtml(new Date(l.at).toLocaleString('pt-BR'))} · ${escapeHtml(l.msg || '')}</div></div></div>`).join('')}</div>` : '<div class="integ-muted">Nenhum envio ainda.</div>'}
+        </section>`}
       </div>
     </div>`;
 }
@@ -14792,51 +14813,44 @@ function capiReadRules() {
   return [...document.querySelectorAll('#capi-rules .capi-rule')].map(row => {
     const ev = row.querySelector('.capi-event').value;
     const src = [...row.querySelectorAll('.capi-src:checked')].map(i => i.value);
-    const pix = (row.querySelector('.capi-rpixel') || {}).value || '';
-    return { stage: row.querySelector('.capi-stage').value, event: ev === '__custom' ? row.querySelector('.capi-custom').value.trim() : ev, requireValue: row.querySelector('.capi-val').checked, sources: src.length === CAPI_ORIGIN_OPTIONS.length ? [] : src, pixelId: pix.replace(/\D/g, '') };
+    return { stage: row.querySelector('.capi-stage').value, event: ev === '__custom' ? row.querySelector('.capi-custom').value.trim() : ev, requireValue: row.querySelector('.capi-val').checked, sources: src.length === CAPI_ORIGIN_OPTIONS.length ? [] : src };
   }).filter(r => r.stage && r.event);
-}
-function capiReadPixelTokens() {
-  const out = {};
-  document.querySelectorAll('#capi-rules .capi-rule').forEach(row => {
-    const pix = ((row.querySelector('.capi-rpixel') || {}).value || '').replace(/\D/g, '');
-    const tk = ((row.querySelector('.capi-rtoken') || {}).value || '').trim();
-    if (pix && tk) out[pix] = tk;
-  });
-  return out;
 }
 async function saveCapi(btn) {
   const fb = document.getElementById('capi-fb');
   const say = (t, ok) => { fb.textContent = t; fb.style.color = ok ? 'var(--green)' : 'var(--red)'; };
-  const act = flowAct();
+  const act = _capi.act;
+  const isNew = _capi.sel === '__new';
   btn.disabled = true; say('Salvando...', true);
   try {
-    await window._fb.whatsapp('/capi/save', act, {
-      enabled: document.getElementById('capi-on').checked, pixelId: document.getElementById('capi-pixel').value,
-      token: document.getElementById('capi-token').value, testCode: document.getElementById('capi-testcode').value, rules: capiReadRules(),
-      pixelTokens: capiReadPixelTokens()
-    });
-    showToast('Conversões Meta salvas.', 'success');
-    renderCapiView();
+    const r = await window._fb.whatsapp('/capi/save', act, { pixel: {
+      id: isNew ? '' : _capi.sel, name: document.getElementById('capi-name').value, enabled: document.getElementById('capi-on').checked,
+      pixelId: document.getElementById('capi-pixel').value, token: document.getElementById('capi-token').value,
+      testCode: document.getElementById('capi-testcode').value, rules: capiReadRules()
+    } });
+    showToast(isNew ? 'Pixel cadastrado.' : 'Pixel salvo.', 'success');
+    renderCapiView(r.id);
   } catch (e) { say('Erro: ' + e.message, false); }
   btn.disabled = false;
 }
 async function testCapi(btn) {
   const out = document.getElementById('capi-test-out');
-  const act = flowAct();
   btn.disabled = true; out.style.color = 'var(--muted)'; out.textContent = 'Enviando...';
   try {
-    const r = await window._fb.whatsapp('/capi/test', act, { event: document.getElementById('capi-test-event').value, testCode: document.getElementById('capi-testcode').value });
-    out.style.color = 'var(--green)'; out.textContent = 'A Meta recebeu o evento de teste (' + (r.received ?? 1) + '). Confira na aba Testar eventos do Gerenciador de Eventos.';
+    const r = await window._fb.whatsapp('/capi/test', _capi.act, { pixelKey: _capi.sel, event: document.getElementById('capi-test-event').value, testCode: document.getElementById('capi-testcode').value });
+    out.style.color = 'var(--green)'; out.textContent = 'A Meta recebeu o evento de teste (' + (r.received ?? 1) + '). Confira na aba Testar eventos do Gerenciador de Eventos deste pixel.';
   } catch (e) { out.style.color = 'var(--red)'; out.textContent = e.message; }
   btn.disabled = false;
 }
 async function disconnectCapi() {
-  if (!await showConfirm('O CRM para de avisar a Meta e o token salvo é apagado.', 'Desconectar', 'Desconectar', true)) return;
-  try { await window._fb.whatsapp('/capi/disconnect', flowAct(), {}); showToast('Desconectado.', 'success'); }
+  const px = _capi.pixels.find(x => x.id === _capi.sel);
+  if (!px) return;
+  if (!await showConfirm(`O CRM para de mandar eventos para o pixel "${px.name}" e o token salvo dele é apagado. Os outros pixels continuam.`, 'Excluir pixel', 'Excluir', true)) return;
+  try { await window._fb.whatsapp('/capi/disconnect', _capi.act, { pixelKey: px.id }); showToast('Pixel excluído.', 'success'); }
   catch (e) { showToast('Erro: ' + e.message, 'error'); }
-  renderCapiView();
+  renderCapiView('');
 }
+window.capiSelect = capiSelect;
 window.renderCapiView = renderCapiView; window.capiAddRule = capiAddRule; window.saveCapi = saveCapi; window.testCapi = testCapi; window.disconnectCapi = disconnectCapi;
 
 // ===== INSTAGRAM: conexão, directs no Chat e automações estilo ManyChat =====
