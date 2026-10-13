@@ -2251,7 +2251,9 @@ td { font-family: var(--font); font-size: 13px; }
       await deleteDoc(doc(db, 'inbound_keys', key));
     },
     async listMetaPages() {
-      const snap = await getDocs(collection(db, 'meta_pages'));
+      // O cliente só pode ler as páginas ligadas ao funil dele (regra do banco).
+      const q = currentProfile && currentProfile.role !== 'admin' ? query(collection(db, 'meta_pages'), where('act', '==', currentProfile.act || '')) : collection(db, 'meta_pages');
+      const snap = await getDocs(q);
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     },
     async saveMetaPage(pageId, data) {
@@ -2750,7 +2752,7 @@ td { font-family: var(--font); font-size: 13px; }
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('cadencia'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM16 2v4M8 2v4M3 10h18"/></svg><span>Cadência</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('whatsapp'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/></svg><span>Conexões</span></button>
     <button type="button" class="mnav-sheet-item" onclick="closeMobileMore(); switchView('modelos'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Modelos API oficial</button>
-    <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); switchView('integracoes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>Integrações</span></button>
+    <button type="button" class="mnav-sheet-item" onclick="closeMobileMore(); switchView('integracoes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>Integrações</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('conta'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Conta</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('ajuda'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg><span>Ajuda</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); toggleHuvenTheme()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span>Tema <span id="huven-theme-label-mobile">Escuro</span></span></button>
@@ -3883,7 +3885,7 @@ td { font-family: var(--font); font-size: 13px; }
     <div id="integracoes-view" style="display:none; padding:28px 32px;">
       <div style="max-width:980px;">
         <div class="integ-page-title">Integrações</div>
-        <div class="integ-muted" style="margin-bottom:16px;">Traga leads de landing pages e dos formulários da Meta direto para o funil de cada cliente.</div>
+        <div class="integ-muted" id="integ-sub" style="margin-bottom:16px;">Traga leads de landing pages e dos formulários da Meta direto para o funil de cada cliente.</div>
         <div class="integ-tabs" style="margin-bottom:18px;">
           <button class="integ-tab active" data-tab="lp" onclick="setIntegTab('lp')">Landing pages</button>
           <button class="integ-tab" data-tab="meta" onclick="setIntegTab('meta')">Formulários da Meta</button>
@@ -11642,7 +11644,14 @@ function copyText(text, label) {
 }
 
 function renderIntegracoesView() {
-  document.querySelectorAll('.integ-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === _integTab));
+  // Cliente: só Landing pages e Formulários da Meta (Planilhas e Dashboard são da equipe).
+  if (!isAdmin && (_integTab === 'sheets' || _integTab === 'ads')) _integTab = 'lp';
+  const sub = document.getElementById('integ-sub');
+  if (sub) sub.textContent = isAdmin ? 'Traga leads de landing pages e dos formulários da Meta direto para o funil de cada cliente.' : 'Leads das suas landing pages e dos formulários da Meta caindo direto no seu funil.';
+  document.querySelectorAll('.integ-tab').forEach(b => {
+    b.style.display = !isAdmin && (b.dataset.tab === 'sheets' || b.dataset.tab === 'ads') ? 'none' : '';
+    b.classList.toggle('active', b.dataset.tab === _integTab);
+  });
   if (_integTab === 'lp') renderIntegLp();
   else if (_integTab === 'meta') renderIntegMeta();
   else if (_integTab === 'ads') renderIntegAds();
@@ -11668,11 +11677,11 @@ async function renderIntegLp(skipLoad) {
       </div>
       <div class="integ-actions">
         ${isAdmin ? `<select class="field-input integ-select" onchange="_integAct = this.value; renderIntegLp(true)">${integClientOptions(_integAct, 'Todos os clientes')}</select>` : ''}
-        ${isAdmin ? `<button class="integ-btn primary" onclick="openNewInboundKey()">+ Nova integração</button>` : ''}
+        <button class="integ-btn primary" onclick="openNewInboundKey()">+ Nova integração</button>
       </div>
     </div>
     <div id="integ-new"></div>
-    ${keys.length ? keys.map(inboundKeyCardHtml).join('') : `<div class="integ-empty">Nenhuma integração de landing page ${_integAct ? 'para este cliente' : 'ainda'}.${isAdmin ? ' Clique em "+ Nova integração" para criar o endereço e o código prontos.' : ''}</div>`}`;
+    ${keys.length ? keys.map(inboundKeyCardHtml).join('') : `<div class="integ-empty">Nenhuma integração de landing page ${_integAct ? 'para este cliente' : 'ainda'}. Clique em "+ Nova integração" para criar o endereço e o código prontos.</div>`}`;
 }
 
 function inboundKeyCardHtml(k) {
@@ -11693,19 +11702,19 @@ function inboundKeyCardHtml(k) {
     <div class="integ-row">
       <button class="integ-btn primary" onclick="openInboundCode('${id}')">Código pronto</button>
       <button class="integ-btn" onclick="sendInboundTest('${id}')">Enviar lead de teste</button>
-      ${isAdmin ? `<button class="integ-btn" onclick="toggleInboundKey('${id}')">${on ? 'Desativar' : 'Ativar'}</button>
-      <button class="integ-btn danger" onclick="deleteInboundKeyConfirm('${id}')">Excluir</button>` : ''}
+      <button class="integ-btn" onclick="toggleInboundKey('${id}')">${on ? 'Desativar' : 'Ativar'}</button>
+      <button class="integ-btn danger" onclick="deleteInboundKeyConfirm('${id}')">Excluir</button>
     </div>
   </div>`;
 }
 
 function openNewInboundKey() {
   const box = document.getElementById('integ-new');
-  const act = _integAct || '';
+  const act = isAdmin ? (_integAct || '') : flowAct();
   box.innerHTML = `<div class="integ-card" style="border-color:var(--accent);">
     <div class="integ-title" style="margin-bottom:10px;">Nova integração de landing page</div>
     <div class="integ-grid">
-      <label>Cliente<select class="field-input" id="inb-act" onchange="inbRefreshTarget(true)">${integClientOptions(act, 'Escolha o cliente')}</select></label>
+      ${isAdmin ? `<label>Cliente<select class="field-input" id="inb-act" onchange="inbRefreshTarget(true)">${integClientOptions(act, 'Escolha o cliente')}</select></label>` : `<input type="hidden" id="inb-act" value="${escapeHtml(act)}">`}
       <label>Nome da LP<input class="field-input" id="inb-name" placeholder="Ex.: LP Implante outubro"></label>
       <label>Pipeline<select class="field-input" id="inb-pipeline" onchange="inbRefreshTarget(false)">${inbPipelineOptions(act)}</select></label>
       <label>Coluna onde o lead entra<select class="field-input" id="inb-stage">${inbStageOptions(act, 'principal')}</select></label>
@@ -12026,10 +12035,51 @@ async function disconnectFbPage(act, pageId, elId) {
   } catch (e) { showToast('Erro: ' + e.message, 'error'); }
 }
 
+// Cliente: vê só as páginas e formulários da Meta ligados ao funil dele (quem configura é o admin).
+async function renderIntegMetaClient() {
+  const body = document.getElementById('integ-body');
+  if (!body) return;
+  const act = flowAct();
+  body.innerHTML = '<div class="integ-muted">Carregando...</div>';
+  let pages;
+  try { pages = await window._fb.listMetaPages(); }
+  catch (e) { body.innerHTML = `<div class="integ-error">Erro: ${escapeHtml(e.message)}</div>`; return; }
+  pages = (pages || []).filter(p => normalizeActValue(p.act) === act && p.active !== false);
+  const stageLbl = id => autoStageLabel(act, id || 'novo');
+  const cards = pages.map(p => {
+    const cfg = p.forms || {};
+    const hasCfg = Object.keys(cfg).length > 0;
+    const forms = Object.values(cfg).filter(f => f && f.active !== false && (!f.act || normalizeActValue(f.act) === act));
+    const formsHtml = !hasCfg
+      ? `<div class="integ-muted" style="padding:4px 0;">Todos os formulários desta página entram em <b>${escapeHtml(stageLbl(p.stage))}</b>${p.origem ? ' · origem "' + escapeHtml(p.origem) + '"' : ''}.</div>`
+      : forms.length
+        ? forms.map(f => `<div class="integ-muted" style="padding:4px 0;">• <b>${escapeHtml(f.name || 'Formulário')}</b> → entra em <b>${escapeHtml(stageLbl(f.stage || p.stage))}</b>${(f.origem || p.origem) ? ' · origem "' + escapeHtml(f.origem || p.origem) + '"' : ''}</div>`).join('')
+        : '<div class="integ-muted" style="padding:4px 0;">Nenhum formulário desta página está ligado ao funil no momento.</div>';
+    return `<div class="integ-card">
+      <div class="integ-card-head">
+        <div style="flex:1;min-width:0;">
+          <div class="integ-title">${escapeHtml(p.pageName || p.id)}</div>
+          <div class="integ-muted">${Number(p.count) || 0} leads recebidos · último: ${escapeHtml(integWhen(p.lastAt))}</div>
+        </div>
+        <span class="integ-chip ok">Recebendo leads</span>
+      </div>
+      ${formsHtml}
+    </div>`;
+  }).join('');
+  body.innerHTML = `
+    <div class="integ-intro">
+      <div>
+        <div class="integ-h2">Formulários da Meta</div>
+        <div class="integ-muted">Páginas e formulários de anúncio ligados ao seu funil. Quem preencher esses formulários cai direto no CRM, na coluna indicada. A configuração é feita pela nossa equipe: fale com a gente para ligar uma página ou um formulário novo.</div>
+      </div>
+    </div>
+    ${cards || '<div class="integ-empty">Nenhum formulário da Meta ligado ao seu funil ainda.</div>'}`;
+}
+
 async function renderIntegMeta() {
   const body = document.getElementById('integ-body');
   if (!body) return;
-  if (!isAdmin) { body.innerHTML = '<div class="integ-empty">Somente o admin configura os formulários da Meta.</div>'; return; }
+  if (!isAdmin) return renderIntegMetaClient();
   body.innerHTML = '<div class="integ-muted">Carregando...</div>';
   try {
     const [status, saved] = await Promise.all([window._fb.adminApi('/meta/status').catch(() => ({ configured: false })), window._fb.listMetaPages()]);
@@ -18495,7 +18545,7 @@ function updateSidebarForUser() {
   const configBtn = document.getElementById('btn-config');
   if (configBtn) configBtn.style.display = isAdmin ? 'flex' : 'none';
   const integNav = document.getElementById('nav-integracoes');
-  if (integNav) integNav.style.display = isAdmin ? 'flex' : 'none';
+  if (integNav) integNav.style.display = isAdmin || userCanView('integracoes') ? 'flex' : 'none';
   const clientesNav = document.getElementById('nav-clientes');
   if (clientesNav) clientesNav.style.display = isAdmin ? 'flex' : 'none';
   const agenteNav = document.getElementById('nav-agenteia');
@@ -18546,7 +18596,7 @@ function onMobileClientChange() {
 // ===== Logins extras do cliente: o admin escolhe quais áreas cada login enxerga =====
 const SUB_LOGIN_VIEWS = [
   ['report', 'Dashboard'], ['analise', 'Atendimento'], ['crm', 'Funil de vendas'], ['chat', 'Chat'], ['contatos', 'Contatos'],
-  ['automacoes', 'Automações'], ['capi', 'Conversões Meta'], ['instagram', 'Instagram'], ['posts', 'Postagens'], ['prospeccao', 'Prospecção'], ['campanhas', 'Campanhas'], ['cadencia', 'Cadência'], ['whatsapp', 'Conexões'], ['modelos', 'Modelos API oficial']
+  ['automacoes', 'Automações'], ['capi', 'Conversões Meta'], ['instagram', 'Instagram'], ['posts', 'Postagens'], ['prospeccao', 'Prospecção'], ['campanhas', 'Campanhas'], ['cadencia', 'Cadência'], ['whatsapp', 'Conexões'], ['integracoes', 'Integrações'], ['modelos', 'Modelos API oficial']
 ];
 let SUB_LOGINS = [];
 let _subVault = {};
