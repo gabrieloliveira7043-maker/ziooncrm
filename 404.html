@@ -6002,6 +6002,15 @@ function ensurePipelines(act, onLoad) {
   if (onLoad) _pipelinesLoading[act].then(onLoad);
 }
 
+// Resolve quando os funis do cliente estiverem carregados. Telas que listam funis ou colunas esperam por isso;
+// sem esperar, a lista sai só com o funil principal enquanto os outros ainda não chegaram.
+function pipelinesReady(act) {
+  act = normalizeActValue(act);
+  if (!act || _pipelinesCache[act]) return Promise.resolve();
+  ensurePipelines(act);
+  return _pipelinesLoading[act] || Promise.resolve();
+}
+
 async function savePipelinesCfg(act, cfg) {
   act = normalizeActValue(act);
   _pipelinesCache[act] = cfg;
@@ -10579,6 +10588,7 @@ async function renderAutomacoesView() {
   const act = flowAct();
   if (_flow) return renderFlowEditor();
   if (!act) { box.innerHTML = '<div class="integ-empty">Escolha o cliente no topo do menu para ver e criar as automações dele.</div>'; return; }
+  await pipelinesReady(act);
   box.innerHTML = '<div class="integ-muted">Carregando...</div>';
   try { _flowList = await window._fb.listAutomations(act); await refreshWaSettings(act); }
   catch (e) { box.innerHTML = `<div class="integ-error">Erro: ${escapeHtml(e.message)}</div>`; return; }
@@ -11668,6 +11678,7 @@ async function renderIntegLp(skipLoad) {
     body.innerHTML = '<div class="integ-muted">Carregando...</div>';
     try { _inboundKeys = await window._fb.listInboundKeys(); } catch (e) { body.innerHTML = `<div class="integ-error">Erro: ${escapeHtml(e.message)}</div>`; return; }
   }
+  await Promise.all([...new Set(_inboundKeys.map(k => k.act).concat(_integAct ? [_integAct] : []).filter(Boolean))].map(pipelinesReady));
   const keys = _inboundKeys.filter(k => !_integAct || k.act === _integAct).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
   body.innerHTML = `
     <div class="integ-intro">
@@ -11708,13 +11719,14 @@ function inboundKeyCardHtml(k) {
   </div>`;
 }
 
-function openNewInboundKey() {
+async function openNewInboundKey() {
   const box = document.getElementById('integ-new');
   const act = isAdmin ? (_integAct || '') : flowAct();
+  await pipelinesReady(act);
   box.innerHTML = `<div class="integ-card" style="border-color:var(--accent);">
     <div class="integ-title" style="margin-bottom:10px;">Nova integração de landing page</div>
     <div class="integ-grid">
-      ${isAdmin ? `<label>Cliente<select class="field-input" id="inb-act" onchange="inbRefreshTarget(true)">${integClientOptions(act, 'Escolha o cliente')}</select></label>` : `<input type="hidden" id="inb-act" value="${escapeHtml(act)}">`}
+      ${isAdmin ? `<label>Cliente<select class="field-input" id="inb-act" onchange="pipelinesReady(this.value).then(() => inbRefreshTarget(true))">${integClientOptions(act, 'Escolha o cliente')}</select></label>` : `<input type="hidden" id="inb-act" value="${escapeHtml(act)}">`}
       <label>Nome da LP<input class="field-input" id="inb-name" placeholder="Ex.: LP Implante outubro"></label>
       <label>Pipeline<select class="field-input" id="inb-pipeline" onchange="inbRefreshTarget(false)">${inbPipelineOptions(act)}</select></label>
       <label>Coluna onde o lead entra<select class="field-input" id="inb-stage">${inbStageOptions(act, 'principal')}</select></label>
@@ -11899,6 +11911,7 @@ function renderInboundCode() {
 let _fbForms = {};
 
 async function renderFbConnectBox(act, el) {
+  await pipelinesReady(act);
   if (!el) return;
   act = normalizeActValue(act);
   if (!act) { el.innerHTML = ''; return; }
@@ -12045,6 +12058,7 @@ async function renderIntegMetaClient() {
   try { pages = await window._fb.listMetaPages(); }
   catch (e) { body.innerHTML = `<div class="integ-error">Erro: ${escapeHtml(e.message)}</div>`; return; }
   pages = (pages || []).filter(p => normalizeActValue(p.act) === act && p.active !== false);
+  await pipelinesReady(act);
   const stageLbl = id => autoStageLabel(act, id || 'novo');
   const cards = pages.map(p => {
     const cfg = p.forms || {};
@@ -12084,6 +12098,7 @@ async function renderIntegMeta() {
   try {
     const [status, saved] = await Promise.all([window._fb.adminApi('/meta/status').catch(() => ({ configured: false })), window._fb.listMetaPages()]);
     _metaStatus = status; _metaSaved = saved;
+    await Promise.all([...new Set(saved.map(p => p.act).filter(Boolean))].map(pipelinesReady));
   } catch (e) { body.innerHTML = `<div class="integ-error">Erro: ${escapeHtml(e.message)}</div>`; return; }
   const st = _metaStatus || {};
   const check = (ok, label) => `<div class="integ-check ${ok ? 'ok' : ''}"><span>${ok ? '✓' : '•'}</span>${label}</div>`;
@@ -12145,7 +12160,7 @@ function metaPagesHtml() {
         <span class="integ-chip ${on ? 'ok' : 'off'}">${on ? 'Recebendo leads' : 'Desligada'}</span>
       </div>
       <div class="integ-grid">
-        <label>Cliente<select class="field-input" id="mp-act-${id}" onchange="document.getElementById('mp-stage-${id}').innerHTML = integStageOptions(this.value)">${integClientOptions(act, 'Escolha o cliente')}</select></label>
+        <label>Cliente<select class="field-input" id="mp-act-${id}" onchange="const a = this.value; pipelinesReady(a).then(() => { document.getElementById('mp-stage-${id}').innerHTML = integStageOptions(a); })">${integClientOptions(act, 'Escolha o cliente')}</select></label>
         <label>Coluna onde o lead entra<select class="field-input" id="mp-stage-${id}">${integStageOptions(act, s.stage)}</select></label>
         <label>Origem no card (opcional)<input class="field-input" id="mp-origem-${id}" value="${escapeHtml(s.origem || '')}" placeholder="Meta Ads - nome do formulário"></label>
       </div>
@@ -14826,6 +14841,7 @@ async function renderCapiView(selId) {
   if (!box) return;
   const act = flowAct();
   if (!act) { box.innerHTML = '<div class="integ-empty">Escolha o cliente no topo do menu para configurar as conversões dele.</div>'; return; }
+  await pipelinesReady(act);
   if (_capi.act !== act) box.innerHTML = '<div class="integ-muted">Carregando...</div>';
   let c;
   try { c = await window._fb.whatsapp('/capi/get', act, {}); }
@@ -15798,6 +15814,7 @@ async function openGroupAlert(id) {
   const act = flowAct();
   if (!act) return;
   await ensureWaSettings(act);
+  await pipelinesReady(act);
   const cur = groupAlertsOf(act).find(a => a.id === id) || null;
   const lines = waLines(act).filter(l => !waIsCloud(l.id));
   if (!lines.length) { showToast('Conecte um WhatsApp por QR Code para enviar avisos para grupos. A API oficial não envia para grupos.', 'warning', 6000); return; }
