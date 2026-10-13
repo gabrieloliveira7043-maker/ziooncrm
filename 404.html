@@ -8414,7 +8414,7 @@ async function loadCampaignGroups(refresh) {
         <input type="checkbox" id="camp-groups-all" onchange="toggleAllCampaignGroups(this.checked)"> Selecionar todos os ${groups.length} grupos</label>` +
       groups.map(g => `<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);padding:4px 0;cursor:pointer;">
       <input type="checkbox" class="camp-group" value="${escapeHtml(g.id)}" data-subject="${escapeHtml(g.subject)}" onchange="scheduleGroupParticipants()">
-      ${escapeHtml(g.subject)} <span style="color:var(--muted);font-size:11px;">(${g.size} participantes)</span></label>`).join('');
+      ${escapeHtml(g.subject)} ${g.size ? `<span style="color:var(--muted);font-size:11px;">(${g.size} participantes)</span>` : ''}</label>`).join('');
   } catch (e) {
     box.innerHTML = `<div style="font-size:12px;color:#f87171;">${escapeHtml(e.message)}</div>`;
   }
@@ -9056,7 +9056,7 @@ async function loadCadenceGroups(refresh) {
     const checked = new Set([...document.querySelectorAll('.cad-group:checked')].map(cb => cb.value).concat(_cadenceDraft.preselect));
     box.innerHTML = groupsCacheNote(r, 'loadCadenceGroups(true)') + (groups.length ? groups.map(g => `<label class="cad-group-row" data-name="${escapeHtml(g.subject.toLowerCase())}" style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);padding:4px 0;cursor:pointer;">
         <input type="checkbox" class="cad-group" value="${escapeHtml(g.id)}" data-subject="${escapeHtml(g.subject)}" ${checked.has(g.id) ? 'checked' : ''} onchange="renderCadencePreview()">
-        ${escapeHtml(g.subject)} <span style="color:var(--muted);font-size:11px;">(${g.size})</span></label>`).join('')
+        ${escapeHtml(g.subject)} ${g.size ? `<span style="color:var(--muted);font-size:11px;">(${g.size})</span>` : ''}</label>`).join('')
       : '<div style="font-size:12px;color:var(--muted);">Nenhum grupo neste WhatsApp.</div>');
     renderCadencePreview();
   } catch (e) {
@@ -15806,7 +15806,7 @@ function renderGroupAlertGroups() {
   const q = (document.getElementById('ga-gsearch').value || '').trim().toLowerCase();
   let list = g.groups.filter(x => !q || x.subject.toLowerCase().includes(q) || x.id === g.groupId);
   if (g.groupId && !g.groups.some(x => x.id === g.groupId)) list = [{ id: g.groupId, subject: g.groupName || g.groupId, size: '?' }].concat(list);
-  sel.innerHTML = list.map(x => `<option value="${escapeHtml(x.id)}" ${x.id === g.groupId ? 'selected' : ''}>${escapeHtml(x.subject)} (${x.size})</option>`).join('') || '<option disabled>Nenhum grupo encontrado</option>';
+  sel.innerHTML = list.map(x => `<option value="${escapeHtml(x.id)}" ${x.id === g.groupId ? 'selected' : ''}>${escapeHtml(x.subject)}${x.size ? ' (' + x.size + ')' : ''}</option>`).join('') || '<option disabled>Nenhum grupo encontrado</option>';
 }
 
 function insertGroupAlertVar(v) {
