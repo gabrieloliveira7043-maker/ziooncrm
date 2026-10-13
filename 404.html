@@ -15755,7 +15755,7 @@ async function openGroupAlert(id) {
   _gAlert = { act, id: cur ? cur.id : '', line, groupId: cur ? cur.groupId || '' : '', groupName: cur ? cur.groupName || '' : '', groups: [] };
   const lineOpts = lines.map(l => `<option value="${escapeHtml(l.id)}" ${l.id === line ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('');
   openHuvenModal(cur ? 'Editar aviso' : 'Novo aviso para grupo', `
-    <div class="field-group"><label class="field-label">Nome do aviso</label><input class="field-input" id="ga-name" maxlength="40" placeholder="Ex: Aviso comercial" value="${escapeHtml(cur ? cur.name || '' : '')}"></div>
+    <div class="field-group"><label class="field-label">Nome do aviso</label><input class="field-input" id="ga-name" maxlength="40" placeholder="Ex: Aviso de novo lead" value="${escapeHtml(cur ? cur.name || '' : 'Aviso de novo lead')}"></div>
     <div class="field-group"><label class="field-label">Quando o lead entrar na coluna</label><select class="field-input" id="ga-stage">${autoStageOptions(act, cur ? cur.stage : '', 'Escolha a coluna')}</select></div>
     <div class="field-group"><label class="field-label">Origens do lead</label>${capiOriginsHtml(cur ? cur.sources : [])}</div>
     <div class="field-group"><label class="field-label">WhatsApp que envia</label><select class="field-input" id="ga-line" onchange="_gAlert.line = this.value; _gAlert.groupId = ''; _gAlert.groupName = ''; loadGroupAlertGroups(false)">${lineOpts}</select></div>
