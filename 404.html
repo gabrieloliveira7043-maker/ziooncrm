@@ -10578,7 +10578,7 @@ async function renderAutomacoesView() {
   if (_flow) return renderFlowEditor();
   if (!act) { box.innerHTML = '<div class="integ-empty">Escolha o cliente no topo do menu para ver e criar as automações dele.</div>'; return; }
   box.innerHTML = '<div class="integ-muted">Carregando...</div>';
-  try { _flowList = await window._fb.listAutomations(act); await ensureWaSettings(act); }
+  try { _flowList = await window._fb.listAutomations(act); await refreshWaSettings(act); }
   catch (e) { box.innerHTML = `<div class="integ-error">Erro: ${escapeHtml(e.message)}</div>`; return; }
   const leads = (_leadsCache || []).filter(l => leadMatchesClient(l, act));
   box.innerHTML = `
@@ -10619,7 +10619,7 @@ async function renderAutomacoesView() {
         </article>`;
       }).join('') : '<div class="integ-empty" style="grid-column:1/-1;">Nenhuma automação ainda. Clique em "+ Nova automação" para montar o primeiro fluxo.</div>'}
     </div>
-    ${autoCaptureHtml(act)}`;
+    ${isAdminUser() ? autoCaptureHtml(act) + autoAlertsHtml(act) : ''}`;
 }
 
 // ===== ANDAMENTO DA AUTOMAÇÃO (quantos receberam cada mensagem, quantos responderam, o que falta) =====
@@ -15689,6 +15689,199 @@ function captureRuleRowHtml(act, rule) {
       <label class="integ-toggle" style="font-size:12px;white-space:nowrap;" title="Quem mandar esta frase passa a ser atendido pelo agente de IA"><input type="checkbox" class="wa-rule-ai" ${rule.ai ? 'checked' : ''}> ${uiIco('bot', 13)} Acionar a IA</label>
       <button style="${wbtn}background:transparent;color:#f87171;border-color:#f87171;" onclick="this.closest('.wa-rule').remove()" title="Remover">✕</button>
     </div>`;
+}
+
+// ===== Avisos para grupo do WhatsApp (tela Automações) =====
+// Guardados em whatsapp_settings/{act}.groupAlerts. Quem envia é o Worker, em até ~15 s depois de o lead entrar na coluna.
+const GROUP_ALERT_DEFAULT_TEXT = '🔥 Novo Lead de Alta Intenção\nLead: {nome}\nWhatsApp: {telefone}\n{respostas}\nEmail: {email}\n\nOportunidade capturada via {origem}. Hora de converter!';
+const GROUP_ALERT_VARS = [
+  ['{nome}', 'Nome'], ['{primeiro_nome}', 'Primeiro nome'], ['{telefone}', 'WhatsApp'], ['{email}', 'E-mail'],
+  ['{respostas}', 'Todas as respostas'], ['{resposta:Palavra}', 'Uma resposta'], ['{origem}', 'Origem'], ['{rede_social}', 'Rede'],
+  ['{campanha}', 'Campanha'], ['{coluna}', 'Coluna'], ['{data}', 'Data e hora']
+];
+let _gAlert = null;   // aviso aberto na janela de edição
+
+function groupAlertsOf(act) {
+  const s = WHATSAPP_SETTINGS[act] || {};
+  return Array.isArray(s.groupAlerts) ? s.groupAlerts : [];
+}
+
+async function refreshWaSettings(act) {
+  if (isAdminUser()) {
+    try { Object.assign(WHATSAPP_SETTINGS, await window._fb.getWhatsAppSettings()); return; } catch (e) {}
+  }
+  await ensureWaSettings(act);
+}
+
+async function saveGroupAlerts(act, list) {
+  const data = { groupAlerts: list, groupAlertsOn: list.some(a => a.active !== false) };
+  await window._fb.saveWhatsAppSettings(act, data);
+  WHATSAPP_SETTINGS[act] = { ...(WHATSAPP_SETTINGS[act] || {}), ...data };
+}
+
+function autoAlertsHtml(act) {
+  const list = groupAlertsOf(act);
+  const log = ((WHATSAPP_SETTINGS[act] || {}).groupAlertLog || []).slice().reverse();
+  const rows = list.length ? list.map(a => {
+    const last = log.find(l => l.aviso === a.id);
+    const id = escapeJsString(a.id);
+    return `<div class="capi-rule" style="align-items:flex-start;">
+      <label class="integ-toggle" style="margin-top:2px;" title="Ligar ou desligar o aviso"><input type="checkbox" ${a.active !== false ? 'checked' : ''} onchange="toggleGroupAlert('${id}', this.checked)"></label>
+      <div style="flex:1;min-width:200px;">
+        <div style="font-weight:600;font-size:13.5px;">${escapeHtml(a.name || 'Aviso')}</div>
+        <div class="integ-muted" style="font-size:12px;">Quando entrar em <b>${escapeHtml(autoStageLabel(act, a.stage))}</b> → grupo <b>${escapeHtml(a.groupName || 'grupo')}</b> · ${escapeHtml(waLineLabel(act, a.line))}${a.mentionAll !== false ? ' · marca todos' : ''}</div>
+        ${last ? `<div class="integ-muted" style="font-size:11.5px;color:${last.ok ? 'var(--green)' : 'var(--red)'};">Último: ${escapeHtml(last.lead)} · ${escapeHtml(new Date(last.at).toLocaleString('pt-BR'))} · ${escapeHtml(last.msg || '')}</div>` : ''}
+      </div>
+      <button class="huv-btn" onclick="openGroupAlert('${id}')">Editar</button>
+      <button class="btn-remove" type="button" onclick="deleteGroupAlert('${id}')">Excluir</button>
+    </div>`;
+  }).join('') : '<div class="integ-muted" style="margin-bottom:6px;">Nenhum aviso ainda.</div>';
+  return `<section class="cfgc-card" style="margin-top:18px;">
+      <div class="cfgc-card-title">Avisos para grupo do WhatsApp</div>
+      <div class="cfgc-sub">Quando um lead entrar na coluna, o CRM manda uma mensagem para um grupo do WhatsApp avisando a equipe, em até 20 segundos. Cada aviso sai uma vez por lead e vale para os leads que entrarem depois que você criar o aviso. Só funciona com WhatsApp conectado por QR Code, e o número precisa estar dentro do grupo.</div>
+      <div id="group-alerts-list" style="margin-top:8px;">${rows}</div>
+      <button class="huv-btn" style="margin-top:8px;" onclick="openGroupAlert('')">+ Novo aviso</button>
+    </section>`;
+}
+
+async function openGroupAlert(id) {
+  const act = flowAct();
+  if (!act) return;
+  await ensureWaSettings(act);
+  const cur = groupAlertsOf(act).find(a => a.id === id) || null;
+  const lines = waLines(act).filter(l => !waIsCloud(l.id));
+  if (!lines.length) { showToast('Conecte um WhatsApp por QR Code para enviar avisos para grupos. A API oficial não envia para grupos.', 'warning', 6000); return; }
+  const line = cur && lines.some(l => l.id === cur.line) ? cur.line : lines[0].id;
+  _gAlert = { act, id: cur ? cur.id : '', line, groupId: cur ? cur.groupId || '' : '', groupName: cur ? cur.groupName || '' : '', groups: [] };
+  const lineOpts = lines.map(l => `<option value="${escapeHtml(l.id)}" ${l.id === line ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('');
+  openHuvenModal(cur ? 'Editar aviso' : 'Novo aviso para grupo', `
+    <div class="field-group"><label class="field-label">Nome do aviso</label><input class="field-input" id="ga-name" maxlength="40" placeholder="Ex: Aviso comercial" value="${escapeHtml(cur ? cur.name || '' : '')}"></div>
+    <div class="field-group"><label class="field-label">Quando o lead entrar na coluna</label><select class="field-input" id="ga-stage">${autoStageOptions(act, cur ? cur.stage : '', 'Escolha a coluna')}</select></div>
+    <div class="field-group"><label class="field-label">Origens do lead</label>${capiOriginsHtml(cur ? cur.sources : [])}</div>
+    <div class="field-group"><label class="field-label">WhatsApp que envia</label><select class="field-input" id="ga-line" onchange="_gAlert.line = this.value; _gAlert.groupId = ''; _gAlert.groupName = ''; loadGroupAlertGroups(false)">${lineOpts}</select></div>
+    <div class="field-group"><label class="field-label">Grupo que recebe</label>
+      <input class="field-input" id="ga-gsearch" placeholder="Buscar grupo pelo nome" oninput="renderGroupAlertGroups()" style="margin-bottom:6px;">
+      <select class="field-input" id="ga-group" size="6" style="height:auto;" onchange="_gAlert.groupId = this.value; _gAlert.groupName = ((_gAlert.groups.find(x => x.id === this.value)) || {}).subject || _gAlert.groupName"></select>
+      <div id="ga-gnote" class="integ-muted" style="margin-top:4px;"></div>
+    </div>
+    <label class="integ-toggle" style="margin:4px 0 10px;"><input type="checkbox" id="ga-mention" ${cur && cur.mentionAll === false ? '' : 'checked'}> Marcar todos do grupo na mensagem</label>
+    <div class="field-group"><label class="field-label">Mensagem</label>
+      <textarea class="field-input" id="ga-text" rows="9" style="min-height:170px;resize:vertical;font-family:inherit;">${escapeHtml(cur ? cur.text || '' : GROUP_ALERT_DEFAULT_TEXT)}</textarea>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${GROUP_ALERT_VARS.map(([v, l]) => `<button type="button" class="huv-btn" style="padding:3px 9px;font-size:11.5px;" onclick="insertGroupAlertVar('${v}')">${l}</button>`).join('')}</div>
+      <div class="integ-muted" style="margin-top:6px;line-height:1.5;">Linha cuja informação estiver vazia no card some sozinha. <b>{respostas}</b> coloca todas as respostas do formulário, uma por linha. <b>{resposta:Palavra}</b> pega só a resposta cuja pergunta tem aquela palavra, ex.: <b>{resposta:cargo}</b> ou <b>{resposta:estoque}</b>.</div>
+    </div>
+    <label class="integ-toggle" style="margin:4px 0 10px;"><input type="checkbox" id="ga-active" ${cur && cur.active === false ? '' : 'checked'}> Aviso ligado</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <button class="btn-save" style="width:auto;padding:0 22px;" onclick="saveGroupAlert(this)">Salvar aviso</button>
+      <button class="huv-btn" onclick="testGroupAlert(this)" title="Manda um exemplo para o grupo, sem marcar todo mundo">Enviar teste ao grupo</button>
+      <button class="huv-btn" onclick="closeHuvenModal()">Cancelar</button>
+      <span id="ga-fb" style="font-size:13px;"></span>
+    </div>`, 680);
+  loadGroupAlertGroups(false);
+}
+
+async function loadGroupAlertGroups(refresh) {
+  const g = _gAlert;
+  const sel = document.getElementById('ga-group');
+  const note = document.getElementById('ga-gnote');
+  if (!g || !sel) return;
+  sel.innerHTML = '<option disabled>Carregando grupos... na primeira vez pode levar até 1 minuto.</option>';
+  try {
+    const r = await window._fb.whatsapp('/whatsapp/groups', g.act, { refresh: !!refresh, line: g.line });
+    if (_gAlert !== g || !document.getElementById('ga-group')) return;
+    g.groups = (r.groups || []).sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
+    renderGroupAlertGroups();
+    note.innerHTML = groupsCacheNote(r, 'loadGroupAlertGroups(true)');
+  } catch (e) {
+    if (_gAlert !== g || !document.getElementById('ga-group')) return;
+    sel.innerHTML = '';
+    note.innerHTML = `<span style="color:var(--red);">${escapeHtml(e.message)}</span>`;
+  }
+}
+
+function renderGroupAlertGroups() {
+  const g = _gAlert;
+  const sel = document.getElementById('ga-group');
+  if (!g || !sel) return;
+  const q = (document.getElementById('ga-gsearch').value || '').trim().toLowerCase();
+  let list = g.groups.filter(x => !q || x.subject.toLowerCase().includes(q) || x.id === g.groupId);
+  if (g.groupId && !g.groups.some(x => x.id === g.groupId)) list = [{ id: g.groupId, subject: g.groupName || g.groupId, size: '?' }].concat(list);
+  sel.innerHTML = list.map(x => `<option value="${escapeHtml(x.id)}" ${x.id === g.groupId ? 'selected' : ''}>${escapeHtml(x.subject)} (${x.size})</option>`).join('') || '<option disabled>Nenhum grupo encontrado</option>';
+}
+
+function insertGroupAlertVar(v) {
+  const ta = document.getElementById('ga-text');
+  if (!ta) return;
+  const s = ta.selectionStart == null ? ta.value.length : ta.selectionStart;
+  const e = ta.selectionEnd == null ? s : ta.selectionEnd;
+  ta.value = ta.value.slice(0, s) + v + ta.value.slice(e);
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = s + v.length;
+}
+
+async function saveGroupAlert(btn) {
+  const g = _gAlert;
+  if (!g) return;
+  const fb = document.getElementById('ga-fb');
+  const say = (t, ok) => { fb.textContent = t; fb.style.color = ok ? 'var(--green)' : 'var(--red)'; };
+  const name = document.getElementById('ga-name').value.trim();
+  const stage = document.getElementById('ga-stage').value;
+  const text = document.getElementById('ga-text').value.trim();
+  if (!name) return say('Dê um nome ao aviso.', false);
+  if (!stage) return say('Escolha a coluna.', false);
+  if (!g.groupId) return say('Escolha o grupo que recebe o aviso.', false);
+  if (!text) return say('Escreva a mensagem.', false);
+  const src = [...document.querySelectorAll('#huven-modal .capi-src:checked')].map(i => i.value);
+  const active = document.getElementById('ga-active').checked;
+  const list = groupAlertsOf(g.act);
+  const prev = list.find(a => a.id === g.id);
+  // Só vale para leads que entrarem na coluna depois de criar o aviso (ou de mudar a coluna, ou de religar).
+  const restart = !prev || prev.stage !== stage || (prev.active === false && active);
+  const item = {
+    id: g.id || 'ga' + Date.now().toString(36), name, active, stage, stageLabel: autoStageLabel(g.act, stage),
+    line: g.line, groupId: g.groupId, groupName: g.groupName, text, mentionAll: document.getElementById('ga-mention').checked,
+    sources: src.length === CAPI_ORIGIN_OPTIONS.length ? [] : src, startAt: restart ? new Date().toISOString() : (prev.startAt || '')
+  };
+  const next = prev ? list.map(a => a.id === item.id ? item : a) : list.concat([item]);
+  if (next.length > 20) return say('Limite de 20 avisos por cliente.', false);
+  btn.disabled = true; say('Salvando...', true);
+  try {
+    await saveGroupAlerts(g.act, next);
+    closeHuvenModal();
+    showToast('Aviso salvo.', 'success');
+    renderAutomacoesView();
+  } catch (e) { say('Erro: ' + e.message, false); }
+  btn.disabled = false;
+}
+
+async function testGroupAlert(btn) {
+  const g = _gAlert;
+  if (!g) return;
+  const fb = document.getElementById('ga-fb');
+  if (!g.groupId) { fb.style.color = 'var(--red)'; fb.textContent = 'Escolha o grupo primeiro.'; return; }
+  btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'Enviando teste...';
+  try {
+    await window._fb.whatsapp('/whatsapp/alert-test', g.act, {
+      line: g.line, groupId: g.groupId, text: document.getElementById('ga-text').value,
+      stageLabel: autoStageLabel(g.act, document.getElementById('ga-stage').value)
+    });
+    fb.style.color = 'var(--green)'; fb.textContent = 'Teste enviado ao grupo (sem marcar todo mundo).';
+  } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = 'Erro: ' + e.message; }
+  btn.disabled = false;
+}
+
+async function toggleGroupAlert(id, on) {
+  const act = flowAct();
+  const list = groupAlertsOf(act).map(a => a.id === id ? { ...a, active: on, ...(on && a.active === false ? { startAt: new Date().toISOString() } : {}) } : a);
+  try { await saveGroupAlerts(act, list); showToast(on ? 'Aviso ligado.' : 'Aviso desligado.', 'success'); }
+  catch (e) { showToast('Erro: ' + e.message, 'error'); renderAutomacoesView(); }
+}
+
+async function deleteGroupAlert(id) {
+  if (!await showConfirm('Esse aviso deixa de ser enviado para o grupo.', 'Excluir aviso', 'Excluir', true)) return;
+  const act = flowAct();
+  try { await saveGroupAlerts(act, groupAlertsOf(act).filter(a => a.id !== id)); renderAutomacoesView(); }
+  catch (e) { showToast('Erro: ' + e.message, 'error'); }
 }
 
 // Seção "Captura de leads pelo WhatsApp" da tela Automações. Grava em whatsapp_settings/{act}.leadCapture.
