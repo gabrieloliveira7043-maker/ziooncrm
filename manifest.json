@@ -1,6 +1,6 @@
 {
-  "name": "Zioon",
-  "short_name": "Zioon",
+  "name": "Zioon Lab",
+  "short_name": "Zioon Lab",
   "description": "CRM e painel de leads",
   "start_url": "/",
   "display": "standalone",
