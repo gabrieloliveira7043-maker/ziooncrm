@@ -3514,6 +3514,7 @@ td { font-family: var(--font); font-size: 13px; }
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <select id="contatos-client-select" class="field-input" style="display:none; width:auto; padding:8px 10px; font-size:13px;" onchange="onContatosClientChange()"></select>
             <button class="chat-pill" onclick="pullContactsFromWhatsApp()" title="Traz os contatos do WhatsApp conectado para esta base">📲 Puxar do WhatsApp</button>
+            <button class="chat-pill" style="color:var(--red);border-color:rgba(248,113,113,.4);" onclick="deleteContactsBase()" title="Apaga todos os contatos importados deste cliente (os leads do funil ficam)">🗑 Apagar base</button>
             <button class="chat-pill" onclick="openTagManager()"><i data-ico="tag"></i> Etiquetas</button>
           </div>
         </div>
@@ -12956,6 +12957,7 @@ function renderChatHeader() {
         ${tagChips}
       </div>
     </div>
+    ${!lead && c.phone && !chatContactFor(c, chatContactIndex(_chatAct)) ? `<button class="chat-pill" onclick="saveChatAsContact()" title="Guarda este número na base de contatos do CRM">＋ Salvar contato</button>` : ''}
     <button class="chat-pill" onclick="openChatTags()">${uiIco('tag')} Etiquetas</button>
     ${lead ? `<button class="chat-pill" onclick="openMoveModal('${escapeJsString(lead.id)}')">Mover no funil</button>` : ''}
     ${lead && aiLeadState(lead) === 'active' ? aiLeadBtnHtml(lead, 'chat') : `<button class="chat-pill" onclick="chatAiTakeover()" title="A IA passa a atender esta conversa e responde a última mensagem do contato">${uiIco('bot')} IA assumir</button>`}
@@ -13707,6 +13709,7 @@ function openNewChat(prefill) {
       <input id="chat-new-name" class="field-input" style="margin-bottom:10px;">
       <label class="field-label">Mensagem</label>
       <textarea id="chat-new-text" class="field-input" rows="4" style="resize:vertical;width:100%;box-sizing:border-box;margin-bottom:10px;"></textarea>
+      <label class="integ-toggle" style="display:flex;margin-bottom:12px;"><input type="checkbox" id="chat-new-save" checked> Salvar como contato no CRM</label>
       <button class="btn-save" id="chat-new-btn" style="width:auto;padding:10px 18px;" onclick="sendNewChat()">Enviar</button>
       <div id="chat-new-fb" style="font-size:12px;margin-top:8px;"></div>
     </div>`;
@@ -13753,6 +13756,51 @@ function openLeadChat(id) {
   openChatWith({ act: lead.act, phone: lead.phone, jid: lead.whatsappJid, name: lead.name, line: lead.whatsappLine });
 }
 
+// Guarda um número na base de contatos do CRM (tela Contatos). Sem duplicar; preenche o nome se estava vazio.
+async function saveContactToBase(act, phone, name) {
+  act = normalizeActValue(act);
+  let p = String(phone || '').replace(/\D/g, '');
+  if (p.startsWith('55') && p.length >= 12) p = p.slice(2);
+  if (p.length < 10) throw new Error('Número inválido');
+  const list = await window._fb.getWhatsAppContacts(act);
+  const i = list.findIndex(c => String(c.phone || '').replace(/\D/g, '') === p);
+  if (i >= 0) { if (name && !list[i].name) list[i] = { ...list[i], name }; else return false; }
+  else list.push({ name: String(name || '').trim(), phone: p });
+  await window._fb.saveWhatsAppContacts(act, list);
+  _crmContactsCache[act] = list;
+  return true;
+}
+
+async function saveChatAsContact() {
+  const c = _chatItems.find(x => x.id === _chatOpenKey);
+  if (!c || !c.phone) return;
+  const name = (prompt('Nome do contato:', c.waName || c.pushName || c.contactName || '') || '').trim();
+  try {
+    const added = await saveContactToBase(_chatAct, c.phone, name);
+    showToast(added === false ? 'Este número já estava na base de contatos.' : 'Contato salvo na base de contatos do CRM.', 'success');
+    renderChatHeader(); renderChatList();
+  } catch (e) { showToast('Não salvou: ' + e.message, 'error'); }
+}
+window.saveChatAsContact = saveChatAsContact;
+
+// Contatos: apaga a base inteira de contatos importados (os leads do funil não são apagados).
+async function deleteContactsBase() {
+  const act = normalizeActValue(contatosAct());
+  if (!act) return showToast('Escolha o cliente primeiro.', 'warning');
+  const list = await window._fb.getWhatsAppContacts(act).catch(() => []);
+  if (!list.length) return showToast('A base de contatos deste cliente já está vazia.', 'info');
+  if (!await showConfirm(`Apagar os ${list.length} contato(s) da base de contatos de ${getClientDisplayName(act) || 'este cliente'}? Os leads do funil e as conversas do Chat NÃO são apagados. Não dá para desfazer.`, 'Apagar base de contatos', 'Apagar tudo', true)) return;
+  const typed = (prompt('Para confirmar, digite APAGAR') || '').trim().toUpperCase();
+  if (typed !== 'APAGAR') return showToast('Nada foi apagado.', 'info');
+  try {
+    await window._fb.saveWhatsAppContacts(act, []);
+    _crmContactsCache[act] = [];
+    showToast(`Base de contatos apagada (${list.length} contato(s)).`, 'success');
+    if (typeof renderContatos === 'function') renderContatos();
+  } catch (e) { showToast('Não apagou: ' + e.message, 'error'); }
+}
+window.deleteContactsBase = deleteContactsBase;
+
 async function sendNewChat() {
   const phone = document.getElementById('chat-new-phone').value.trim();
   const name = document.getElementById('chat-new-name').value.trim();
@@ -13765,6 +13813,7 @@ async function sendNewChat() {
   try {
     const line = document.getElementById('chat-new-line') ? document.getElementById('chat-new-line').value : waDefaultLine(_chatAct);
     const r = await window._fb.whatsapp('/whatsapp/chat-send', _chatAct, { phone, name, text, line });
+    if (document.getElementById('chat-new-save') && document.getElementById('chat-new-save').checked) await saveContactToBase(_chatAct, phone, name).catch(() => null);
     const me = chatMe();
     await window._fb.updateInboxChat(_chatAct, r.chatKey, { assignedTo: me.uid, assignedName: me.name, assignedAt: new Date().toISOString() }).catch(() => {});
     openChat(r.chatKey);
