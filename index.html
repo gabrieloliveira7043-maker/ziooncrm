@@ -14338,8 +14338,21 @@ async function renderWaLinesBox(act, el) {
       <button class="chat-pill" onclick="renameWaLine('${a}','${id}')">Renomear</button>
       ${waLines(act).length > 1 ? `<button class="chat-pill" style="color:var(--red);border-color:rgba(248,113,113,.4);" onclick="removeWaLine('${a}','${id}')">Excluir</button>` : ''}
     </div>`;
-  }).join('') + `<button class="chat-pill" style="margin-top:6px;" onclick="addWaLine('${a}')">+ Conectar outro WhatsApp</button>${isAdminUser() ? ` <button class="chat-pill" style="margin-top:6px;" onclick="openCloudSetup('${a}')">+ API oficial</button>` : ''}`;
+  }).join('') + `<button class="chat-pill" style="margin-top:6px;" onclick="addWaLine('${a}')">+ Conectar outro WhatsApp</button>${isAdminUser() ? ` <button class="chat-pill" style="margin-top:6px;" onclick="openCloudSetup('${a}')">+ API oficial</button>` : ''}`
+    + (waLines(act).length > 1 ? `<div style="margin-top:12px;">${waLinePickerHtml(act, 'wa-fl-' + act, (WHATSAPP_SETTINGS[act] || {}).firstMessageLines, '1ª mensagem automática sai por qual WhatsApp?')}<button class="chat-pill" style="margin-top:6px;" onclick="saveFirstMessageLines('${a}')">Salvar escolha</button></div>` : '');
 }
+
+// 1ª mensagem automática: por qual(is) número(s) sai. Vários marcados = alterna entre eles (mesclar).
+async function saveFirstMessageLines(act) {
+  const lines = readWaLinePicker('wa-fl-' + act);
+  if (!lines) { showToast('Marque pelo menos um WhatsApp.', 'warning'); return; }
+  try {
+    await window._fb.saveWhatsAppSettings(act, { firstMessageLines: lines });
+    WHATSAPP_SETTINGS[act] = { ...(WHATSAPP_SETTINGS[act] || {}), firstMessageLines: lines };
+    showToast(lines.length > 1 ? 'Salvo: a 1ª mensagem vai alternar entre os números marcados.' : 'Salvo: a 1ª mensagem sai por esse número.', 'success', 5000);
+  } catch (e) { showToast('Não salvou: ' + e.message, 'error'); }
+}
+window.saveFirstMessageLines = saveFirstMessageLines;
 
 function refreshWaLinesFor(act) {
   document.querySelectorAll('[data-wa-lines]').forEach(el => { if (el.getAttribute('data-wa-lines') === act) renderWaLinesBox(act, el); });
