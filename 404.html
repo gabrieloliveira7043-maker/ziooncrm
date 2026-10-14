@@ -3513,6 +3513,7 @@ td { font-family: var(--font); font-size: 13px; }
           </div>
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <select id="contatos-client-select" class="field-input" style="display:none; width:auto; padding:8px 10px; font-size:13px;" onchange="onContatosClientChange()"></select>
+            <button class="chat-pill" onclick="pullContactsFromWhatsApp()" title="Traz os contatos do WhatsApp conectado para esta base">📲 Puxar do WhatsApp</button>
             <button class="chat-pill" onclick="openTagManager()"><i data-ico="tag"></i> Etiquetas</button>
           </div>
         </div>
@@ -8382,6 +8383,42 @@ async function loadCampaignContacts() {
 }
 
 // Guarda os contatos do WhatsApp na base de contatos do CRM (aparecem em Contatos; não entram no kanban).
+// Contatos: puxa os contatos do WhatsApp conectado (QR Code) para a base de contatos do CRM.
+async function pullContactsFromWhatsApp(line) {
+  const act = normalizeActValue(contatosAct());
+  if (!act) return showToast('Escolha o cliente primeiro.', 'warning');
+  await ensureWaSettings(act);
+  const lines = waLines(act).filter(l => !waIsCloud(l.id));
+  if (!lines.length) return showToast('Este cliente não tem WhatsApp por QR Code conectado.', 'warning');
+  if (!line && lines.length > 1) {
+    openHuvenModal('Puxar contatos do WhatsApp', `<label class="field-label">De qual WhatsApp</label>
+      <select class="field-input" id="pc-line" style="margin-bottom:12px;">${lines.map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.label)}</option>`).join('')}</select>
+      <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="pullContactsFromWhatsApp(document.getElementById('pc-line').value)">Puxar contatos</button>`, 420);
+    return;
+  }
+  closeHuvenModal();
+  showToast('Buscando os contatos do WhatsApp...', 'info', 4000);
+  try {
+    const r = await window._fb.whatsapp('/whatsapp/contacts', act, { line: line || lines[0].id });
+    const list = (r.contacts || []).filter(c => c.phone);
+    if (!list.length) return showToast('Nenhum contato com telefone neste WhatsApp.', 'warning');
+    const existing = await window._fb.getWhatsAppContacts(act);
+    const byPhone = new Map(existing.map(c => [c.phone, c]));
+    let added = 0, named = 0;
+    list.forEach(c => {
+      const phone = c.phone.startsWith('55') && c.phone.length >= 12 ? c.phone.slice(2) : c.phone;
+      const cur = byPhone.get(phone);
+      if (!cur) { added++; byPhone.set(phone, { name: c.name || '', phone }); }
+      else if (!cur.name && c.name) { named++; byPhone.set(phone, { ...cur, name: c.name }); }
+    });
+    await window._fb.saveWhatsAppContacts(act, [...byPhone.values()]);
+    _crmContactsCache[act] = [...byPhone.values()];
+    showToast(`${added} contato(s) novo(s)${named ? ` e ${named} nome(s) preenchido(s)` : ''}. Total na base: ${byPhone.size}.`, 'success', 7000);
+    if (typeof renderContatos === 'function') renderContatos();
+  } catch (e) { showToast('Não puxou: ' + e.message, 'error', 7000); }
+}
+window.pullContactsFromWhatsApp = pullContactsFromWhatsApp;
+
 async function importContactsToCrm() {
   if (!_campaignDraft) return;
   const act = _campaignDraft.act;
@@ -12465,9 +12502,37 @@ function chatLeadFor(c, index) {
   return (c.igsid && index.byIg && index.byIg[c.igsid]) || (c.phone && index.byPhone[chatPhoneKey(c.phone)]) || (c.lid && index.byJid[c.lid]) || (c.jid && index.byJid[c.jid]) || null;
 }
 
+// Links nas mensagens do Chat viram clicáveis (abrem em outra aba). Recebe o texto já escapado.
+function chatLinkify(html) {
+  return String(html || '').replace(/(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi, m => {
+    const trail = (m.match(/[).,!?;:]+$/) || [''])[0];
+    const url = trail ? m.slice(0, -trail.length) : m;
+    const href = /^https?:/i.test(url) ? url : 'https://' + url;
+    return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;word-break:break-all;" onclick="event.stopPropagation()">${url}</a>${trail}`;
+  });
+}
+
+// Nome e foto do WhatsApp nas conversas: atualiza ao puxar o histórico e, sozinho, a cada 12 h por número.
+async function syncChatContacts(act, line, silent) {
+  try {
+    const r = await window._fb.whatsapp('/whatsapp/contacts-sync', act, { line });
+    try { localStorage.setItem('huven_ctsync_' + act + '_' + line, String(Date.now())); } catch (e) {}
+    if (!silent) showToast(`Nomes e fotos atualizados em ${r.updated} conversa(s).`, 'success', 5000);
+    return r;
+  } catch (e) { if (!silent) showToast('Não atualizou nomes e fotos: ' + e.message, 'warning', 6000); return null; }
+}
+function autoSyncChatContacts(act) {
+  if (!act) return;
+  waLines(act).filter(l => !waIsCloud(l.id)).forEach(l => {
+    let last = 0;
+    try { last = Number(localStorage.getItem('huven_ctsync_' + act + '_' + l.id)) || 0; } catch (e) {}
+    if (Date.now() - last > 12 * 3600 * 1000) syncChatContacts(act, l.id, true);
+  });
+}
+
 function chatName(c, lead) {
   const contact = !lead && c.phone ? chatContactFor(c, chatContactIndex(normalizeActValue(c.act || _chatAct))) : null;
-  return c.contactName || (lead && lead.name) || (contact && contact.name) || c.pushName || chatFormatPhone(c.phone) || 'Número oculto';
+  return c.contactName || (lead && lead.name) || (contact && contact.name) || c.waName || c.pushName || chatFormatPhone(c.phone) || 'Número oculto';
 }
 
 function chatReplied(c) { return !!(c.dispatchAt && c.lastInAt && c.lastInAt > c.dispatchAt); }
@@ -12512,6 +12577,7 @@ function onChatClientChange() {
     return;
   }
   _chatAct = act;
+  ensureWaSettings(act).then(() => autoSyncChatContacts(act)).catch(() => {});
   if (!_contactTagsCache[act]) loadContactTags(act).then(() => { renderChatList(); renderChatHeader(); });
   ensureImportedContacts(act, () => { renderChatList(); renderChatHeader(); });
   if (!_chatUnsub) {
@@ -12707,7 +12773,7 @@ function renderChatList() {
     if (rem) tags.push(`<span class="chat-tag" style="background:rgba(224,164,58,.2);color:#B7791F;">${uiIco('bell', 12)} ${new Date(rem.remindAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>`);
     chatTagIds(c, lead, chatContactFor(c, contactIndex)).map(id => tagById[id]).filter(Boolean).forEach(t => tags.push(tagChipHtml(t)));
     return `<div class="chat-row ${c.id === _chatOpenKey ? 'active' : ''} ${c.unread > 0 ? 'unread' : ''}" onclick="openChat('${escapeJsString(c.id)}')">
-      <div class="chat-avatar">${escapeHtml(initials)}</div>
+      <div class="chat-avatar">${c.photoUrl ? `<img src="${escapeHtml(c.photoUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" onerror="this.replaceWith(document.createTextNode('${escapeJsString(initials)}'))">` : escapeHtml(initials)}</div>
       <div class="chat-row-body">
         <div class="chat-row-top">
           <div class="chat-row-name">${escapeHtml(name)}</div>
@@ -12960,7 +13026,7 @@ function renderChatMessages() {
     const canEdit = !cloudChat && m.fromMe && (m.type || 'text') === 'text' && age < 15 * 60000 && !/^(crm|sch)\d/.test(m.id);
     const canDel = !cloudChat && m.fromMe && age < 2 * 86400000 && !/^(crm|sch)\d/.test(m.id);
     const menu = canEdit || canDel ? `<button class="chat-msg-more" title="Editar ou apagar" onclick="openChatMsgMenu(event, '${escapeJsString(m.id)}', ${canEdit}, ${canDel})">⋯</button>` : '';
-    parts.push(`<div class="chat-bubble ${m.fromMe ? 'out' : 'in'}">${menu}${media}${escapeHtml(bodyText)}${m.failed ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">${uiIco('alert', 12)} Não entregue: ${escapeHtml(m.error || '')}</div>` : ''}<div class="chat-meta">${who ? escapeHtml(who) + ' · ' : ''}${m.edited ? 'editada · ' : ''}${time}</div></div>`);
+    parts.push(`<div class="chat-bubble ${m.fromMe ? 'out' : 'in'}">${menu}${media}${chatLinkify(escapeHtml(bodyText))}${m.failed ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">${uiIco('alert', 12)} Não entregue: ${escapeHtml(m.error || '')}</div>` : ''}<div class="chat-meta">${who ? escapeHtml(who) + ' · ' : ''}${m.edited ? 'editada · ' : ''}${time}</div></div>`);
   });
   pendingSched.forEach(s => {
     const when = new Date(s.sendAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -14756,7 +14822,8 @@ async function runHistoryImport() {
       page = r.done ? 0 : r.nextPage;
     }
     closeHuvenModal();
-    showToast(`Histórico puxado: ${msgs} mensagem(ns) dos últimos ${days} dia(s).`, 'success', 7000);
+    showToast(`Histórico puxado: ${msgs} mensagem(ns) dos últimos ${days} dia(s). Buscando nomes e fotos...`, 'success', 7000);
+    syncChatContacts(act, line, false);
   } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = 'Erro: ' + e.message; btn.disabled = false; }
 }
 window.openHistoryImport = openHistoryImport;
