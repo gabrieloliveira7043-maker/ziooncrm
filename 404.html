@@ -8418,7 +8418,7 @@ async function pullContactsFromWhatsApp(line, mode) {
     });
     await window._fb.saveWhatsAppContacts(act, [...byPhone.values()]);
     _crmContactsCache[act] = [...byPhone.values()];
-    showToast(`${added} contato(s) novo(s)${named ? ` e ${named} nome(s) preenchido(s)` : ''}. Total na base: ${byPhone.size}.${r.hidden ? ` ${r.hidden} conversa(s) com número oculto pelo WhatsApp ficaram de fora.` : ''}`, 'success', 9000);
+    showToast(`${added} contato(s) novo(s)${named ? ` e ${named} nome(s) preenchido(s)` : ''}. Total na base: ${byPhone.size}.${r.linked ? ` ${r.linked} com número oculto foram ligados ao contato da agenda pelo nome.` : ''}${r.hidden ? ` ${r.hidden} conversa(s) com número oculto ficaram de fora (sem contato com o mesmo nome na agenda).` : ''}`, 'success', 9000);
     if (typeof renderContatos === 'function') renderContatos();
   } catch (e) { showToast('Não puxou: ' + e.message, 'error', 7000); }
 }
