@@ -8384,24 +8384,28 @@ async function loadCampaignContacts() {
 
 // Guarda os contatos do WhatsApp na base de contatos do CRM (aparecem em Contatos; não entram no kanban).
 // Contatos: puxa os contatos do WhatsApp conectado (QR Code) para a base de contatos do CRM.
-async function pullContactsFromWhatsApp(line) {
+async function pullContactsFromWhatsApp(line, mode) {
   const act = normalizeActValue(contatosAct());
   if (!act) return showToast('Escolha o cliente primeiro.', 'warning');
   await ensureWaSettings(act);
   const lines = waLines(act).filter(l => !waIsCloud(l.id));
   if (!lines.length) return showToast('Este cliente não tem WhatsApp por QR Code conectado.', 'warning');
-  if (!line && lines.length > 1) {
-    openHuvenModal('Puxar contatos do WhatsApp', `<label class="field-label">De qual WhatsApp</label>
-      <select class="field-input" id="pc-line" style="margin-bottom:12px;">${lines.map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.label)}</option>`).join('')}</select>
-      <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="pullContactsFromWhatsApp(document.getElementById('pc-line').value)">Puxar contatos</button>`, 420);
+  if (!line) {
+    openHuvenModal('Puxar contatos do WhatsApp', `${lines.length > 1 ? `<label class="field-label">De qual WhatsApp</label>
+      <select class="field-input" id="pc-line" style="margin-bottom:12px;">${lines.map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.label)}</option>`).join('')}</select>` : `<input type="hidden" id="pc-line" value="${escapeHtml(lines[0].id)}">`}
+      <label class="field-label">Quais contatos</label>
+      <label class="integ-toggle" style="display:flex;margin-bottom:6px;"><input type="radio" name="pc-mode" value="chats" checked> Só quem já conversou no WhatsApp</label>
+      <label class="integ-toggle" style="display:flex;margin-bottom:10px;"><input type="radio" name="pc-mode" value="all"> Todos os contatos do celular (agenda inteira)</label>
+      <div class="integ-muted" style="font-size:12px;margin-bottom:12px;line-height:1.5;">Conversas em que o WhatsApp esconde o número (pessoas que não estão salvas) não têm telefone para entrar na base.</div>
+      <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="pullContactsFromWhatsApp(document.getElementById('pc-line').value, (document.querySelector('input[name=pc-mode]:checked') || {}).value)">Puxar contatos</button>`, 440);
     return;
   }
   closeHuvenModal();
   showToast('Buscando os contatos do WhatsApp...', 'info', 4000);
   try {
-    const r = await window._fb.whatsapp('/whatsapp/contacts', act, { line: line || lines[0].id });
+    const r = await window._fb.whatsapp('/whatsapp/contacts', act, { line, onlyChats: mode !== 'all' });
     const list = (r.contacts || []).filter(c => c.phone);
-    if (!list.length) return showToast('Nenhum contato com telefone neste WhatsApp.', 'warning');
+    if (!list.length) return showToast(r.hidden ? `As ${r.hidden} conversa(s) deste WhatsApp estão com o número oculto pelo WhatsApp; não há telefone para importar.` : 'Nenhum contato com telefone neste WhatsApp.', 'warning', 9000);
     const existing = await window._fb.getWhatsAppContacts(act);
     const byPhone = new Map(existing.map(c => [c.phone, c]));
     let added = 0, named = 0;
@@ -8413,7 +8417,7 @@ async function pullContactsFromWhatsApp(line) {
     });
     await window._fb.saveWhatsAppContacts(act, [...byPhone.values()]);
     _crmContactsCache[act] = [...byPhone.values()];
-    showToast(`${added} contato(s) novo(s)${named ? ` e ${named} nome(s) preenchido(s)` : ''}. Total na base: ${byPhone.size}.`, 'success', 7000);
+    showToast(`${added} contato(s) novo(s)${named ? ` e ${named} nome(s) preenchido(s)` : ''}. Total na base: ${byPhone.size}.${r.hidden ? ` ${r.hidden} conversa(s) com número oculto pelo WhatsApp ficaram de fora.` : ''}`, 'success', 9000);
     if (typeof renderContatos === 'function') renderContatos();
   } catch (e) { showToast('Não puxou: ' + e.message, 'error', 7000); }
 }
