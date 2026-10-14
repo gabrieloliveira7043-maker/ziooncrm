@@ -10628,6 +10628,28 @@ async function prosSaveFunnel() {
 }
 
 // ----- Lista de automações -----
+// Automações: 1ª mensagem automática do "Novo lead" (ligar/desligar e por qual WhatsApp sai; vários = alternar).
+function autoFirstMsgHtml(act) {
+  const s = WHATSAPP_SETTINGS[act] || {};
+  const on = !!s.autoFirstMessage;
+  const admin = isAdminUser();
+  const multi = waLines(act).length > 1;
+  return `<div class="integ-card" style="margin-top:18px;">
+    <div class="integ-title">1ª mensagem automática</div>
+    <div class="integ-muted" style="margin-bottom:10px;">Todo lead novo que entra em "Novo lead" recebe a 1ª mensagem no WhatsApp em segundos, mesmo com os limites do número atingidos.</div>
+    ${admin ? `<label class="integ-toggle" style="margin-bottom:10px;"><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleAutoFirstFromAutomations('${escapeJsString(act)}', this)"> ${on ? 'Ligada' : 'Desligada'}</label>` : `<div class="integ-muted" style="margin-bottom:10px;">Situação: <b>${on ? 'ligada' : 'desligada'}</b>${on ? '' : ' (a Huven liga para você)'}.</div>`}
+    ${multi ? `${waLinePickerHtml(act, 'wa-fl-' + act, s.firstMessageLines, 'Por qual WhatsApp sai a 1ª mensagem?')}<button class="huv-btn" style="margin-top:8px;" onclick="saveFirstMessageLines('${escapeJsString(act)}')">Salvar números</button>` : '<div class="integ-muted">Com mais de um WhatsApp conectado, aqui você escolhe por qual número ela sai ou se alterna entre eles.</div>'}
+  </div>`;
+}
+
+async function toggleAutoFirstFromAutomations(act, checkbox) {
+  const login = Object.keys(CREDENTIALS || {}).find(k => CREDENTIALS[k] && normalizeActValue(CREDENTIALS[k].act) === normalizeActValue(act));
+  if (!login) { checkbox.checked = !checkbox.checked; showToast('Cliente não encontrado.', 'warning'); return; }
+  await toggleWhatsAppAuto(login, checkbox);
+  renderAutomacoesView();
+}
+window.toggleAutoFirstFromAutomations = toggleAutoFirstFromAutomations;
+
 async function renderAutomacoesView() {
   const box = document.getElementById('automacoes-body');
   if (!box) return;
@@ -10677,7 +10699,7 @@ async function renderAutomacoesView() {
         </article>`;
       }).join('') : '<div class="integ-empty" style="grid-column:1/-1;">Nenhuma automação ainda. Clique em "+ Nova automação" para montar o primeiro fluxo.</div>'}
     </div>
-    ${autoCaptureHtml(act)}${autoAlertsHtml(act)}`;
+    ${autoFirstMsgHtml(act)}${autoCaptureHtml(act)}${autoAlertsHtml(act)}`;
 }
 
 // ===== ANDAMENTO DA AUTOMAÇÃO (quantos receberam cada mensagem, quantos responderam, o que falta) =====
@@ -14338,8 +14360,7 @@ async function renderWaLinesBox(act, el) {
       <button class="chat-pill" onclick="renameWaLine('${a}','${id}')">Renomear</button>
       ${waLines(act).length > 1 ? `<button class="chat-pill" style="color:var(--red);border-color:rgba(248,113,113,.4);" onclick="removeWaLine('${a}','${id}')">Excluir</button>` : ''}
     </div>`;
-  }).join('') + `<button class="chat-pill" style="margin-top:6px;" onclick="addWaLine('${a}')">+ Conectar outro WhatsApp</button>${isAdminUser() ? ` <button class="chat-pill" style="margin-top:6px;" onclick="openCloudSetup('${a}')">+ API oficial</button>` : ''}`
-    + (waLines(act).length > 1 ? `<div style="margin-top:12px;">${waLinePickerHtml(act, 'wa-fl-' + act, (WHATSAPP_SETTINGS[act] || {}).firstMessageLines, '1ª mensagem automática sai por qual WhatsApp?')}<button class="chat-pill" style="margin-top:6px;" onclick="saveFirstMessageLines('${a}')">Salvar escolha</button></div>` : '');
+  }).join('') + `<button class="chat-pill" style="margin-top:6px;" onclick="addWaLine('${a}')">+ Conectar outro WhatsApp</button>${isAdminUser() ? ` <button class="chat-pill" style="margin-top:6px;" onclick="openCloudSetup('${a}')">+ API oficial</button>` : ''}`;
 }
 
 // 1ª mensagem automática: por qual(is) número(s) sai. Vários marcados = alterna entre eles (mesclar).
