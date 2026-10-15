@@ -6058,6 +6058,109 @@ function prosDefaultTarget(act) {
 }
 
 // Barra acima do kanban: um botão por pipeline, "+ Pipeline" e ⚙ para renomear/excluir.
+// ===== MQL: filtro e regra pelas respostas do formulário (Meta, landing page) =====
+// Regras do cliente em whatsapp_settings/{act}.mqlRules = [{ question, label, answers: [...] }]. O lead é MQL se bater com todas.
+var _mqlFilter = null; // { act, question, answers } aplicado no funil
+function mqlNorm(v) { return String(v == null ? '' : v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[_\s]+/g, ' ').replace(/[^a-z0-9@ ]/g, '').trim(); }
+function mqlPretty(v) { const t = String(v || '').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim(); return t.charAt(0).toUpperCase() + t.slice(1); }
+function mqlAnswers(lead) {
+  const out = {};
+  (Array.isArray(lead.formAnswers) ? lead.formAnswers : []).forEach(a => { if (a && a.question != null && String(a.answer || '').trim()) out[mqlNorm(a.question)] = { q: a.question, a: String(a.answer) }; });
+  if (!Object.keys(out).length && lead.obs) String(lead.obs).split('\n').forEach(line => { const m = line.match(/^([^:]{3,120}):\s*(.+)$/); if (m) out[mqlNorm(m[1])] = { q: m[1], a: m[2] }; });
+  return out;
+}
+function mqlLeadMatches(lead, rule) {
+  const hit = mqlAnswers(lead)[rule.question];
+  return !!hit && (rule.answers || []).includes(mqlNorm(hit.a));
+}
+function mqlRulesOf(act) { const r = (WHATSAPP_SETTINGS[normalizeActValue(act)] || {}).mqlRules; return Array.isArray(r) ? r : []; }
+function mqlLeadIsMql(lead) {
+  const rules = mqlRulesOf(lead.act);
+  return rules.length > 0 && rules.every(r => mqlLeadMatches(lead, r));
+}
+// Ordem natural das faixas: "até 5" < "5 a 12" < "12 a 30" < "mais de 60".
+function mqlRank(answer) {
+  const t = mqlNorm(answer);
+  const n = Number((t.match(/\d+/) || [])[0]);
+  if (!isFinite(n)) return 1e9;
+  if (/^ate\b|menos de/.test(t)) return n - 0.5;
+  if (/mais de|acima de|\+/.test(t)) return n + 1e6;
+  return n;
+}
+
+function openMqlFilter(act) {
+  act = normalizeActValue(act);
+  const leads = getLeads().filter(l => leadMatchesClient(l, act));
+  const qs = {};
+  leads.forEach(l => Object.entries(mqlAnswers(l)).forEach(([k, v]) => {
+    if (/e ?mail|telefone|phone|nome|full name/.test(k)) return;
+    const q = qs[k] || (qs[k] = { label: mqlPretty(v.q), answers: {} });
+    const ak = mqlNorm(v.a);
+    const e = q.answers[ak] || (q.answers[ak] = { label: mqlPretty(v.a), count: 0 });
+    e.count++;
+  }));
+  const keys = Object.keys(qs).filter(k => Object.keys(qs[k].answers).length >= 2 && Object.keys(qs[k].answers).length <= 30);
+  if (!keys.length) return showToast('Os leads deste cliente ainda não têm respostas de formulário com opções para filtrar.', 'warning', 7000);
+  window._mqlQs = qs;
+  const saved = mqlRulesOf(act);
+  const start = (_mqlFilter && _mqlFilter.act === act && qs[_mqlFilter.question]) ? _mqlFilter.question : (saved[0] && qs[saved[0].question] ? saved[0].question : keys[0]);
+  openHuvenModal('🎯 MQL pelas respostas do formulário', `
+    <div class="integ-muted" style="font-size:12.5px;margin-bottom:10px;">Escolha a pergunta e marque as respostas que contam como MQL. Use "↑ daqui pra cima" para marcar uma faixa e todas acima dela.</div>
+    <label class="field-label">Pergunta</label>
+    <select class="field-input" id="mql-q" style="margin-bottom:10px;" onchange="renderMqlAnswers('${act}')">${keys.map(k => `<option value="${escapeHtml(k)}" ${k === start ? 'selected' : ''}>${escapeHtml(qs[k].label)}</option>`).join('')}</select>
+    <div id="mql-answers"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+      <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="applyMqlFilter('${act}')">Filtrar o funil</button>
+      <button class="huv-btn" onclick="saveMqlRule('${act}')">Salvar como regra de MQL</button>
+      ${saved.length ? `<button class="huv-btn" style="color:var(--red);" onclick="clearMqlRules('${act}')">Apagar regras salvas</button>` : ''}
+    </div>
+    ${saved.length ? `<div class="integ-muted" style="font-size:12px;margin-top:10px;">Regra salva: ${saved.map(r => `<b>${escapeHtml(r.label || r.question)}</b> = ${escapeHtml((r.answerLabels || r.answers).join(', '))}`).join(' e ')}. Cards que batem ganham o selo 🎯 MQL.</div>` : ''}`, 560);
+  renderMqlAnswers(act);
+}
+
+function renderMqlAnswers(act) {
+  const k = document.getElementById('mql-q').value;
+  const q = window._mqlQs[k];
+  const pre = (_mqlFilter && _mqlFilter.act === act && _mqlFilter.question === k) ? _mqlFilter.answers : ((mqlRulesOf(act).find(r => r.question === k) || {}).answers || []);
+  const list = Object.entries(q.answers).sort((x, y) => mqlRank(x[1].label) - mqlRank(y[1].label) || x[1].label.localeCompare(y[1].label));
+  document.getElementById('mql-answers').innerHTML = list.map(([ak, v], i) => `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);">
+      <label class="integ-toggle" style="flex:1;margin:0;"><input type="checkbox" class="mql-a" value="${escapeHtml(ak)}" data-label="${escapeHtml(v.label)}" ${pre.includes(ak) ? 'checked' : ''}> ${escapeHtml(v.label)} <span class="integ-muted">(${v.count})</span></label>
+      <button class="chat-pill" onclick="mqlCheckFrom(${i})" title="Marcar esta e todas as de baixo">↑ daqui pra cima</button>
+    </div>`).join('');
+}
+function mqlCheckFrom(i) { document.querySelectorAll('#mql-answers .mql-a').forEach((c, j) => { c.checked = j >= i; }); }
+function readMqlSelection() {
+  const question = document.getElementById('mql-q').value;
+  const boxes = [...document.querySelectorAll('#mql-answers .mql-a:checked')];
+  return { question, label: window._mqlQs[question].label, answers: boxes.map(b => b.value), answerLabels: boxes.map(b => b.dataset.label) };
+}
+function applyMqlFilter(act) {
+  const sel = readMqlSelection();
+  if (!sel.answers.length) return showToast('Marque pelo menos uma resposta.', 'warning');
+  _mqlFilter = { act, question: sel.question, answers: sel.answers };
+  closeHuvenModal();
+  renderKanban();
+  showToast('Filtro MQL ligado: o funil mostra só os cards com essas respostas.', 'success', 5000);
+}
+function clearMqlFilter() { _mqlFilter = null; renderKanban(); }
+async function saveMqlRule(act) {
+  const sel = readMqlSelection();
+  if (!sel.answers.length) return showToast('Marque pelo menos uma resposta.', 'warning');
+  const rules = mqlRulesOf(act).filter(r => r.question !== sel.question).concat([sel]);
+  try {
+    await window._fb.saveWhatsAppSettings(act, { mqlRules: rules });
+    WHATSAPP_SETTINGS[act] = { ...(WHATSAPP_SETTINGS[act] || {}), mqlRules: rules };
+    closeHuvenModal(); renderKanban();
+    showToast('Regra de MQL salva: os cards que batem ganham o selo 🎯 MQL.', 'success', 6000);
+  } catch (e) { showToast('Não salvou: ' + e.message, 'error'); }
+}
+async function clearMqlRules(act) {
+  if (!await showConfirm('Apagar as regras de MQL deste cliente? Os selos somem dos cards.', 'Apagar regras', 'Apagar', true)) return;
+  try { await window._fb.saveWhatsAppSettings(act, { mqlRules: [] }); WHATSAPP_SETTINGS[act] = { ...(WHATSAPP_SETTINGS[act] || {}), mqlRules: [] }; closeHuvenModal(); renderKanban(); }
+  catch (e) { showToast('Erro: ' + e.message, 'error'); }
+}
+Object.assign(window, { openMqlFilter, renderMqlAnswers, mqlCheckFrom, applyMqlFilter, clearMqlFilter, saveMqlRule, clearMqlRules });
+
 function renderPipelineBar(act) {
   const bar = document.getElementById('crm-pipelines');
   if (!bar) return;
@@ -6070,7 +6173,9 @@ function renderPipelineBar(act) {
   bar.style.display = 'flex';
   bar.innerHTML = `<span class="pl-label">Pipeline</span>` + pipelineList(act).map(p => `<button class="pl-tab ${p.id === cur ? 'active' : ''}" onclick="setCurrentPipeline('${a}','${escapeJsString(p.id)}')">${escapeHtml(p.name)} <span class="pl-count">${count(p.id)}</span></button>`).join('')
     + `<button class="pl-tab pl-add" onclick="openPipelineEditor('${a}')">+ Pipeline</button>`
-    + `<button class="pl-tab pl-gear" title="Renomear ou excluir este pipeline" onclick="openPipelineEditor('${a}','${escapeJsString(cur)}')">${uiIco('gear')}</button>`;
+    + `<button class="pl-tab pl-gear" title="Renomear ou excluir este pipeline" onclick="openPipelineEditor('${a}','${escapeJsString(cur)}')">${uiIco('gear')}</button>`
+    + `<button class="pl-tab ${_mqlFilter && _mqlFilter.act === normalizeActValue(act) ? 'active' : ''}" title="Filtrar cards pelas respostas do formulário e definir o que é MQL" onclick="openMqlFilter('${a}')">🎯 MQL${_mqlFilter && _mqlFilter.act === normalizeActValue(act) ? ' (filtro ligado)' : ''}</button>`
+    + (_mqlFilter && _mqlFilter.act === normalizeActValue(act) ? `<button class="pl-tab" title="Tirar o filtro" onclick="clearMqlFilter()">✕ Tirar filtro</button>` : '');
 }
 
 function openPipelineEditor(act, id) {
@@ -16874,6 +16979,7 @@ function renderKanban() {
     ensurePipelines(filterAct, () => { renderKanban(); renderFunilChart(); renderFunilEvolucao(); });
     leads = leads.filter(l => leadPipeline(l) === boardPipe);
   }
+  if (filterAct && _mqlFilter && _mqlFilter.act === normalizeActValue(filterAct)) leads = leads.filter(l => mqlLeadMatches(l, _mqlFilter));
   renderPipelineBar(filterAct);
   if (filterAct) loadColumnAutomations(filterAct);
   leads = sortCrmLeadsForKanban(leads, filterAct);
@@ -17096,7 +17202,7 @@ function renderKanban() {
         : ''}
         <button class="card-btn kc-icon del" onclick="deleteLead('${safeLeadId}')" title="Excluir" aria-label="Excluir"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>
       </div>
-      ${(() => { const b = whatsappCardBadge(lead, !!waLink); return b ? `<div class="card-badges">${b}</div>` : ''; })()}`;
+      ${(() => { const b = (mqlLeadIsMql(lead) ? '<span class="card-btn" style="cursor:default;font-size:10px;font-weight:800;color:#1FA855;border-color:#1FA855;" title="Bate com a regra de MQL do cliente">🎯 MQL</span>' : '') + (whatsappCardBadge(lead, !!waLink) || ''); return b ? `<div class="card-badges">${b}</div>` : ''; })()}`;
       cardHTML = cardHTML.replace(`openFirstWhatsAppMessage('${lead.id}')`, `openFirstWhatsAppMessage('${safeLeadId}')`);
       card.innerHTML = cardHTML;
       cardsDiv.appendChild(card);
