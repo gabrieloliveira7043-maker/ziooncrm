@@ -15956,6 +15956,7 @@ function autoAlertsHtml(act) {
         <div class="integ-muted" style="font-size:12px;">Quando entrar em <b>${escapeHtml(autoStageLabel(act, a.stage))}</b> → grupo <b>${escapeHtml(a.groupName || 'grupo')}</b> · ${escapeHtml(waLineLabel(act, a.line))}${a.mentionAll !== false ? ' · marca todos' : ''}</div>
         ${last ? `<div class="integ-muted" style="font-size:11.5px;color:${last.ok ? 'var(--green)' : 'var(--red)'};">Último: ${escapeHtml(last.lead)} · ${escapeHtml(new Date(last.at).toLocaleString('pt-BR'))} · ${escapeHtml(last.msg || '')}</div>` : ''}
       </div>
+      ${waLines(act).filter(l => !waIsCloud(l.id)).length > 1 ? `<select class="field-input" style="width:auto;padding:6px 8px;font-size:12px;" title="WhatsApp que envia este aviso (precisa estar no grupo)" onchange="setGroupAlertLine('${id}', this.value)">${waLines(act).filter(l => !waIsCloud(l.id)).map(l => `<option value="${escapeHtml(l.id)}" ${l.id === (a.line || 'main') ? 'selected' : ''}>Enviar por: ${escapeHtml(l.label)}</option>`).join('')}</select>` : ''}
       <button class="huv-btn" onclick="openGroupAlert('${id}')">Editar</button>
       <button class="btn-remove" type="button" onclick="deleteGroupAlert('${id}')">Excluir</button>
     </div>`;
@@ -15983,7 +15984,7 @@ async function openGroupAlert(id) {
     <div class="field-group"><label class="field-label">Nome do aviso</label><input class="field-input" id="ga-name" maxlength="40" placeholder="Ex: Aviso de novo lead" value="${escapeHtml(cur ? cur.name || '' : 'Aviso de novo lead')}"></div>
     <div class="field-group"><label class="field-label">Quando o lead entrar na coluna</label><select class="field-input" id="ga-stage">${autoStageOptions(act, cur ? cur.stage : '', 'Escolha a coluna')}</select></div>
     <div class="field-group"><label class="field-label">Origens do lead</label>${capiOriginsHtml(cur ? cur.sources : [])}</div>
-    <div class="field-group"><label class="field-label">WhatsApp que envia</label><select class="field-input" id="ga-line" onchange="_gAlert.line = this.value; _gAlert.groupId = ''; _gAlert.groupName = ''; loadGroupAlertGroups(false)">${lineOpts}</select></div>
+    <div class="field-group"><label class="field-label">WhatsApp que envia</label><select class="field-input" id="ga-line" onchange="_gAlert.line = this.value; loadGroupAlertGroups(false)">${lineOpts}</select></div>
     <div class="field-group"><label class="field-label">Grupo que recebe</label>
       <input class="field-input" id="ga-gsearch" placeholder="Buscar grupo pelo nome" oninput="renderGroupAlertGroups()" style="margin-bottom:6px;">
       <select class="field-input" id="ga-group" size="6" style="height:auto;" onchange="_gAlert.groupId = this.value; _gAlert.groupName = ((_gAlert.groups.find(x => x.id === this.value)) || {}).subject || _gAlert.groupName"></select>
@@ -16016,7 +16017,7 @@ async function loadGroupAlertGroups(refresh) {
     if (_gAlert !== g || !document.getElementById('ga-group')) return;
     g.groups = (r.groups || []).sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
     renderGroupAlertGroups();
-    note.innerHTML = groupsCacheNote(r, 'loadGroupAlertGroups(true)');
+    note.innerHTML = groupsCacheNote(r, 'loadGroupAlertGroups(true)') + (g.groupId && !g.groups.some(x => x.id === g.groupId) ? '<div style="color:var(--red);font-size:12px;margin-top:4px;">Este número não está no grupo escolhido: adicione ele ao grupo ou escolha outro grupo.</div>' : '');
   } catch (e) {
     if (_gAlert !== g || !document.getElementById('ga-group')) return;
     sel.innerHTML = '';
@@ -16101,6 +16102,14 @@ async function toggleGroupAlert(id, on) {
   try { await saveGroupAlerts(act, list); showToast(on ? 'Aviso ligado.' : 'Aviso desligado.', 'success'); }
   catch (e) { showToast('Erro: ' + e.message, 'error'); renderAutomacoesView(); }
 }
+
+async function setGroupAlertLine(id, line) {
+  const act = flowAct();
+  const list = groupAlertsOf(act).map(a => a.id === id ? { ...a, line } : a);
+  try { await saveGroupAlerts(act, list); showToast(`Aviso passa a sair por ${waLineLabel(act, line)}. Esse número precisa estar no grupo.`, 'success', 6000); renderAutomacoesView(); }
+  catch (e) { showToast('Erro: ' + e.message, 'error'); renderAutomacoesView(); }
+}
+window.setGroupAlertLine = setGroupAlertLine;
 
 async function deleteGroupAlert(id) {
   if (!await showConfirm('Esse aviso deixa de ser enviado para o grupo.', 'Excluir aviso', 'Excluir', true)) return;
