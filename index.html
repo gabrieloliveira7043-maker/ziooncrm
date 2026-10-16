@@ -3183,7 +3183,7 @@ td { font-family: var(--font); font-size: 13px; }
           <select class="crm-client-select" id="crm-client-select" onchange="onCrmClientChange()" style="display:none;">
             <option value="all">Todos os clientes</option>
           </select>
-          <select class="crm-month-select" id="crm-month-filter" onchange="onCrmMonthChange()" title="Filtrar leads por mês">
+          <select class="crm-month-select" id="crm-month-filter" onchange="onCrmMonthChange()" title="Filtrar leads por data de chegada: hoje, semana, mês ou período">
             <option value="all">Geral</option>
           </select>
 
@@ -16779,23 +16779,87 @@ function populateCrmMonthFilter(leads) {
   const monthKeys = [...new Set((leads || []).map(getLeadMonthKey).filter(Boolean))];
   if (!monthKeys.includes(currentMonth)) monthKeys.push(currentMonth);
   monthKeys.sort().reverse();
-  sel.innerHTML = '<option value="all">Geral</option>' + monthKeys.map(key => {
+  const periods = CRM_PERIODS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+  sel.innerHTML = '<option value="all">Geral</option>' + `<optgroup label="Período">${periods}</optgroup><optgroup label="Mês">` + monthKeys.map(key => {
     const suffix = key === currentMonth ? ' (vigente)' : '';
     return `<option value="${key}">${formatCrmMonthLabel(key)}${suffix}</option>`;
-  }).join('');
-  sel.value = [...monthKeys, 'all'].includes(previous) ? previous : currentMonth;
+  }).join('') + '</optgroup>';
+  sel.value = [...monthKeys, 'all', ...CRM_PERIODS.map(p => p[0])].includes(previous) ? previous : currentMonth;
+  crmCustomRangeUi(sel);
   sel.dataset.ready = '1';
   return sel.value;
 }
 
+// Filtro de data do funil: além dos meses, hoje, ontem, esta semana, semana passada, últimos 7/30 dias e período escolhido.
+var CRM_PERIODS = [['p:today', 'Hoje'], ['p:yesterday', 'Ontem'], ['p:week', 'Esta semana'], ['p:lastweek', 'Semana passada'], ['p:7d', 'Últimos 7 dias'], ['p:30d', 'Últimos 30 dias'], ['p:custom', 'Escolher datas...']];
+function leadArrivalDate(lead) {
+  const raw = lead && (lead.createdAt || lead.chegada || lead.entrada || lead.data || lead.dataCriacao || lead.created_at);
+  if (!raw) return null;
+  const d = new Date(parseCrmDateToISO(raw, ''));
+  return isNaN(d.getTime()) ? null : d;
+}
+function crmPeriodRange(value) {
+  const day = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+  const today = day(new Date());
+  const add = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+  const monday = add(today, -((today.getDay() + 6) % 7)); // semana de segunda a domingo
+  switch (value) {
+    case 'p:today': return [today, add(today, 1)];
+    case 'p:yesterday': return [add(today, -1), today];
+    case 'p:week': return [monday, add(monday, 7)];
+    case 'p:lastweek': return [add(monday, -7), monday];
+    case 'p:7d': return [add(today, -6), add(today, 1)];
+    case 'p:30d': return [add(today, -29), add(today, 1)];
+    case 'p:custom': {
+      let f = '', t = '';
+      try { f = localStorage.getItem('huven_crm_from') || ''; t = localStorage.getItem('huven_crm_to') || ''; } catch (e) {}
+      const from = f ? new Date(f + 'T00:00:00') : null;
+      const to = t ? add(new Date(t + 'T00:00:00'), 1) : null;
+      return [from, to];
+    }
+  }
+  return null;
+}
 function filterLeadsByCrmMonth(leads) {
   const sel = document.getElementById('crm-month-filter');
   const selected = sel ? sel.value : getCurrentMonthKey();
   if (!selected || selected === 'all') return leads;
+  if (selected.startsWith('p:')) {
+    const [from, to] = crmPeriodRange(selected) || [];
+    return (leads || []).filter(lead => {
+      const d = leadArrivalDate(lead);
+      if (!d) return false;
+      return (!from || d >= from) && (!to || d < to);
+    });
+  }
   return (leads || []).filter(lead => getLeadMonthKey(lead) === selected);
 }
+// "Escolher datas...": mostra os campos de data ao lado do filtro.
+function crmCustomRangeUi(sel) {
+  let box = document.getElementById('crm-range-box');
+  if (!box) {
+    box = document.createElement('span');
+    box.id = 'crm-range-box';
+    box.style.cssText = 'display:none;align-items:center;gap:6px;margin-right:8px;';
+    let f = '', t = '';
+    try { f = localStorage.getItem('huven_crm_from') || ''; t = localStorage.getItem('huven_crm_to') || ''; } catch (e) {}
+    box.innerHTML = `<input type="date" class="crm-month-select" id="crm-range-from" value="${f}" style="width:auto;" onchange="setCrmRange()"><span style="color:var(--muted);font-size:12px;">até</span><input type="date" class="crm-month-select" id="crm-range-to" value="${t}" style="width:auto;" onchange="setCrmRange()">`;
+    sel.insertAdjacentElement('afterend', box);
+  }
+  box.style.display = sel.value === 'p:custom' ? 'inline-flex' : 'none';
+}
+function setCrmRange() {
+  try {
+    localStorage.setItem('huven_crm_from', document.getElementById('crm-range-from').value || '');
+    localStorage.setItem('huven_crm_to', document.getElementById('crm-range-to').value || '');
+  } catch (e) {}
+  onCrmMonthChange();
+}
+window.setCrmRange = setCrmRange;
 
 function onCrmMonthChange() {
+  const sel = document.getElementById('crm-month-filter');
+  if (sel) crmCustomRangeUi(sel);
   renderKanban();
   if (typeof renderFunilChart === 'function') renderFunilChart();
   if (typeof renderFunilEvolucao === 'function') renderFunilEvolucao();
