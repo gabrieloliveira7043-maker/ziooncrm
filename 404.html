@@ -2273,10 +2273,10 @@ td { font-family: var(--font); font-size: 13px; }
     async addAudit(act, entry) {
       const u = auth.currentUser;
       const p = currentProfile || {};
-      await addDoc(collection(db, 'audit', normalizeAct(act), 'events'), { ...entry, act: normalizeAct(act), at: new Date().toISOString(), uid: u ? u.uid : '', userName: p.name || p.login || (u && u.email) || '', role: p.role || '' });
+      await addDoc(collection(db, 'historico', normalizeAct(act), 'eventos'), { ...entry, act: normalizeAct(act), at: new Date().toISOString(), uid: u ? u.uid : '', userName: p.name || p.login || (u && u.email) || '', role: p.role || '' });
     },
     async listAudit(act, max) {
-      const snap = await getDocs(query(collection(db, 'audit', normalizeAct(act), 'events'), orderBy('at', 'desc'), limit(max || 400)));
+      const snap = await getDocs(query(collection(db, 'historico', normalizeAct(act), 'eventos'), orderBy('at', 'desc'), limit(max || 400)));
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     },
     async saveAutomation(id, data) {
