@@ -2269,6 +2269,16 @@ td { font-family: var(--font); font-size: 13px; }
       const snap = await getDocs(query(collection(db, 'automations'), where('act', '==', normalizeAct(act))));
       return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
     },
+    // Histórico de alterações (tela Histórico): audit/{act}/events/{id}.
+    async addAudit(act, entry) {
+      const u = auth.currentUser;
+      const p = currentProfile || {};
+      await addDoc(collection(db, 'audit', normalizeAct(act), 'events'), { ...entry, act: normalizeAct(act), at: new Date().toISOString(), uid: u ? u.uid : '', userName: p.name || p.login || (u && u.email) || '', role: p.role || '' });
+    },
+    async listAudit(act, max) {
+      const snap = await getDocs(query(collection(db, 'audit', normalizeAct(act), 'events'), orderBy('at', 'desc'), limit(max || 400)));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    },
     async saveAutomation(id, data) {
       const now = new Date().toISOString();
       if (id) { await setDoc(doc(db, 'automations', id), { ...data, updatedAt: now }, { merge: true }); return id; }
@@ -2884,6 +2894,10 @@ td { font-family: var(--font); font-size: 13px; }
         <div class="nav-item" id="nav-capi" onclick="switchView('capi')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8M14 7h7v7"/></svg>
           Conversões Meta
+        </div>
+        <div class="nav-item" id="nav-historico" onclick="openAuditLog()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>
+          Histórico
         </div>
         <div class="nav-item" id="nav-integracoes" onclick="switchView('integracoes')" style="display:none;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
@@ -6217,6 +6231,7 @@ async function savePipelineEditor(act, id) {
     closeHuvenModal();
     if (newId) setCurrentPipeline(act, newId); else { renderKanban(); renderFunilChart(); renderFunilEvolucao(); }
     showToast(newId ? 'Pipeline criado.' : 'Pipeline salvo.', 'success');
+    auditLog(act, 'pipeline', `${newId ? 'Criou' : 'Editou'} o pipeline "${(document.getElementById('pl-name') || {}).value || ''}"`);
   } catch (e) { fb.textContent = 'Erro: ' + e.message; }
 }
 
@@ -6373,6 +6388,7 @@ function saveStagesFromModal() {
   });
   if (stages.length < 1) { alert('Adicione pelo menos uma coluna.'); return; }
   saveStagesFor(act, currentPipeline(act), stages);
+  auditLog(act, 'pipeline', `Alterou as colunas de "${pipelineName(act, currentPipeline(act))}": ${stages.map(x => x.label).join(', ')}`);
   const modal = document.getElementById('stages-modal');
   if (modal) modal.style.display = 'none';
   renderKanban(); renderFunilChart(); renderFunilEvolucao();
@@ -7851,13 +7867,13 @@ async function startCampaign(id) {
 }
 
 async function pauseCampaign(id) {
-  try { await window._fb.updateCampaign(id, { status: 'paused' }); showToast('Campanha pausada.', 'success'); }
+  try { await window._fb.updateCampaign(id, { status: 'paused' }); showToast('Campanha pausada.', 'success'); const c = (_campaignsCache || []).find(x => x.id === id); if (c) auditLog(c.act, 'campanha', `Pausou a campanha "${c.name || ''}"`); }
   catch (e) { showToast('Erro: ' + e.message, 'warning'); }
 }
 
 async function cancelCampaign(id) {
   if (!await showConfirm('Os contatos que ainda estão na fila não vão receber a mensagem.', 'Cancelar campanha', 'Cancelar campanha', true)) return;
-  try { await window._fb.updateCampaign(id, { status: 'cancelled', finishedAt: new Date().toISOString() }); showToast('Campanha cancelada.', 'success'); }
+  try { await window._fb.updateCampaign(id, { status: 'cancelled', finishedAt: new Date().toISOString() }); showToast('Campanha cancelada.', 'success'); const c = (_campaignsCache || []).find(x => x.id === id); if (c) auditLog(c.act, 'campanha', `Cancelou a campanha "${c.name || ''}"`); }
   catch (e) { showToast('Erro: ' + e.message, 'warning'); }
 }
 
@@ -8049,6 +8065,7 @@ async function saveCampaignEdit() {
       editedAt: new Date().toISOString()
     });
     showToast('Campanha atualizada. As mudanças valem a partir do próximo envio.', 'success');
+    auditLog(d.act, 'campanha', `Editou a campanha "${name}"`);
     closeCampaignEditor();
   } catch (e) { setFb('#f87171', 'Erro: ' + e.message); }
 }
@@ -8711,6 +8728,7 @@ async function saveCampaign(start) {
     }, _campaignDraft.recipients);
     if (start) await window._fb.updateCampaign(id, { status: 'running', startedAt: new Date().toISOString() });
     showToast(!start ? 'Campanha salva como rascunho.' : startInfo.startAt ? 'Campanha programada.' : 'Campanha criada e iniciada.', 'success');
+    auditLog(_campaignDraft.act, 'campanha', `${!start ? 'Salvou como rascunho' : startInfo.startAt ? 'Programou' : 'Criou e iniciou'} a campanha "${name}" para ${_campaignDraft.recipients.length} contato(s)`);
     closeCampaignEditor();
   } catch (e) {
     setFb('#f87171', 'Erro: ' + e.message);
@@ -9937,6 +9955,7 @@ async function saveAutomationDraft() {
     await window._fb.saveAutomation(d.id || null, data);
     _autoList = await window._fb.listAutomations(act);
     showToast('Automação salva. Vale para os leads que entrarem na coluna a partir de agora.', 'success', 5000);
+    auditLog(act, 'automacao', `Salvou a automação "${d.name || 'Automação'}"`);
     renderAutomationList();
   } catch (e) { fail('Erro: ' + e.message); }
 }
@@ -10726,6 +10745,7 @@ async function prosSaveFunnel() {
     (ids || []).forEach((id, i) => { if (leads[i] && id) leads[i]._docId = id; });
     if (_leadsCache) _leadsCache.push(...leads.filter(l => !_leadsCache.some(x => x.id === l.id))); // um segundo envio na mesma sessão já reconhece estas
     closeHuvenModal();
+    auditLog(act, 'criar', `Enviou ${leads.length} empresa(s) da Prospecção para o funil (${stageLabel})`);
     showToast(`${leads.length} empresa(s) nova(s) no funil${rows.length - leads.length ? ` · ${rows.length - leads.length} repetida(s) não foram (já estavam no funil ou na lista)` : ''}.`, 'success', 7000);
     _prSelected = new Set();
     renderProsResult();
@@ -10938,7 +10958,7 @@ async function toggleFlow(id, on) {
     showToast('Já tem outra automação ligada nessa coluna. Desligue ela antes.', 'warning');
     return renderAutomacoesView();
   }
-  try { await window._fb.saveAutomation(id, { active: on }); f.active = on; renderAutomacoesView(); }
+  try { await window._fb.saveAutomation(id, { active: on }); f.active = on; auditLog(f.act, 'automacao', `${on ? 'Ligou' : 'Desligou'} a automação "${f.name || ''}"`); renderAutomacoesView(); }
   catch (e) { showToast('Erro: ' + e.message, 'warning'); }
 }
 
@@ -10954,7 +10974,7 @@ async function deleteFlowConfirm(id) {
   const f = _flowList.find(x => x.id === id);
   if (!f) return;
   if (!await showConfirm(`A automação "${f.name}" será excluída. Os leads que estão no fluxo param de receber os próximos passos.`, 'Excluir automação', 'Excluir', true)) return;
-  try { await window._fb.deleteAutomation(id); renderAutomacoesView(); }
+  try { await window._fb.deleteAutomation(id); auditLog(f.act, 'automacao', `Excluiu a automação "${f.name || ''}"`); renderAutomacoesView(); }
   catch (e) { showToast('Erro: ' + e.message, 'warning'); }
 }
 
@@ -11777,6 +11797,7 @@ async function saveFlow() {
     _colAutos[normalizeActValue(act)] = { at: Date.now(), list: _flowList };
     fb.style.color = 'var(--green)'; fb.textContent = 'Salvo ✓';
     showToast('Automação salva. Vale para os leads que entrarem na coluna a partir de agora.', 'success', 5000);
+    auditLog(_flow.act, 'automacao', `Salvou a automação "${_flow.name || 'Automação'}"`);
   } catch (e) { fail('Erro: ' + e.message); }
 }
 
@@ -13927,6 +13948,7 @@ async function deleteContactsBase() {
     await window._fb.saveWhatsAppContacts(act, []);
     _crmContactsCache[act] = [];
     showToast(`Base de contatos apagada (${list.length} contato(s)).`, 'success');
+    auditLog(act, 'contatos', `Apagou a base de contatos (${list.length} contato(s))`);
     if (typeof renderContatos === 'function') renderContatos();
   } catch (e) { showToast('Não apagou: ' + e.message, 'error'); }
 }
@@ -14531,6 +14553,7 @@ async function removeWaLine(act, id) {
     WHATSAPP_SETTINGS[act] = { ...s, ...data };
     refreshWaLinesFor(act);
     showToast('WhatsApp removido.', 'success');
+    auditLog(act, 'whatsapp', `Removeu o WhatsApp "${waLineLabel(act, id)}"`);
   } catch (e) { showToast('Erro: ' + e.message, 'error'); }
 }
 
@@ -16390,6 +16413,7 @@ async function disconnectWhatsApp(act, line) {
   try {
     await window._fb.whatsapp('/whatsapp/logout', act, { line: line || WA_MAIN });
     showToast('WhatsApp desconectado.', 'success');
+    auditLog(act, 'whatsapp', `Desconectou o WhatsApp "${waLineLabel(act, line)}"`);
   } catch (e) {
     showToast('Erro ao desconectar: ' + e.message, 'warning');
   }
@@ -17433,6 +17457,7 @@ function dropCard(stageId, targetId = null, placement = 'after') {
   const STAGES = getStages(targetAct || leads[idx].act, leadPipeline(movedLead));
   const stageLabel = STAGES.find(s => s.id === stageId)?.label || stageId;
   if (targetAct && !movedLead.act) movedLead.act = targetAct;
+  if (!isSameStage) auditMove(leads[idx], leads[idx].stage, stageLabel, 'arrastando');
   leads[idx].stage = stageId;
   leads[idx].updatedAt = new Date().toISOString();
   if (!isSameStage) leads[idx].stageChangedAt = leads[idx].updatedAt;
@@ -17521,6 +17546,56 @@ function editLead(id) {
 
 function closeLeadModal() { document.getElementById('lead-modal').classList.remove('open'); }
 
+// ===== HISTÓRICO DE ALTERAÇÕES =====
+// Cada ação importante grava um registro (quem, quando, o quê). Nunca trava a ação se a gravação falhar.
+function auditLog(act, type, text, extra) {
+  try {
+    act = normalizeActValue(act);
+    if (!act || !window._fb || !window._fb.addAudit) return;
+    window._fb.addAudit(act, { type, text: String(text || '').slice(0, 500), ...(extra || {}) }).catch(() => {});
+  } catch (e) {}
+}
+function auditStageLabel(act, stageId) { return ((typeof getAllStages === 'function' ? getAllStages(act) : getStages(act)) || []).find(s => s.id === stageId)?.label || stageId || '?'; }
+function auditMove(lead, fromStage, toLabel, how) {
+  if (!lead) return;
+  auditLog(lead.act, 'mover', `Moveu "${lead.name || 'lead'}" de ${auditStageLabel(lead.act, fromStage)} para ${toLabel}${how ? ' (' + how + ')' : ''}`, { leadId: lead.id || '' });
+}
+const AUDIT_TYPES = { criar: 'Lead criado', editar: 'Lead editado', mover: 'Movido', excluir: 'Excluído', automacao: 'Automações', campanha: 'Campanhas', whatsapp: 'WhatsApp', contatos: 'Contatos', pipeline: 'Pipelines e colunas', sistema: 'Sistema (automático)' };
+let _auditCache = { act: '', list: [] };
+
+async function openAuditLog() {
+  const act = normalizeActValue(isAdmin ? (getActForStages() || flowAct()) : ((window._fb.getProfile() || {}).act));
+  if (!act) return showToast('Escolha o cliente no topo do menu para ver o histórico dele.', 'warning', 6000);
+  openHuvenModal('Histórico de alterações · ' + (getClientDisplayName(act) || act), '<div class="integ-muted">Carregando...</div>', 760);
+  try { _auditCache = { act, list: await window._fb.listAudit(act, 500) }; }
+  catch (e) { document.getElementById('huven-modal-body').innerHTML = `<div class="integ-error">${escapeHtml(e.message)}</div>`; return; }
+  document.getElementById('huven-modal-body').innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <select class="field-input" id="au-type" style="width:auto;" onchange="renderAuditLog()"><option value="">Tudo</option>${Object.entries(AUDIT_TYPES).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
+      <select class="field-input" id="au-period" style="width:auto;" onchange="renderAuditLog()"><option value="">Qualquer data</option><option value="1">Hoje</option><option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option></select>
+      <input class="field-input" id="au-q" placeholder="Buscar (lead, pessoa, texto)" style="flex:1;min-width:160px;" oninput="renderAuditLog()">
+    </div>
+    <div id="au-list" style="max-height:60vh;overflow:auto;"></div>`;
+  renderAuditLog();
+}
+function renderAuditLog() {
+  const type = document.getElementById('au-type').value, days = Number(document.getElementById('au-period').value) || 0;
+  const q = (document.getElementById('au-q').value || '').toLowerCase().trim();
+  const since = days ? (() => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (days - 1)); return d.toISOString(); })() : '';
+  const list = _auditCache.list.filter(e => (!type || e.type === type) && (!since || e.at >= since) && (!q || `${e.text} ${e.userName}`.toLowerCase().includes(q)));
+  let lastDay = '';
+  document.getElementById('au-list').innerHTML = list.length ? list.map(e => {
+    const d = new Date(e.at), day = d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+    const head = day !== lastDay ? `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:12px 0 6px;">${escapeHtml(day)}</div>` : '';
+    lastDay = day;
+    return head + `<div style="display:flex;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;background:var(--surface2);">
+      <div style="font-size:12px;color:var(--muted);min-width:44px;">${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
+      <div style="flex:1;min-width:0;"><div style="font-size:13px;color:var(--text);">${escapeHtml(e.text || '')}</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">${escapeHtml(e.userName || 'Sistema')} · ${escapeHtml(AUDIT_TYPES[e.type] || e.type || '')}</div></div></div>`;
+  }).join('') : '<div class="integ-muted">Nada registrado com esses filtros. O histórico começa a contar a partir de agora.</div>';
+}
+window.openAuditLog = openAuditLog; window.renderAuditLog = renderAuditLog;
+
 async function saveLead() {
   const name = document.getElementById('lead-name').value.trim();
   if (!name) { alert('Informe o nome do lead.'); return; }
@@ -17567,6 +17642,13 @@ async function saveLead() {
     const idx = _leadsCache.findIndex(l => l.id === id);
     if (idx !== -1) _leadsCache[idx] = newLead; else _leadsCache.push(newLead);
   }
+  if (!existing) auditLog(act, 'criar', `Criou o lead "${name}" em ${stageLabel}`, { leadId: id });
+  else {
+    const labels = { name: 'nome', phone: 'telefone', email: 'e-mail', plantao: 'plantão', valor: 'valor', redeSocial: 'rede social', origem: 'origem', obs: 'observações', motivo: 'motivo de perda', proximaAcao: 'próxima ação', proximaData: 'data da próxima ação' };
+    const changed = Object.keys(labels).filter(k => String(existing[k] || '') !== String(newLead[k] || '')).map(k => labels[k]);
+    if (existing.stage !== newStage) auditMove(existing, existing.stage, stageLabel, 'pelo formulário');
+    if (changed.length) auditLog(act, 'editar', `Editou o lead "${name}": ${changed.join(', ')}${existing.valor !== newLead.valor && newLead.valor ? ' (valor: ' + newLead.valor + ')' : ''}`, { leadId: id });
+  }
   saveLeadToDb(newLead);
   closeLeadModal();
   renderKanban(); renderFunilChart(); renderFunilEvolucao();
@@ -17574,7 +17656,9 @@ async function saveLead() {
 
 async function deleteLead(id) {
   if (!await showConfirm('Esta ação não pode ser desfeita.', 'Remover lead?', 'Remover')) return;
+  const gone = getLeads().find(l => l.id === id);
   await deleteLeadFromDb(id);
+  if (gone) auditLog(gone.act, 'excluir', `Excluiu o lead "${gone.name || ''}"${gone.phone ? ' (' + gone.phone + ')' : ''} da coluna ${auditStageLabel(gone.act, gone.stage)}`, { leadId: id });
   renderKanban(); renderFunilChart(); renderFunilEvolucao();
 }
 
@@ -17833,6 +17917,7 @@ async function runBulkMove() {
     await window._fb.saveLeadsBatch(items);
     closeHuvenModal();
     showToast(`${ids.size} lead(s) movido(s) para "${label}".`, 'success');
+    auditLog(ctx.act, 'mover', `Moveu em massa ${ids.size} lead(s) de ${auditStageLabel(ctx.act, ctx.stageId)} para ${label}`);
   } catch (e) {
     showToast('Erro ao mover: ' + e.message, 'error', 7000);
     if (btn) { btn.disabled = false; bulkMoveCount(); }
@@ -17850,6 +17935,7 @@ function moveLeadTo(id, stageId, pipelineId) {
     if (targetAct && !leads[idx].act) leads[idx].act = targetAct;
     const STAGES = getStages(targetAct, leadPipeline(leads[idx]));
     const stageLabel = (pipelineId ? pipelineName(targetAct, pipelineId) + ' › ' : '') + (STAGES.find(s => s.id === stageId)?.label || stageId);
+    auditMove(leads[idx], leads[idx].stage, stageLabel, 'menu Mover');
     leads[idx].stage = stageId;
     leads[idx].updatedAt = new Date().toISOString();
     leads[idx].stageChangedAt = leads[idx].updatedAt;
