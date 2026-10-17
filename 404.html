@@ -2761,6 +2761,7 @@ td { font-family: var(--font); font-size: 13px; }
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('prospeccao'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6M11 8v6"/></svg><span>Prospecção</span></button>
     <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); switchView('agenteia'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 4h6M9 14h.01M15 14h.01M2 14h2M20 14h2"/></svg><span>Agente de IA</span></button>
     <button type="button" class="mnav-sheet-item" onclick="closeMobileMore(); switchView('capi'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8M14 7h7v7"/></svg><span>Conversões Meta</span></button>
+    <button type="button" class="mnav-sheet-item" onclick="closeMobileMore(); switchView('historico'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Histórico</span></button>
     <button type="button" class="mnav-sheet-item" onclick="closeMobileMore(); switchView('instagram'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/></svg><span>Instagram</span></button>
     <button type="button" class="mnav-sheet-item" onclick="closeMobileMore(); switchView('posts'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span>Postagens</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('cadencia'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM16 2v4M8 2v4M3 10h18"/></svg><span>Cadência</span></button>
@@ -2895,7 +2896,7 @@ td { font-family: var(--font); font-size: 13px; }
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8M14 7h7v7"/></svg>
           Conversões Meta
         </div>
-        <div class="nav-item" id="nav-historico" onclick="openAuditLog()">
+        <div class="nav-item" id="nav-historico" onclick="switchView('historico')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>
           Histórico
         </div>
@@ -3876,6 +3877,7 @@ td { font-family: var(--font); font-size: 13px; }
 
     <!-- Conversões Meta (API de Conversões) -->
     <div id="capi-view" class="huv-view" style="display:none;"><div id="capi-body"></div></div>
+    <div id="historico-view" class="huv-view" style="display:none;"><div id="historico-body"></div></div>
     <div id="modelos-view" class="huv-view" style="display:none;"><div id="modelos-body"></div></div>
 
     <!-- Instagram -->
@@ -7312,7 +7314,7 @@ function switchView(view) {
     showToast('Seu login não tem acesso a esta área.', 'warning');
     view = firstAllowedView();
   }
-  ['report','analise','clientes','automacoes','agenteia','capi','instagram','posts','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes','modelos'].forEach(v => {
+  ['report','analise','clientes','automacoes','agenteia','capi','historico','instagram','posts','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes','modelos'].forEach(v => {
     const el = document.getElementById('nav-' + v);
     if (el) el.classList.toggle('active', v === view);
   });
@@ -7352,6 +7354,9 @@ function switchView(view) {
   const capiView = document.getElementById('capi-view');
   if (capiView) capiView.style.display = view === 'capi' ? 'block' : 'none';
   if (view === 'capi') renderCapiView();
+  const historicoView = document.getElementById('historico-view');
+  if (historicoView) historicoView.style.display = view === 'historico' ? 'block' : 'none';
+  if (view === 'historico') openAuditLog();
   const modelosView = document.getElementById('modelos-view');
   if (modelosView) modelosView.style.display = view === 'modelos' ? 'block' : 'none';
   if (view === 'modelos' && window.renderModelosView) renderModelosView();
@@ -17565,17 +17570,24 @@ let _auditCache = { act: '', list: [] };
 
 async function openAuditLog() {
   const act = normalizeActValue(isAdmin ? (getActForStages() || flowAct()) : ((window._fb.getProfile() || {}).act));
-  if (!act) return showToast('Escolha o cliente no topo do menu para ver o histórico dele.', 'warning', 6000);
-  openHuvenModal('Histórico de alterações · ' + (getClientDisplayName(act) || act), '<div class="integ-muted">Carregando...</div>', 760);
+  const box = document.getElementById('historico-body');
+  if (!box) return;
+  const header = `<div class="huv-header" style="margin-bottom:14px;"><div style="flex:1;min-width:220px;">
+      <div class="huv-crumb">${escapeHtml(act ? (getClientDisplayName(act) || act) : 'Cliente')}  /  Ajustes</div>
+      <div class="huv-page-title" style="color:var(--text);">Histórico de alterações</div>
+      <div class="integ-muted" style="margin-top:4px;">Tudo o que foi feito no CRM deste cliente: leads criados, editados, movidos e excluídos, automações, campanhas, WhatsApp e o que o sistema fez sozinho.</div>
+    </div>${act ? `<button class="huv-btn" style="height:40px;padding:0 16px;" onclick="openAuditLog()">Atualizar</button>` : ''}</div>`;
+  if (!act) { box.innerHTML = header + '<div class="integ-empty">Escolha o cliente no topo do menu para ver o histórico dele.</div>'; return; }
+  box.innerHTML = header + '<div class="integ-muted">Carregando...</div>';
   try { _auditCache = { act, list: await window._fb.listAudit(act, 500) }; }
-  catch (e) { document.getElementById('huven-modal-body').innerHTML = `<div class="integ-error">${escapeHtml(e.message)}</div>`; return; }
-  document.getElementById('huven-modal-body').innerHTML = `
+  catch (e) { box.innerHTML = header + `<div class="integ-error">${escapeHtml(e.message)}</div>`; return; }
+  box.innerHTML = header + `
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
       <select class="field-input" id="au-type" style="width:auto;" onchange="renderAuditLog()"><option value="">Tudo</option>${Object.entries(AUDIT_TYPES).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
       <select class="field-input" id="au-period" style="width:auto;" onchange="renderAuditLog()"><option value="">Qualquer data</option><option value="1">Hoje</option><option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option></select>
       <input class="field-input" id="au-q" placeholder="Buscar (lead, pessoa, texto)" style="flex:1;min-width:160px;" oninput="renderAuditLog()">
     </div>
-    <div id="au-list" style="max-height:60vh;overflow:auto;"></div>`;
+    <div id="au-list"></div>`;
   renderAuditLog();
 }
 function renderAuditLog() {
@@ -19036,7 +19048,7 @@ function onMobileClientChange() {
 // ===== Logins extras do cliente: o admin escolhe quais áreas cada login enxerga =====
 const SUB_LOGIN_VIEWS = [
   ['report', 'Dashboard'], ['analise', 'Atendimento'], ['crm', 'Funil de vendas'], ['chat', 'Chat'], ['contatos', 'Contatos'],
-  ['automacoes', 'Automações'], ['capi', 'Conversões Meta'], ['instagram', 'Instagram'], ['posts', 'Postagens'], ['prospeccao', 'Prospecção'], ['campanhas', 'Campanhas'], ['cadencia', 'Cadência'], ['whatsapp', 'Conexões'], ['integracoes', 'Integrações'], ['modelos', 'Modelos API oficial']
+  ['automacoes', 'Automações'], ['capi', 'Conversões Meta'], ['historico', 'Histórico'], ['instagram', 'Instagram'], ['posts', 'Postagens'], ['prospeccao', 'Prospecção'], ['campanhas', 'Campanhas'], ['cadencia', 'Cadência'], ['whatsapp', 'Conexões'], ['integracoes', 'Integrações'], ['modelos', 'Modelos API oficial']
 ];
 let SUB_LOGINS = [];
 let _subVault = {};
