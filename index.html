@@ -2673,7 +2673,9 @@ td { font-family: var(--font); font-size: 13px; }
       await deleteDoc(doc(db, 'admin_vault', oldLogin)).catch(() => {});
       return { warning };
     },
+    async teamCall(path, body) { return callAdminApi(path, body); },
     async updateSubLogin(login, personName, perms) {
+      if (currentProfile && currentProfile.role !== 'admin') { await callAdminApi('/team/update', { login, name: personName, views: perms.views }); return; }
       const uid = await findUidByLogin(login);
       if (!uid) throw new Error('Login não encontrado.');
       await updateDoc(doc(db, 'users', uid), { personName, perms });
@@ -3762,6 +3764,8 @@ td { font-family: var(--font); font-size: 13px; }
       <div style="max-width:520px;">
         <div style="font-size:18px; font-weight:600; color:var(--text); margin-bottom:6px;">Minha conta</div>
         <div style="font-size:13px; color:var(--muted); margin-bottom:28px;">Altere sua senha de acesso ao relatório.</div>
+
+        <div id="conta-team" style="display:none;margin-bottom:24px;"></div>
 
         <div class="paleta-card">
           <div class="paleta-head"><i data-ico="palette" data-size="18"></i><div><div class="paleta-titulo">Cores do CRM</div><div class="paleta-sub">Escolha a cor e onde ela aparece. A escolha fica guardada neste aparelho e vale no tema claro e no escuro.</div></div></div>
@@ -7325,6 +7329,7 @@ function switchView(view) {
   if (ajudaView) ajudaView.style.display = view === 'ajuda' ? 'block' : 'none';
   if (view === 'ajuda') filterHelpCards((document.getElementById('help-search-input') || {}).value || '');
   document.getElementById('conta-view').style.display = view === 'conta' ? 'block' : 'none';
+  if (view === 'conta') renderContaTeam();
   const whatsappView = document.getElementById('whatsapp-view');
   if (whatsappView) whatsappView.style.display = view === 'whatsapp' ? 'block' : 'none';
   if (view === 'whatsapp') renderWhatsAppView();
@@ -7538,12 +7543,12 @@ function subViewsAll(a, on) {
   a.closest('.sub-new, .sub-item').querySelectorAll('.sub-views input').forEach(i => { i.checked = on; });
 }
 
-function subLoginsHtml(parentLogin) {
+function subLoginsHtml(parentLogin, team) {
   const subs = SUB_LOGINS.filter(x => x.parentLogin === parentLogin).sort((a, b) => String(a.name).localeCompare(String(b.name), 'pt-BR'));
   const pj = escapeJsString(parentLogin);
   return `<div class="sub-head"><div class="sub-head-t">Logins extras <small>${subs.length ? subs.length + ' criado' + (subs.length > 1 ? 's' : '') : 'nenhum ainda'}</small></div>
-      <button class="integ-btn" onclick="toggleSubLoginForm('${pj}', this)">+ Novo login</button></div>
-    <div class="sub-new" style="display:none;">
+      ${team ? '' : `<button class="integ-btn" onclick="toggleSubLoginForm('${pj}', this)">+ Novo login</button>`}</div>
+    ${team ? '' : `<div class="sub-new" style="display:none;">`}
       <div class="sub-new-t">Novo login para a equipe deste cliente</div>
       <div class="sub-grid">
         <input class="field-input sub-name" placeholder="Nome da pessoa (ex.: Maria)">
@@ -7552,7 +7557,7 @@ function subLoginsHtml(parentLogin) {
       </div>
       ${subViewChecks(null)}
       <div class="sub-actions"><button class="integ-btn primary" onclick="createSubLogin('${pj}', this)">Criar login</button><span class="sub-msg"></span></div>
-    </div>
+    </div>`}
     ${subs.length ? subs.map(sl => {
       const lj = escapeJsString(sl.login);
       const views = sl.perms && Array.isArray(sl.perms.views) ? sl.perms.views : null;
@@ -7561,21 +7566,35 @@ function subLoginsHtml(parentLogin) {
         <div class="sub-row"><div class="sub-av">${escapeHtml((sl.name || '?').trim().charAt(0).toUpperCase())}</div>
           <input class="field-input sub-name" value="${escapeHtml(sl.name)}" style="flex:1;min-width:140px;">
           <span class="mono sub-id">${escapeHtml(sl.login)}</span>
-          <button class="integ-btn" onclick="toggleRenameLogin(this)">Trocar login</button>
-          ${pass ? `<button class="integ-btn" onclick="copyText(_subVault['${lj}'], 'Senha copiada')">Copiar senha</button>` : ''}</div>
-        ${renameLoginHtml(sl.login)}
+          ${team ? '' : `<button class="integ-btn" onclick="toggleRenameLogin(this)">Trocar login</button>`}
+          ${team ? '' : pass ? `<button class="integ-btn" onclick="copyText(_subVault['${lj}'], 'Senha copiada')">Copiar senha</button>` : ''}</div>
+        ${team ? '' : renameLoginHtml(sl.login)}
         ${subViewChecks(views)}
         <div class="sub-actions">
           <button class="integ-btn primary" onclick="saveSubLogin('${lj}', this)">Salvar acessos</button>
           <span class="sub-sep"></span>
           <input class="field-input sub-newpass mono" placeholder="Nova senha" autocomplete="off">
           <button class="integ-btn" onclick="resetSubLoginPass('${lj}', this)">Trocar senha</button>
-          <button class="integ-btn danger" onclick="deleteSubLogin('${lj}', this)">Excluir</button>
+          ${team ? '' : `<button class="integ-btn danger" onclick="deleteSubLogin('${lj}', this)">Excluir</button>`}
           <span class="sub-msg"></span>
         </div>
       </div>`;
-    }).join('') : '<div class="sub-empty">Crie logins para a equipe do cliente e escolha o que cada pessoa pode abrir.</div>'}`;
+    }).join('') : (team ? '<div class="sub-empty">Nenhum login de equipe ligado ao seu ainda. Peça à Huven para criar.</div>' : '<div class="sub-empty">Crie logins para a equipe do cliente e escolha o que cada pessoa pode abrir.</div>')}`;
 }
+
+// Minha conta: o login principal do cliente edita os logins extras ligados a ele (áreas, nome e senha). Criar e excluir é só do admin.
+function renderContaTeam() {
+  const box = document.getElementById('conta-team');
+  if (!box) return;
+  const p = (window._fb && window._fb.getProfile && window._fb.getProfile()) || {};
+  const subs = (!isAdmin && p.login && !p.parentLogin) ? SUB_LOGINS.filter(x => x.parentLogin === p.login) : [];
+  if (!subs.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.style.display = 'block';
+  box.innerHTML = `<div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px;">Minha equipe</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">Logins ligados ao seu. Você escolhe o que cada pessoa pode abrir e troca a senha. Para criar ou remover um login, fale com a Huven.</div>
+    <div class="sublogin-box" data-parent="${escapeHtml(p.login)}">${subLoginsHtml(p.login, true)}</div>`;
+}
+window.renderContaTeam = renderContaTeam;
 
 function subMsg(el, text, ok) {
   const m = el && el.closest('.sub-item, .sub-new') && el.closest('.sub-item, .sub-new').querySelector('.sub-msg');
@@ -7585,7 +7604,7 @@ function subMsg(el, text, ok) {
 function readSubViews(box) { return [...box.querySelectorAll('.sub-views input:checked')].map(i => i.value); }
 function refreshSubBox(parentLogin) {
   const box = [...document.querySelectorAll('.sublogin-box')].find(b => b.dataset.parent === parentLogin);
-  if (box) box.innerHTML = subLoginsHtml(parentLogin);
+  if (box) box.innerHTML = subLoginsHtml(parentLogin, !isAdmin);
 }
 function toggleSubLoginForm(parentLogin, btn) {
   const f = btn.closest('.sublogin-box').querySelector('.sub-new');
@@ -7691,7 +7710,8 @@ async function resetSubLoginPass(login, btn) {
   const pass = item.querySelector('.sub-newpass').value;
   if (pass.length < 6) return subMsg(btn, 'A senha precisa ter pelo menos 6 caracteres.', false);
   try {
-    await window._fb.adminSetPassword(login, pass);
+    if (isAdmin) await window._fb.adminSetPassword(login, pass);
+    else await window._fb.teamCall('/team/password', { login, password: pass });
     _subVault[login] = pass;
     subMsg(btn, 'Senha trocada ✓', true);
     item.querySelector('.sub-newpass').value = '';
