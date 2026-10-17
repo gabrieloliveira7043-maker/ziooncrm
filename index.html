@@ -7548,7 +7548,7 @@ function subLoginsHtml(parentLogin, team) {
   const pj = escapeJsString(parentLogin);
   return `<div class="sub-head"><div class="sub-head-t">Logins extras <small>${subs.length ? subs.length + ' criado' + (subs.length > 1 ? 's' : '') : 'nenhum ainda'}</small></div>
       ${team ? '' : `<button class="integ-btn" onclick="toggleSubLoginForm('${pj}', this)">+ Novo login</button>`}</div>
-    ${team ? '' : `<div class="sub-new" style="display:none;">`}
+    ${team ? '' : `<div class="sub-new" style="display:none;">
       <div class="sub-new-t">Novo login para a equipe deste cliente</div>
       <div class="sub-grid">
         <input class="field-input sub-name" placeholder="Nome da pessoa (ex.: Maria)">
