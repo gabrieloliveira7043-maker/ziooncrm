@@ -2700,7 +2700,7 @@ td { font-family: var(--font); font-size: 13px; }
 })();
 </script>
 <link rel="stylesheet" href="tema-novo.css?v=5">
-<script src="icones.js?v=4"></script>
+<script src="icones.js?v=5"></script>
 <script src="cores.js?v=2"></script>
 </head>
 <body>
@@ -12630,6 +12630,7 @@ let _qrSel = 0;
 
 const CHAT_FILTERS = [
   ['all', 'Todas'],
+  ['groups', 'Grupos'],
   ['unread', 'Não lidas'],
   ['mine', 'Minhas'],
   ['unassigned', 'Sem responsável'],
@@ -12713,6 +12714,7 @@ function autoSyncChatContacts(act) {
 }
 
 function chatName(c, lead) {
+  if (c.isGroup) return c.groupName || 'Grupo do WhatsApp';
   const contact = !lead && c.phone ? chatContactFor(c, chatContactIndex(normalizeActValue(c.act || _chatAct))) : null;
   return c.contactName || (lead && lead.name) || (contact && contact.name) || c.waName || c.pushName || chatFormatPhone(c.phone) || 'Número oculto';
 }
@@ -12759,7 +12761,7 @@ function onChatClientChange() {
     return;
   }
   _chatAct = act;
-  ensureWaSettings(act).then(() => autoSyncChatContacts(act)).catch(() => {});
+  ensureWaSettings(act).then(() => { autoSyncChatContacts(act); if (_chatAct === act) renderChatList(); }).catch(() => {});
   if (!_contactTagsCache[act]) loadContactTags(act).then(() => { renderChatList(); renderChatHeader(); });
   ensureImportedContacts(act, () => { renderChatList(); renderChatHeader(); });
   if (!_chatUnsub) {
@@ -12898,6 +12900,7 @@ function chatMatchesFilter(c, f, me) {
   if (f === 'unassigned') return !c.assignedTo;
   if (f === 'replied') return chatReplied(c);
   if (f === 'waiting') return chatWaiting(c);
+  if (f === 'groups') return !!c.isGroup;
   return true;
 }
 
@@ -12937,11 +12940,12 @@ function renderChatList() {
   const totalUnread = _chatItems.reduce((s, c) => s + (c.unread > 0 ? 1 : 0), 0);
   const badge = document.getElementById('chat-nav-badge');
   if (badge) { badge.textContent = totalUnread; badge.style.display = totalUnread ? 'inline-block' : 'none'; }
+  const groupsBar = _chatFilter === 'groups' ? chatGroupsBarHtml() : '';
   if (!rows.length) {
-    list.innerHTML = `<div class="chat-empty">${_chatItems.length ? 'Nenhuma conversa neste filtro.' : 'Ainda não há conversas.<br>Elas aparecem aqui quando alguém manda mensagem ou quando um disparo sai.'}</div>`;
+    list.innerHTML = groupsBar + (_chatFilter === 'groups' && !chatGroupsOn(_chatAct) ? '' : `<div class="chat-empty">${_chatItems.length ? (_chatFilter === 'groups' ? 'Nenhuma conversa de grupo ainda.<br>Elas aparecem quando chegar a próxima mensagem num grupo, ou ao puxar o histórico.' : 'Nenhuma conversa neste filtro.') : 'Ainda não há conversas.<br>Elas aparecem aqui quando alguém manda mensagem ou quando um disparo sai.'}</div>`);
     return;
   }
-  list.innerHTML = rows.map(c => {
+  list.innerHTML = groupsBar + rows.map(c => {
     const lead = chatLeadFor(c, index);
     const name = chatName(c, lead);
     const initials = name.replace(/[^\p{L}\p{N} ]/gu, '').split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
@@ -12950,12 +12954,13 @@ function renderChatList() {
     else if (chatWaiting(c)) tags.push('<span class="chat-tag" style="background:var(--amber-dim);color:var(--amber);">Aguardando resposta</span>');
     if (c.assignedName) tags.push(`<span class="chat-tag" style="background:var(--blue-dim);color:var(--blue);">${escapeHtml(c.assignedTo === me.uid ? 'Você' : c.assignedName)}</span>`);
     if (c.channel === 'instagram') tags.push('<span class="chat-tag ig">Instagram</span>');
+    if (c.isGroup) tags.push(`<span class="chat-tag" style="background:var(--surface3);color:var(--muted2);">${uiIco('users', 12)} Grupo</span>`);
     if (multiLine && c.channel !== 'instagram') tags.push(`<span class="chat-tag" style="background:var(--surface3);color:var(--muted2);">${uiIco('phone', 12)} ${escapeHtml(waLineLabel(_chatAct, c.line || waLineOfKey(c.id)))}</span>`);
     const rem = chatReminderFor(_chatAct, c.id);
     if (rem) tags.push(`<span class="chat-tag" style="background:rgba(224,164,58,.2);color:#B7791F;">${uiIco('bell', 12)} ${new Date(rem.remindAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>`);
     chatTagIds(c, lead, chatContactFor(c, contactIndex)).map(id => tagById[id]).filter(Boolean).forEach(t => tags.push(tagChipHtml(t)));
     return `<div class="chat-row ${c.id === _chatOpenKey ? 'active' : ''} ${c.unread > 0 ? 'unread' : ''}" onclick="openChat('${escapeJsString(c.id)}')">
-      <div class="chat-avatar">${c.photoUrl ? `<img src="${escapeHtml(c.photoUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" onerror="this.replaceWith(document.createTextNode('${escapeJsString(initials)}'))">` : escapeHtml(initials)}</div>
+      <div class="chat-avatar">${c.photoUrl ? `<img src="${escapeHtml(c.photoUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" onerror="this.replaceWith(document.createTextNode('${escapeJsString(initials)}'))">` : c.isGroup ? uiIco('users', 18) : escapeHtml(initials)}</div>
       <div class="chat-row-body">
         <div class="chat-row-top">
           <div class="chat-row-name">${escapeHtml(name)}</div>
@@ -12969,6 +12974,29 @@ function renderChatList() {
       </div>
     </div>`;
   }).join('') + (_chatItems.length >= _chatLimit ? `<div style="padding:12px;text-align:center;"><button class="chat-pill" onclick="loadMoreChats()">Carregar conversas mais antigas</button></div>` : '');
+}
+
+// Conversas de grupo no Chat: o cliente liga ou desliga (whatsapp_settings/{act}.chatGroups).
+function chatGroupsOn(act) { return !!(WHATSAPP_SETTINGS[act] || {}).chatGroups; }
+
+function chatGroupsBarHtml() {
+  if (!_chatAct) return '';
+  if (!chatGroupsOn(_chatAct)) {
+    return `<div class="chat-empty" style="padding:18px 14px;">As conversas dos grupos do WhatsApp não aparecem no Chat.<br>Ao ligar, as mensagens novas dos grupos passam a aparecer aqui. Elas não viram lead e a IA não responde nos grupos.<br><button class="btn-save" style="width:auto;padding:9px 16px;margin-top:12px;" onclick="setChatGroups(true)">Mostrar grupos no Chat</button></div>`;
+  }
+  return `<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 12px;font-size:12px;color:var(--muted2);border-bottom:1px solid var(--border);">${uiIco('users', 13)} <span style="flex:1;">Grupos aparecem no Chat.</span><a href="#" style="color:var(--muted2);" onclick="setChatGroups(false);return false;">Desligar</a></div>`;
+}
+
+async function setChatGroups(on) {
+  const act = _chatAct;
+  if (!act) return;
+  if (!on && !await showConfirm('As mensagens novas dos grupos deixam de entrar no Chat. As conversas de grupo que já estão aqui continuam.', 'Desligar grupos no Chat', 'Desligar')) return;
+  try {
+    await window._fb.whatsapp('/whatsapp/chat-groups', act, { on: !!on });
+    WHATSAPP_SETTINGS[act] = { ...(WHATSAPP_SETTINGS[act] || {}), chatGroups: !!on };
+    showToast(on ? 'Pronto: as mensagens novas dos grupos vão aparecer no Chat (pode levar 1 minuto).' : 'Grupos desligados no Chat.', 'success', 6000);
+    renderChatList();
+  } catch (e) { showToast('Não salvou: ' + e.message, 'error', 6000); }
 }
 
 function loadMoreChats() {
@@ -13048,6 +13076,10 @@ function renderChatInfo() {
   const tags = chatTagIds(c, lead, lead ? null : chatContactFor(c, chatContactIndex(_chatAct))).map(id => tagById[id]).filter(Boolean);
   const label = t => `<div class="ci-label">${t}</div>`;
   const tagsHtml = `<div class="ci-block">${label('Etiquetas')}<div class="ci-tags">${tags.map(t => tagChipHtml(t)).join('')}<button class="ci-add" onclick="openChatTags()">+ Etiqueta</button></div></div>`;
+  if (c.isGroup) {
+    box.innerHTML = `<div class="ci-block">${label('Grupo')}<div class="ci-muted">Conversa de grupo do WhatsApp. Ela não vira lead e a IA não responde aqui.</div></div>${tagsHtml}`;
+    return;
+  }
   if (!lead) {
     box.innerHTML = `<div class="ci-block">${label('Lead')}<div class="ci-muted">Esta conversa ainda não está no funil.</div><button class="huv-btn primary" style="margin-top:10px;" onclick="createLeadFromChat()">Criar lead no funil</button></div>${tagsHtml}`;
     return;
@@ -13126,7 +13158,7 @@ function renderChatHeader() {
     <div style="flex:1;min-width:160px;">
       <div style="font-size:15px;font-weight:600;color:var(--text);">${escapeHtml(chatName(c, lead))}</div>
       <div style="font-size:12px;color:var(--muted2);display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:2px;">
-        <span>${escapeHtml(c.channel === 'instagram' ? 'Instagram' + (c.igUsername ? ' · @' + c.igUsername : '') : (chatFormatPhone(c.phone) || 'Número oculto pelo WhatsApp'))}</span>
+        <span>${escapeHtml(c.isGroup ? 'Grupo do WhatsApp' : c.channel === 'instagram' ? 'Instagram' + (c.igUsername ? ' · @' + c.igUsername : '') : (chatFormatPhone(c.phone) || 'Número oculto pelo WhatsApp'))}</span>
         ${waHasMultiple(_chatAct) ? `<span class="chat-tag" style="background:var(--surface3);color:var(--text);">${uiIco('phone', 12)} via ${escapeHtml(waLineLabel(_chatAct, c.line || waLineOfKey(c.id)))}</span>` : ''}
         ${stage ? `<span class="chat-tag" style="background:var(--accent-glow);color:var(--text);">Lead · ${escapeHtml(stage)}</span>` : ''}
         ${c.dispatchSource ? `<span class="chat-tag" style="background:var(--surface3);color:var(--muted2);">${escapeHtml(c.dispatchSource)}</span>` : ''}
@@ -13137,7 +13169,7 @@ function renderChatHeader() {
     ${!lead && c.phone && !chatContactFor(c, chatContactIndex(_chatAct)) ? `<button class="chat-pill" onclick="saveChatAsContact()" title="Guarda este número na base de contatos do CRM">＋ Salvar contato</button>` : ''}
     <button class="chat-pill" onclick="openChatTags()">${uiIco('tag')} Etiquetas</button>
     ${lead ? `<button class="chat-pill" onclick="openMoveModal('${escapeJsString(lead.id)}')">Mover no funil</button>` : ''}
-    ${lead && aiLeadState(lead) === 'active' ? aiLeadBtnHtml(lead, 'chat') : `<button class="chat-pill" onclick="chatAiTakeover()" title="A IA passa a atender esta conversa e responde a última mensagem do contato">${uiIco('bot')} IA assumir</button>`}
+    ${c.isGroup ? '' : lead && aiLeadState(lead) === 'active' ? aiLeadBtnHtml(lead, 'chat') : `<button class="chat-pill" onclick="chatAiTakeover()" title="A IA passa a atender esta conversa e responde a última mensagem do contato">${uiIco('bot')} IA assumir</button>`}
     ${assignBtn}`;
 }
 
@@ -13209,7 +13241,8 @@ function renderChatMessages() {
     const canEdit = !cloudChat && m.fromMe && (m.type || 'text') === 'text' && age < 15 * 60000 && !/^(crm|sch)\d/.test(m.id);
     const canDel = !cloudChat && m.fromMe && age < 2 * 86400000 && !/^(crm|sch)\d/.test(m.id);
     const menu = canEdit || canDel ? `<button class="chat-msg-more" title="Editar ou apagar" onclick="openChatMsgMenu(event, '${escapeJsString(m.id)}', ${canEdit}, ${canDel})">⋯</button>` : '';
-    parts.push(`<div class="chat-bubble ${m.fromMe ? 'out' : 'in'}">${menu}${media}${chatLinkify(escapeHtml(bodyText))}${m.failed ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">${uiIco('alert', 12)} Não entregue: ${escapeHtml(m.error || '')}</div>` : ''}<div class="chat-meta">${who ? escapeHtml(who) + ' · ' : ''}${m.edited ? 'editada · ' : ''}${time}</div></div>`);
+    const sender = !m.fromMe && (m.senderName || m.senderPhone) ? `<div style="font-size:12px;font-weight:700;color:var(--accent2);margin-bottom:2px;">${escapeHtml(m.senderName || chatFormatPhone(m.senderPhone))}${m.senderName && m.senderPhone ? ` <span style="font-weight:400;color:var(--muted2);">${escapeHtml(chatFormatPhone(m.senderPhone))}</span>` : ''}</div>` : '';
+    parts.push(`<div class="chat-bubble ${m.fromMe ? 'out' : 'in'}">${menu}${sender}${media}${chatLinkify(escapeHtml(bodyText))}${m.failed ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">${uiIco('alert', 12)} Não entregue: ${escapeHtml(m.error || '')}</div>` : ''}<div class="chat-meta">${who ? escapeHtml(who) + ' · ' : ''}${m.edited ? 'editada · ' : ''}${time}</div></div>`);
   });
   pendingSched.forEach(s => {
     const when = new Date(s.sendAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
