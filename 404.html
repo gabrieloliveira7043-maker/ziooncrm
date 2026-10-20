@@ -6255,6 +6255,15 @@ async function deletePipeline(act, id) {
   } catch (e) { showToast('Erro: ' + e.message, 'error'); }
 }
 
+// Coluna de venda fechada: o id padrão ("fechado"/"fechou") ou, nos pipelines e colunas criados pelo cliente, o nome da coluna.
+const WON_STAGE_LABELS = ['fechado', 'fechou', 'venda fechada', 'ganho', 'vendido'];
+function isWonStage(stageId, stages) {
+  if (['fechado', 'fechou'].includes(stageId)) return true;
+  const st = (stages || []).find(s => s.id === stageId);
+  const label = st ? String(st.label || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() : '';
+  return WON_STAGE_LABELS.includes(label);
+}
+
 function getStages(act, pipelineId) {
   if (pipelineId && pipelineId !== 'principal') {
     const p = ((pipelinesFor(act) || {}).list || []).find(x => x.id === pipelineId);
@@ -9747,11 +9756,12 @@ function clientStats(act) {
   const won = ['fechado', 'fechou', 'compareceu'];
   const lost = ['perdido', 'nresp', 'ncompareceu'];
   const stages = getStages(act) || [];
+  const allStages = getAllStages(act);
   const first = stages[0] ? stages[0].id : 'novo';
   return {
     month: monthLeads.length,
-    deals: leads.filter(l => l.stage && l.stage !== first && !won.includes(l.stage) && !lost.includes(l.stage)).length,
-    won: monthLeads.filter(l => won.includes(l.stage)).length
+    deals: leads.filter(l => l.stage && l.stage !== first && !won.includes(l.stage) && !isWonStage(l.stage, allStages) && !lost.includes(l.stage)).length,
+    won: monthLeads.filter(l => won.includes(l.stage) || isWonStage(l.stage, allStages)).length
   };
 }
 
@@ -17153,7 +17163,7 @@ function renderKanban() {
   let totalFechado = 0;
   let qtdFechado = 0;
   leads.forEach(l => {
-    if (['fechado','fechou'].includes(getArteAzulejoStageForBoard(l, filterAct)) && l.valor) {
+    if (isWonStage(getArteAzulejoStageForBoard(l, filterAct), STAGES) && l.valor) {
       const raw = String(l.valor).replace(/[^0-9,.]/g,'').replace(/\.(?=\d{3})/g,'').replace(',','.'); // "3.100" = 3100, "1.500,00" = 1500
       const val = parseFloat(raw);
       if (!isNaN(val) && val > 0) { totalFechado += val; qtdFechado++; }
