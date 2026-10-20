@@ -10894,14 +10894,14 @@ function flowProgressStats(f, leadsAll) {
   const idx = Object.fromEntries(chain.map((n, i) => [n.id, i]));
   const msgNodes = chain.filter(n => n.type === 'message');
   const states = leadsAll.filter(l => l.automation && l.automation.id === f.id);
-  const st = { entered: states.length, running: 0, done: 0, replied: 0, stopped: 0, stoppedWhy: {}, waitingWhy: {}, nextAt: '', estimated: false, remaining: 0 };
+  const st = { entered: states.length, running: 0, done: 0, replied: 0, stopped: 0, stoppedWhy: {}, waitingWhy: {}, nextAt: '', estimated: false, remaining: 0, runningLeads: [], stoppedLeads: [] };
   const perNode = Object.fromEntries(chain.map(n => [n.id, { sent: 0, here: 0, repliedAfter: 0 }]));
   states.forEach(l => {
     const a = l.automation;
     if (a.status === 'running') st.running++;
     else if (a.status === 'done') st.done++;
     else if (a.status === 'replied') st.replied++;
-    else { st.stopped++; const why = a.reason || 'Sem motivo registrado'; st.stoppedWhy[why] = (st.stoppedWhy[why] || 0) + 1; }
+    else { st.stopped++; const why = a.reason || 'Sem motivo registrado'; st.stoppedWhy[why] = (st.stoppedWhy[why] || 0) + 1; st.stoppedLeads.push({ lead: l, why }); }
     let sent;
     if (Array.isArray(a.sent)) sent = a.sent.filter(id => perNode[id]);
     else {
@@ -10916,6 +10916,7 @@ function flowProgressStats(f, leadsAll) {
       st.remaining += Math.max(0, msgNodes.length - sent.length);
       if (a.waiting) st.waitingWhy[a.waiting] = (st.waitingWhy[a.waiting] || 0) + 1;
       if (a.nextAt && (!st.nextAt || a.nextAt < st.nextAt)) st.nextAt = a.nextAt;
+      st.runningLeads.push({ lead: l, nodeId: a.nodeId, nextAt: a.nextAt || '', waiting: a.waiting || '', left: Math.max(0, msgNodes.length - sent.length) });
     }
   });
   return { st, chain, perNode, msgCount: msgNodes.length };
@@ -10956,6 +10957,19 @@ function openFlowProgress(id) {
     return `<tr style="color:var(--muted2);"><td style="padding:4px 8px;font-size:12px;">${title}</td><td></td><td style="padding:4px 8px;text-align:center;font-size:12px;">${p.here || '—'}</td><td></td></tr>`;
   }).join('');
   const why = (obj) => Object.entries(obj).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<li>${v} ${escapeHtml(k)}</li>`).join('');
+  // Quem está em cada situação: nome, onde está no fluxo e quando sai a próxima mensagem. Clique abre o lead.
+  msgNo = 0;
+  const nodeName = Object.fromEntries(chain.map(n => [n.id, n.type === 'message' ? 'Mensagem ' + (++msgNo)
+    : n.type === 'wait' ? 'Esperando ' + (Number((n.data || {}).amount) || 0) + ' ' + (FLOW_UNITS[(n.data || {}).unit] || 'horas')
+    : n.type === 'move' ? 'Movendo de coluna' : n.type === 'trigger' ? 'Início' : 'Conferindo resposta']));
+  const when = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); };
+  const leadRow = (l, info) => `<tr style="cursor:pointer;" onclick="closeHuvenModal();editLead('${escapeJsString(l.id)}')" title="Abrir o lead"><td style="padding:6px 8px;"><b>${escapeHtml(l.name || 'Lead sem nome')}</b><div style="font-size:11px;color:var(--muted2);">${escapeHtml(l.phone || '')}</div></td>${info}</tr>`;
+  const peopleTable = (title, head, rowsHtml) => `<details style="margin-top:12px;" open><summary style="cursor:pointer;font-size:12.5px;font-weight:700;">${title}</summary><div style="overflow-x:auto;max-height:260px;overflow-y:auto;margin-top:6px;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;"><thead><tr style="text-align:left;color:var(--muted2);font-size:11px;">${head.map(h => `<th style="padding:4px 8px;">${h}</th>`).join('')}</tr></thead><tbody>${rowsHtml}</tbody></table></div></details>`;
+  const runningHtml = st.runningLeads.length ? peopleTable(`Em andamento (${st.runningLeads.length})`, ['Lead', 'Onde está', 'Próximo envio', 'Situação'],
+    st.runningLeads.sort((a, b) => String(a.nextAt || '9').localeCompare(String(b.nextAt || '9'))).map(r => leadRow(r.lead,
+      `<td style="padding:6px 8px;">${escapeHtml(nodeName[r.nodeId] || '—')}<div style="font-size:11px;color:var(--muted2);">${r.left} mensagem(ns) por enviar</div></td><td style="padding:6px 8px;">${escapeHtml(when(r.nextAt) || '—')}</td><td style="padding:6px 8px;color:var(--muted2);">${escapeHtml(r.waiting || (f.paused ? 'automação pausada' : 'na fila'))}</td>`)).join('')) : '';
+  const stoppedHtml = st.stoppedLeads.length ? peopleTable(`Parados (${st.stoppedLeads.length})`, ['Lead', 'Motivo'],
+    st.stoppedLeads.map(r => leadRow(r.lead, `<td style="padding:6px 8px;color:var(--muted2);">${escapeHtml(r.why)}</td>`)).join('')) : '';
   const next = st.nextAt ? new Date(st.nextAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
   openHuvenModal('Andamento: ' + (f.name || 'Automação'), `
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -10971,6 +10985,7 @@ function openFlowProgress(id) {
       <tbody>${rows || '<tr><td colspan="4" class="integ-muted">Fluxo sem etapas.</td></tr>'}</tbody></table></div>
     ${Object.keys(st.waitingWhy).length ? `<div style="margin-top:12px;font-size:12px;"><b>Esperando para enviar</b><ul style="margin:4px 0 0 18px;color:var(--muted2);">${why(st.waitingWhy)}</ul></div>` : ''}
     ${Object.keys(st.stoppedWhy).length ? `<div style="margin-top:12px;font-size:12px;"><b>Motivos dos parados</b><ul style="margin:4px 0 0 18px;color:var(--muted2);">${why(st.stoppedWhy)}</ul></div>` : ''}
+    ${runningHtml}${stoppedHtml}
     ${st.estimated ? '<div class="integ-muted" style="margin-top:12px;font-size:11.5px;">Leads que entraram antes desta função têm o número de mensagens estimado pela etapa em que estão. Os novos são contados mensagem a mensagem.</div>' : ''}
   `, 760);
 }
@@ -16819,6 +16834,12 @@ function parseCrmDateToISO(value, fallbackIso) {
   }
 
   const raw = String(value).trim();
+  // Data com horário (ex.: 2026-10-19T23:40:00.000Z): é o momento exato. Cortar só a data pegava o dia em UTC
+  // e jogava os leads das 21h às 24h de Brasília para o dia seguinte.
+  if (/^\d{4}-\d{1,2}-\d{1,2}T\d{1,2}:\d{2}/.test(raw)) {
+    const exact = new Date(raw);
+    if (!isNaN(exact.getTime())) return exact.toISOString();
+  }
   const br = raw.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
   if (br) {
     const day = Number(br[1]);
@@ -16854,13 +16875,24 @@ function formatCrmMonthLabel(monthKey) {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-function leadDateInputValue(lead) {
-  if (!lead || !lead.createdAt) return new Date().toISOString().slice(0, 10);
-  const d = new Date(parseCrmDateToISO(lead.createdAt, ''));
-  return isNaN(d.getTime()) ? new Date().toISOString().slice(0, 10) : d.toISOString().slice(0, 10);
+// Data no fuso do aparelho, no formato do campo de data (AAAA-MM-DD).
+function localDateKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function leadDateInputValue(lead) {
+  if (!lead || !lead.createdAt) return localDateKey(new Date());
+  const d = new Date(parseCrmDateToISO(lead.createdAt, ''));
+  return localDateKey(isNaN(d.getTime()) ? new Date() : d);
+}
+
+// Data do formulário do lead: se o dia não mudou, mantém o horário de chegada; lead novo com a data de hoje fica com a hora atual.
 function createdAtFromDateInput(value, fallbackIso) {
+  if (fallbackIso && value) {
+    const prev = new Date(parseCrmDateToISO(fallbackIso, ''));
+    if (!isNaN(prev.getTime()) && localDateKey(prev) === value) return prev.toISOString();
+  }
+  if (!fallbackIso && value === localDateKey(new Date())) return new Date().toISOString();
   return parseCrmDateToISO(value, fallbackIso || new Date().toISOString());
 }
 
@@ -17353,7 +17385,7 @@ function renderKanban() {
       const waPhone = onlyDigits(lead.phone);
       const waLink = waPhone ? `https://wa.me/55${waPhone}` : '';
       cardHTML += `<div class="card-actions">
-        <span class="kc-date">${lead.createdAt ? escapeHtml(new Date(lead.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })) : ''}</span>
+        <span class="kc-date">${escapeHtml(cardArrivalLabel(lead))}</span>
         <button class="card-btn kc-icon" onclick="editLead('${safeLeadId}')" title="Editar" aria-label="Editar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
         <button class="card-btn kc-icon" onclick="openMoveModal('${safeLeadId}')" title="Mover" aria-label="Mover"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
         <button class="card-btn kc-icon" onclick="showHistory('${safeLeadId}')" title="Histórico" aria-label="Histórico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2"/></svg></button>
@@ -17380,6 +17412,15 @@ function renderKanban() {
   adjustKanbanBoardScroll();
   lockMobileKanbanColumnScroll();
   board.querySelectorAll('.kanban-cards').forEach(c => { if (keepScroll.cols[c.id]) c.scrollTop = keepScroll.cols[c.id]; });
+}
+
+// Data e hora de chegada no card. Leads importados só com a data (gravados ao meio-dia em ponto) mostram só o dia.
+function cardArrivalLabel(lead) {
+  const d = leadArrivalDate(lead);
+  if (!d) return '';
+  const day = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  const dateOnly = d.getHours() === 12 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0;
+  return dateOnly ? day : day + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
 function filtrarColuna(stageId, text) {
@@ -17657,7 +17698,7 @@ function openLeadModal() {
   document.getElementById('lead-name').value = '';
   document.getElementById('lead-phone').value = '';
   document.getElementById('lead-email').value = '';
-  document.getElementById('lead-created-at').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('lead-created-at').value = localDateKey(new Date());
   document.getElementById('lead-plantao').value = '';
   document.getElementById('lead-valor').value = '';
   document.getElementById('lead-rede-social').value = '';
