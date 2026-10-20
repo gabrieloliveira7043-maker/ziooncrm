@@ -483,9 +483,6 @@ tr:hover td { background: var(--surface2); }
     cursor: grab; transition: all 0.15s; user-select: none;
   }
   .kanban-card:hover { border-color: var(--border2); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-  .kanban-card.dragging { opacity: 0.4; cursor: grabbing; }
-  .kanban-card.drop-before { border-top-color: var(--accent); box-shadow: inset 0 3px 0 var(--accent), 0 4px 12px rgba(0,0,0,0.3); }
-  .kanban-card.drop-after { border-bottom-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent), 0 4px 12px rgba(0,0,0,0.3); }
   .kanban-col.drag-over { border-color: var(--accent); background: var(--accent-glow2); }
   .card-name { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 6px; }
   .card-phone { font-size: 11px; color: var(--muted2); font-family: 'JetBrains Mono', monospace; margin-bottom: 3px; overflow-wrap: anywhere; }
@@ -1651,6 +1648,18 @@ td { font-family: var(--font); font-size: 13px; }
 .kanban-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--card-shadow); padding: 12px 13px; }
 .kanban-card:hover { border-color: var(--border2); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,0.10); }
 .kanban-col.drag-over { background: var(--accent-glow); }
+/* Arrastar cards: o card levanta e segue o ponteiro; o espaço tracejado marca onde ele cai. */
+.kanban-card { -webkit-touch-callout: none; }
+.kanban-card.drag-source { display: none !important; }
+.kanban-card-placeholder { flex-shrink: 0; box-sizing: border-box; border: 2px dashed var(--accent); border-radius: 12px; background: var(--accent-glow); }
+.kanban-cards:has(> .kanban-card-placeholder) > :not(.kanban-card):not(.kanban-card-placeholder) { display: none; }
+.kanban-card.kanban-card-ghost { position: fixed; z-index: 10000; margin: 0; pointer-events: none; box-sizing: border-box; cursor: grabbing;
+  transition: box-shadow .15s ease, rotate .15s ease, scale .15s ease; will-change: transform; }
+.kanban-card.kanban-card-ghost.lifted { rotate: 1.5deg; scale: 1.03; box-shadow: 0 18px 40px rgba(0,0,0,.28); border-color: var(--accent); }
+.kanban-card.kanban-card-ghost.landing { transition: transform .17s cubic-bezier(.2,.8,.2,1), box-shadow .17s ease, rotate .17s ease, scale .17s ease; }
+.kanban-col.card-drop-target { background: var(--accent-glow); }
+body.card-dragging, body.card-dragging * { cursor: grabbing !important; user-select: none !important; }
+body.card-dragging .kanban-card:hover { transform: none; }
 .card-name { font-size: 14px; font-weight: 800; }
 .card-phone { font-family: var(--font); font-size: 12px; color: var(--muted2); }
 .card-origem { font-style: normal; font-size: 10.5px; font-weight: 700; color: var(--blue); background: var(--blue-dim); border-radius: 6px; padding: 2px 7px; display: inline-block; margin-bottom: 6px; }
@@ -6700,18 +6709,16 @@ function getLeadCrmOrder(lead) {
   return Number.isFinite(order) ? order : null;
 }
 
+// Ordem dentro de cada coluna: primeiro os leads ainda sem posição (os mais novos no topo),
+// depois os que foram arrastados, na posição escolhida. Cada coluna é filtrada depois, então a etapa não entra na conta.
 function sortCrmLeadsForKanban(leads, boardAct) {
-  return sortCrmLeadsNewestFirst(leads).sort((a, b) => {
-    const stageA = getArteAzulejoStageForBoard(a, boardAct);
-    const stageB = getArteAzulejoStageForBoard(b, boardAct);
-    if (stageA !== stageB) return 0;
-    const orderA = getLeadCrmOrder(a);
-    const orderB = getLeadCrmOrder(b);
-    if (orderA !== null && orderB !== null) return orderA - orderB;
-    if (orderA !== null) return 1;
-    if (orderB !== null) return -1;
-    return 0;
-  });
+  return sortCrmLeadsNewestFirst(leads)
+    .map((lead, index) => ({ lead, index, order: getLeadCrmOrder(lead) }))
+    .sort((a, b) => {
+      if (a.order === null || b.order === null) return (a.order === null ? 0 : 1) - (b.order === null ? 0 : 1) || a.index - b.index;
+      return a.order - b.order || a.index - b.index;
+    })
+    .map(item => item.lead);
 }
 
 async function saveLeadToDb(lead) {
@@ -17119,6 +17126,8 @@ function bindCrmBoardScrollbar() {
   window.addEventListener('orientationchange', () => setTimeout(lockMobileKanbanColumnScroll, 250));
 }
 function renderKanban() {
+  // Com um card sendo arrastado, redesenhar tiraria o card da mão: redesenha quando ele for solto.
+  if (_cardDrag && _cardDrag.active) { _kanbanRenderDeferred = true; return; }
   const sel = document.getElementById('crm-client-select');
   const fromSel = sel && sel.value !== 'all' ? sel.value : null;
   const filterAct = isAdmin ? (fromSel || crmClientFilter) : crmClientFilter;
@@ -17157,6 +17166,9 @@ function renderKanban() {
   const board = document.getElementById('kanban-board');
   const boardScroll = board ? board.closest('.crm-board-scroll') : null;
   if (boardScroll) boardScroll.classList.toggle('force-horizontal', isArteAzulejoClient(filterAct || (activeClient ? activeClient.account : '')));
+  // Redesenhar o quadro não pode jogar a rolagem para o começo (ex.: quando outro login move um card).
+  const keepScroll = { left: boardScroll ? boardScroll.scrollLeft : 0, cols: {} };
+  board.querySelectorAll('.kanban-cards').forEach(c => { keepScroll.cols[c.id] = c.scrollTop; });
   board.innerHTML = '';
 
   // Calcular faturamento: soma todos os leads em fechou/fechado com valor
@@ -17253,7 +17265,8 @@ function renderKanban() {
     col.draggable = true;
     col.dataset.stageid = stage.id;
     col.addEventListener('dragstart', (e) => {
-      if (e.target.closest('.kanban-card')) return;
+      // Cards são arrastados pelo próprio código (bindCardDrag), não pelo arrastar nativo da coluna.
+      if (e.target.closest('.kanban-card') || _cardDrag) { e.preventDefault(); return; }
       dragCol = stage.id;
       col.style.opacity = '0.5';
       e.dataTransfer.effectAllowed = 'move';
@@ -17263,19 +17276,18 @@ function renderKanban() {
       col.style.opacity = '1';
     });
     col.addEventListener('dragover', (e) => {
+      if (!dragCol) return;
       e.preventDefault();
-      if (dragCol && dragCol !== stage.id) col.style.borderColor = 'var(--accent)';
-      else if (!dragCol) col.classList.add('drag-over');
+      if (dragCol !== stage.id) col.style.borderColor = 'var(--accent)';
     });
     col.addEventListener('dragleave', () => {
       col.style.borderColor = '';
-      col.classList.remove('drag-over');
     });
     col.addEventListener('drop', (e) => {
+      if (!dragCol) return;
       e.preventDefault();
       col.style.borderColor = '';
-      col.classList.remove('drag-over');
-      if (dragCol && dragCol !== stage.id) {
+      if (dragCol !== stage.id) {
         const act = getActForStages();
         if (!act) return;
         const stages = getStages(act, currentPipeline(act));
@@ -17288,8 +17300,6 @@ function renderKanban() {
         saveStagesFor(act, currentPipeline(act), reordered);
         dragCol = null;
         renderKanban(); renderFunilChart(); renderFunilEvolucao();
-      } else {
-        dropCard(stage.id);
       }
     });
 
@@ -17323,13 +17333,8 @@ function renderKanban() {
       filteredLeads.forEach(lead => {
       const card = document.createElement('div');
       card.className = 'kanban-card';
-      card.draggable = true;
       card.dataset.id = lead.id;
-      card.addEventListener('dragstart', onDragStart);
-      card.addEventListener('dragend', onDragEnd);
-      card.addEventListener('dragover', handleCardDragOver);
-      card.addEventListener('dragleave', handleCardDragLeave);
-      card.addEventListener('drop', handleCardDrop);
+      bindCardDrag(card);
       let cardHTML = '';
       const safeLeadId = escapeJsString(lead.id);
       const leadTagsById = Object.fromEntries(((typeof _contactTagsCache !== 'undefined' && _contactTagsCache[normalizeActValue(lead.act)]) || []).map(t => [t.id, t]));
@@ -17367,22 +17372,14 @@ function renderKanban() {
     renderColCards('');
     col.appendChild(cardsDiv);
 
-    cardsDiv.addEventListener('dragover', e => handleCardsContainerDragOver(e, stage.id));
-    cardsDiv.addEventListener('dragleave', e => {
-      if (!cardsDiv.contains(e.relatedTarget)) clearCardDropMarkers();
-    });
-    cardsDiv.addEventListener('drop', e => handleCardsContainerDrop(e, stage.id));
-
-    col.addEventListener('dragover', e => { e.preventDefault(); if (!dragCard) col.classList.add('drag-over'); });
-    col.addEventListener('dragleave', () => col.classList.remove('drag-over'));
-    col.addEventListener('drop', e => { e.preventDefault(); col.classList.remove('drag-over'); dropCard(stage.id); });
-
     board.appendChild(col);
   });
   arrangeCrmMobileOrder();
   bindCrmBoardScrollbar();
+  if (boardScroll) boardScroll.scrollLeft = keepScroll.left;
   adjustKanbanBoardScroll();
   lockMobileKanbanColumnScroll();
+  board.querySelectorAll('.kanban-cards').forEach(c => { if (keepScroll.cols[c.id]) c.scrollTop = keepScroll.cols[c.id]; });
 }
 
 function filtrarColuna(stageId, text) {
@@ -17416,127 +17413,241 @@ function filtrarColuna(stageId, text) {
 }
 window.filtrarColuna = filtrarColuna;
 
-function onDragStart(e) {
-  dragCard = e.currentTarget.dataset.id;
-  e.currentTarget.classList.add('dragging');
-  e.dataTransfer.effectAllowed = 'move';
-}
-function onDragEnd(e) { e.currentTarget.classList.remove('dragging'); clearCardDropMarkers(); dragCard = null; }
+// ----- Arrastar cards no funil (mouse e toque) -----
+// O card "levanta" e segue o ponteiro; um espaço tracejado mostra onde ele vai cair e os outros cards deslizam até lá.
+// Mouse: começa depois de mover alguns pixels com o botão apertado. Toque: segurar o card por um instante.
+// Soltar fora de uma coluna ou apertar Esc devolve o card ao lugar.
+var _cardDrag = null;           // var: renderKanban pode rodar antes desta linha
+var _kanbanRenderDeferred = false;
+const CARD_DRAG_SLOP = 6;
+const CARD_TOUCH_HOLD_MS = 350;
+const CARD_DRAG_EXCLUDE = 'button, a, input, select, textarea, label, .card-btn, .kc-chip';
 
-function clearCardDropMarkers() {
-  document.querySelectorAll('.kanban-card.drop-before, .kanban-card.drop-after').forEach(card => {
-    card.classList.remove('drop-before', 'drop-after');
+function bindCardDrag(card) {
+  card.addEventListener('mousedown', e => {
+    if (e.button !== 0 || _cardDrag || e.target.closest(CARD_DRAG_EXCLUDE)) return;
+    e.preventDefault(); // sem seleção de texto e sem o arrastar nativo da coluna
+    cardDragPrime(card, e.clientX, e.clientY, 'mouse');
+  });
+  card.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1 || _cardDrag || e.target.closest(CARD_DRAG_EXCLUDE)) return;
+    cardDragPrime(card, e.touches[0].clientX, e.touches[0].clientY, 'touch');
+  }, { passive: true });
+  card.addEventListener('contextmenu', e => { if (_cardDrag && _cardDrag.mode === 'touch') e.preventDefault(); });
+}
+
+function cardDragPrime(card, x, y, mode) {
+  const d = _cardDrag = { card, id: card.dataset.id, mode, startX: x, startY: y, x, y, active: false, timer: null, raf: 0 };
+  d.onMove = e => {
+    const p = mode === 'touch' ? e.touches[0] : e;
+    if (!p) return;
+    d.x = p.clientX; d.y = p.clientY;
+    if (d.active) { e.preventDefault(); cardDragUpdate(); return; }
+    const moved = Math.hypot(d.x - d.startX, d.y - d.startY);
+    if (mode === 'mouse' && moved > CARD_DRAG_SLOP) cardDragBegin();
+    else if (mode === 'touch' && moved > 10) cardDragFinish(false); // o dedo está rolando a tela, não arrastando
+  };
+  d.onUp = () => cardDragFinish(true);
+  d.onCancel = () => cardDragFinish(false);
+  d.onKey = e => { if (e.key === 'Escape') cardDragFinish(false); };
+  if (mode === 'mouse') {
+    document.addEventListener('mousemove', d.onMove);
+    document.addEventListener('mouseup', d.onUp);
+  } else {
+    document.addEventListener('touchmove', d.onMove, { passive: false });
+    document.addEventListener('touchend', d.onUp);
+    document.addEventListener('touchcancel', d.onCancel);
+    d.timer = setTimeout(cardDragBegin, CARD_TOUCH_HOLD_MS);
+  }
+  document.addEventListener('keydown', d.onKey);
+}
+
+function cardDragBegin() {
+  const d = _cardDrag;
+  if (!d || d.active || !d.card.isConnected) return;
+  d.active = true;
+  dragCard = d.id;
+  const rect = d.card.getBoundingClientRect();
+  d.offX = d.startX - rect.left; d.offY = d.startY - rect.top;
+  d.origin = { parent: d.card.parentNode, next: d.card.nextSibling };
+  const ghost = d.ghost = d.card.cloneNode(true);
+  ghost.classList.add('kanban-card-ghost');
+  ghost.style.width = rect.width + 'px';
+  ghost.style.left = rect.left + 'px';
+  ghost.style.top = rect.top + 'px';
+  document.body.appendChild(ghost);
+  const ph = d.placeholder = document.createElement('div');
+  ph.className = 'kanban-card-placeholder';
+  ph.style.height = rect.height + 'px';
+  d.card.parentNode.insertBefore(ph, d.card);
+  d.card.classList.add('drag-source');
+  document.body.classList.add('card-dragging');
+  if (d.mode === 'touch' && navigator.vibrate) { try { navigator.vibrate(15); } catch (e) {} }
+  requestAnimationFrame(() => ghost.classList.add('lifted'));
+  cardDragUpdate();
+  const tick = () => { if (_cardDrag !== d || !d.active) return; if (cardDragAutoScroll(d)) cardDragUpdate(); d.raf = requestAnimationFrame(tick); };
+  d.raf = requestAnimationFrame(tick);
+}
+
+// Coluna e posição sob o ponteiro: o espaço tracejado vai para antes do primeiro card cuja metade fica abaixo do ponteiro.
+function cardDragUpdate() {
+  const d = _cardDrag;
+  if (!d || !d.active) return;
+  d.ghost.style.transform = `translate3d(${d.x - d.startX}px, ${d.y - d.startY}px, 0)`;
+  const el = document.elementFromPoint(d.x, d.y);
+  const col = el && el.closest('#kanban-board .kanban-col');
+  document.querySelectorAll('#kanban-board .kanban-col.card-drop-target').forEach(c => { if (c !== col) c.classList.remove('card-drop-target'); });
+  if (!col) return;
+  col.classList.add('card-drop-target');
+  const list = col.querySelector('.kanban-cards');
+  if (!list) return;
+  const cards = [...list.children].filter(c => c.classList.contains('kanban-card') && !c.classList.contains('drag-source') && c.style.display !== 'none');
+  const before = cards.find(c => { const r = c.getBoundingClientRect(); return d.y < r.top + r.height / 2; }) || null;
+  const ph = d.placeholder;
+  if (ph.parentNode === list && (before ? ph.nextElementSibling === before || (ph.nextElementSibling === d.card && d.card.nextElementSibling === before) : !cards.some(c => c.compareDocumentPosition(ph) & Node.DOCUMENT_POSITION_PRECEDING))) return;
+  cardDragAnimateMove(list, ph.parentNode, () => {
+    if (before) list.insertBefore(ph, before);
+    else list.appendChild(ph);
   });
 }
 
-function getCardDropPlacement(e, targetCard) {
-  const rect = targetCard.getBoundingClientRect();
-  return e.clientY < rect.top + (rect.height / 2) ? 'before' : 'after';
-}
-
-function handleCardDragOver(e) {
-  if (!dragCard || dragCol) return;
-  const targetCard = e.currentTarget;
-  if (targetCard.dataset.id === dragCard) return;
-  e.preventDefault();
-  e.stopPropagation();
-  clearCardDropMarkers();
-  targetCard.classList.add(getCardDropPlacement(e, targetCard) === 'before' ? 'drop-before' : 'drop-after');
-}
-
-function handleCardDragLeave(e) {
-  e.currentTarget.classList.remove('drop-before', 'drop-after');
-}
-
-function handleCardDrop(e) {
-  if (!dragCard || dragCol) return;
-  const targetCard = e.currentTarget;
-  if (targetCard.dataset.id === dragCard) return;
-  e.preventDefault();
-  e.stopPropagation();
-  const targetStage = targetCard.closest('.kanban-col')?.dataset.stage;
-  const placement = getCardDropPlacement(e, targetCard);
-  clearCardDropMarkers();
-  dropCard(targetStage, targetCard.dataset.id, placement);
-}
-
-function getNearestDropCard(container, y) {
-  const cards = [...container.querySelectorAll('.kanban-card:not(.dragging)')]
-    .filter(card => card.style.display !== 'none');
-  let closest = null;
-  let closestOffset = Number.NEGATIVE_INFINITY;
-  cards.forEach(card => {
-    const rect = card.getBoundingClientRect();
-    const offset = y - rect.top - (rect.height / 2);
-    if (offset < 0 && offset > closestOffset) {
-      closestOffset = offset;
-      closest = card;
-    }
+// Os cards das colunas afetadas deslizam da posição antiga para a nova (técnica FLIP).
+function cardDragAnimateMove(listA, listB, move) {
+  const els = [...new Set([listA, listB])].filter(Boolean).flatMap(l => [...l.querySelectorAll(':scope > .kanban-card:not(.drag-source)')]);
+  const before = new Map(els.map(el => [el, el.getBoundingClientRect().top]));
+  move();
+  els.forEach(el => {
+    const dy = before.get(el) - el.getBoundingClientRect().top;
+    if (!dy) return;
+    el.style.transition = 'none';
+    el.style.transform = `translateY(${dy}px)`;
+    el.getBoundingClientRect();
+    el.style.transition = 'transform 180ms cubic-bezier(.2,.8,.2,1)';
+    el.style.transform = '';
+    const clear = () => { el.style.transition = ''; el.removeEventListener('transitionend', clear); };
+    el.addEventListener('transitionend', clear);
   });
-  return closest;
 }
 
-function handleCardsContainerDragOver(e, stageId) {
-  if (!dragCard || dragCol) return;
-  e.preventDefault();
-  e.stopPropagation();
-  const container = e.currentTarget;
-  const targetCard = getNearestDropCard(container, e.clientY);
-  clearCardDropMarkers();
-  if (targetCard && targetCard.dataset.id !== dragCard) targetCard.classList.add('drop-before');
+// Perto das bordas, rola a coluna (para cima/baixo), o quadro (para os lados) e, no celular, a página.
+function cardDragAutoScroll(d) {
+  const edge = 48, step = v => Math.ceil((edge - v) / 4);
+  let moved = false;
+  const el = document.elementFromPoint(d.x, d.y);
+  const list = el && el.closest('#kanban-board .kanban-col') && el.closest('#kanban-board .kanban-col').querySelector('.kanban-cards');
+  if (list && list.scrollHeight > list.clientHeight) {
+    const r = list.getBoundingClientRect();
+    if (d.y < r.top + edge && list.scrollTop > 0) { list.scrollTop -= step(d.y - r.top); moved = true; }
+    else if (d.y > r.bottom - edge && list.scrollTop < list.scrollHeight - list.clientHeight) { list.scrollTop += step(r.bottom - d.y); moved = true; }
+  }
+  const boardScroll = document.querySelector('#crm-view .crm-board-scroll');
+  if (boardScroll && boardScroll.scrollWidth > boardScroll.clientWidth) {
+    const r = boardScroll.getBoundingClientRect();
+    if (d.x < r.left + edge && boardScroll.scrollLeft > 0) { boardScroll.scrollLeft -= step(d.x - r.left); moved = true; }
+    else if (d.x > r.right - edge && boardScroll.scrollLeft < boardScroll.scrollWidth - boardScroll.clientWidth) { boardScroll.scrollLeft += step(r.right - d.x); moved = true; }
+  }
+  if (d.mode === 'touch') {
+    if (d.y < edge) { window.scrollBy(0, -step(d.y)); moved = true; }
+    else if (d.y > window.innerHeight - edge) { window.scrollBy(0, step(window.innerHeight - d.y)); moved = true; }
+  }
+  return moved;
 }
 
-function handleCardsContainerDrop(e, stageId) {
-  if (!dragCard || dragCol) return;
-  e.preventDefault();
-  e.stopPropagation();
-  const container = e.currentTarget;
-  const targetCard = getNearestDropCard(container, e.clientY);
-  clearCardDropMarkers();
-  dropCard(stageId, targetCard && targetCard.dataset.id !== dragCard ? targetCard.dataset.id : null, 'before');
-}
-
-function dropCard(stageId, targetId = null, placement = 'after') {
-  if (!dragCard) return;
-  const leads = getLeads();
-  const idx = leads.findIndex(l => l.id === dragCard);
-  if (idx === -1 || !stageId) {
+function cardDragFinish(commit) {
+  const d = _cardDrag;
+  if (!d) return;
+  clearTimeout(d.timer);
+  cancelAnimationFrame(d.raf);
+  document.removeEventListener('mousemove', d.onMove);
+  document.removeEventListener('mouseup', d.onUp);
+  document.removeEventListener('touchmove', d.onMove);
+  document.removeEventListener('touchend', d.onUp);
+  document.removeEventListener('touchcancel', d.onCancel);
+  document.removeEventListener('keydown', d.onKey);
+  _cardDrag = null;
+  if (!d.active) return;
+  // Um clique logo depois de soltar não abre nada no card.
+  const swallow = e => { e.stopPropagation(); e.preventDefault(); };
+  document.addEventListener('click', swallow, true);
+  setTimeout(() => document.removeEventListener('click', swallow, true), 0);
+  document.querySelectorAll('#kanban-board .kanban-col.card-drop-target').forEach(c => c.classList.remove('card-drop-target'));
+  const ph = d.placeholder;
+  const list = ph.parentNode && ph.parentNode.classList && ph.parentNode.classList.contains('kanban-cards') ? ph.parentNode : null;
+  const col = list && list.closest('.kanban-col');
+  const ok = commit && list && col && col.dataset.stageid;
+  let orderedIds = [];
+  if (ok) {
+    orderedIds = [...list.children].map(c => c === ph ? d.id : (c.classList.contains('kanban-card') && c !== d.card ? c.dataset.id : null)).filter(Boolean);
+    list.insertBefore(d.card, ph);
+  } else if (d.origin.parent && d.origin.parent.isConnected) {
+    d.origin.parent.insertBefore(d.card, d.origin.next && d.origin.next.parentNode === d.origin.parent ? d.origin.next : null);
+  }
+  // O card "pousa" no lugar: a sombra voa até a posição final e some.
+  const target = d.card.isConnected ? (d.card.classList.remove('drag-source'), d.card.getBoundingClientRect()) : null;
+  ph.remove();
+  const ghost = d.ghost;
+  if (target) {
+    d.card.style.visibility = 'hidden';
+    ghost.classList.remove('lifted');
+    ghost.classList.add('landing');
+    ghost.style.transform = `translate3d(${target.left - parseFloat(ghost.style.left)}px, ${target.top - parseFloat(ghost.style.top)}px, 0)`;
+  }
+  setTimeout(() => {
+    ghost.remove();
+    d.card.style.visibility = '';
+    document.body.classList.remove('card-dragging');
     dragCard = null;
-    return;
-  }
-  const movedLead = leads[idx];
+    if (ok) commitCardOrder(col.dataset.stageid, orderedIds, d.id);
+    else if (_kanbanRenderDeferred) flushDeferredKanbanRender();
+  }, target ? 170 : 0);
+}
+
+function flushDeferredKanbanRender() {
+  _kanbanRenderDeferred = false;
+  try { renderKanban(); renderFunilChart(); renderFunilEvolucao(); }
+  catch (e) { console.warn('Funil não redesenhou:', e); }
+}
+
+// Grava a nova ordem da coluna (e a nova etapa, se o card mudou de coluna). Só vão para o banco os leads que mudaram.
+async function commitCardOrder(stageId, orderedIds, movedId) {
+  const leads = getLeads();
+  const byId = new Map(leads.map(l => [l.id, l]));
+  const movedLead = byId.get(movedId);
+  if (!movedLead || !stageId) return;
   const isSameStage = getArteAzulejoStageForBoard(movedLead, movedLead.act) === stageId;
-  const selectedAct = getActForStages ? getActForStages() : '';
-  const targetIdx = targetId ? leads.findIndex(l => l.id === targetId) : -1;
-  const targetLead = targetIdx !== -1 ? leads[targetIdx] : null;
-  const targetAct = targetLead ? (normalizeLeadAccountId(targetLead) || targetLead.act) : (selectedAct || normalizeLeadAccountId(movedLead) || movedLead.act);
-  const targetStageLeads = sortCrmLeadsForKanban(
-    leads.filter(l => l.id !== movedLead.id && leadMatchesClient(l, targetAct) && leadPipeline(l) === leadPipeline(movedLead) && getArteAzulejoStageForBoard(l, targetAct) === stageId),
-    targetAct
-  );
-  let insertAt = targetStageLeads.length;
-  if (targetId) {
-    const foundAt = targetStageLeads.findIndex(l => l.id === targetId);
-    if (foundAt !== -1) insertAt = foundAt + (placement === 'after' ? 1 : 0);
-  }
-  targetStageLeads.splice(insertAt, 0, movedLead);
-  targetStageLeads.forEach((lead, order) => { lead._crmOrder = order + 1; });
+  const changed = new Set();
+  orderedIds.forEach((id, i) => {
+    const lead = byId.get(id);
+    if (lead && getLeadCrmOrder(lead) !== i + 1) { lead._crmOrder = i + 1; changed.add(lead); }
+  });
+  if (isSameStage && !changed.size) { if (_kanbanRenderDeferred) flushDeferredKanbanRender(); return; }
   if (typeof muteLeadNotifier === 'function') muteLeadNotifier(12000);
-  const STAGES = getStages(targetAct || leads[idx].act, leadPipeline(movedLead));
-  const stageLabel = STAGES.find(s => s.id === stageId)?.label || stageId;
-  if (targetAct && !movedLead.act) movedLead.act = targetAct;
-  if (!isSameStage) auditMove(leads[idx], leads[idx].stage, stageLabel, 'arrastando');
-  leads[idx].stage = stageId;
-  leads[idx].updatedAt = new Date().toISOString();
-  if (!isSameStage) leads[idx].stageChangedAt = leads[idx].updatedAt;
+  const nowIso = new Date().toISOString();
   if (!isSameStage) {
-    if (!leads[idx].history) leads[idx].history = [];
-    leads[idx].history.push({ stage: stageLabel, at: new Date().toLocaleString('pt-BR') });
+    const act = getActForStages ? getActForStages() : '';
+    const targetAct = act || normalizeLeadAccountId(movedLead) || movedLead.act;
+    const stageLabel = (getStages(targetAct || movedLead.act, leadPipeline(movedLead)).find(s => s.id === stageId) || {}).label || stageId;
+    if (targetAct && !movedLead.act) movedLead.act = targetAct;
+    auditMove(movedLead, movedLead.stage, stageLabel, 'arrastando');
+    movedLead.stage = stageId;
+    movedLead.updatedAt = nowIso;
+    movedLead.stageChangedAt = nowIso;
+    if (!movedLead.history) movedLead.history = [];
+    movedLead.history.push({ stage: stageLabel, at: new Date().toLocaleString('pt-BR') });
+    changed.delete(movedLead);
   }
   _leadsCache = leads;
   if (typeof syncLeadNotifierKnownKeys === 'function') syncLeadNotifierKnownKeys(leads);
-  targetStageLeads.forEach(lead => saveLeadToDb(lead));
-  renderKanban(); renderFunilChart(); renderFunilEvolucao();
+  // Mudou de coluna: contagem, valores e gráficos mudam. Só a ordem: a tela já está certa.
+  if (!isSameStage || _kanbanRenderDeferred) flushDeferredKanbanRender();
+  try {
+    if (!isSameStage) await saveLeadToDb(movedLead);
+    const batch = [...changed].filter(l => l._docId).map(l => ({ _docId: l._docId, _crmOrder: l._crmOrder }));
+    if (batch.length) await window._fb.saveLeadsBatch(batch);
+    for (const l of [...changed].filter(l => !l._docId)) await saveLeadToDb(l);
+  } catch (e) {
+    showToast('Não salvou a nova posição do card: ' + e.message, 'error', 6000);
+  }
 }
 
 function openLeadModal() {
