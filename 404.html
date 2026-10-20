@@ -8198,7 +8198,7 @@ function openCampaignEditor(copyFrom, opts = {}) {
       <div id="camp-pick"></div>
     </div>
     <div id="camp-src-sheet-box" class="camp-src-box" style="display:none;">
-      <div style="${hint}">Planilha .xlsx ou .csv com uma coluna de nome e uma de telefone (com DDD). A primeira linha pode ter os títulos.</div>
+      <div style="${hint}">Planilha .xlsx ou .csv com uma coluna de nome e uma de telefone (com DDD), e os títulos na primeira linha. As outras colunas (ex.: Empresa, Tempo de empresa) podem preencher as variáveis do modelo e as mensagens com {col:Nome da coluna}.</div>
       <input type="file" id="camp-sheet-file" accept=".xlsx,.xls,.csv" onchange="loadCampaignSheet(this)" class="field-input">
     </div>
     <div id="camp-src-contacts-box" class="camp-src-box" style="display:none;">
@@ -8455,9 +8455,10 @@ function setCampaignRecipients(list, label) {
     if (!key) { invalid += 1; continue; }
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ name: String(item.name || '').trim().slice(0, 80), phone, jid });
+    out.push({ name: String(item.name || '').trim().slice(0, 80), phone, jid, ...(item.fields ? { fields: item.fields } : {}) });
   }
   _campaignDraft.recipients = out;
+  if (!out.some(r => r.fields)) _campaignDraft.sheetColumns = [];
   _campaignDraft.label = label;
   _campaignDraft.invalid = invalid;
   _campaignDraft.duplicates = list.length - invalid - out.length;
@@ -8533,7 +8534,15 @@ async function loadCampaignSheet(input) {
       nameCol = phoneCol === 0 ? 1 : 0;
     }
     if (phoneCol === -1) throw new Error('Não encontrei a coluna de telefone');
-    setCampaignRecipients(dataRows.map(r => ({ name: nameCol >= 0 ? r[nameCol] : '', phone: r[phoneCol] })), `Planilha ${file.name}`);
+    // Todas as colunas com título ficam guardadas no contato: servem para as variáveis ({col:Coluna}).
+    const titles = dataRows === rows ? [] : rows[0].map(h => String(h || '').trim().slice(0, 60));
+    const cols = titles.map((t, i) => ({ t, i })).filter(c => c.t && c.i !== phoneCol).slice(0, 30);
+    _campaignDraft.sheetColumns = cols.map(c => c.t);
+    setCampaignRecipients(dataRows.map(r => ({
+      name: nameCol >= 0 ? r[nameCol] : '', phone: r[phoneCol],
+      fields: cols.length ? Object.fromEntries(cols.map(c => [c.t, String(r[c.i] == null ? '' : r[c.i]).trim().slice(0, 200)])) : undefined
+    })), `Planilha ${file.name}`);
+    if (document.getElementById('camp-cloud-tpl')) renderCampCloudParams(currentCampCloudParams());
   } catch (e) {
     showToast('Não foi possível ler a planilha: ' + e.message, 'warning');
   }
@@ -14096,13 +14105,27 @@ function cloudDefaultParams(tpl, values) {
 
 // Campos das variáveis + prévia que acompanha a digitação.
 const _cloudPrev = {};
-function cloudParamsHtml(prefix, tpl, values, name, intro) {
+// columns (opcional): colunas da planilha da campanha; sample: um contato para a prévia ({ name, fields }).
+function cloudParamsHtml(prefix, tpl, values, name, intro, columns, sample) {
   if (!tpl) return '';
   const vals = cloudDefaultParams(tpl, values);
-  _cloudPrev[prefix] = { tpl, name };
-  let html = tpl.vars ? `<div class="integ-muted" style="font-size:11.5px;margin:6px 0 4px;">${escapeHtml(intro || 'O que vai em cada variável: escreva um texto ou use {primeiro_nome} e {nome} (o nome do contato).')}</div>` : '';
+  const cols = Array.isArray(columns) ? columns : [];
+  if (sample && sample.name) name = sample.name;
+  _cloudPrev[prefix] = { tpl, name, fields: sample && sample.fields };
+  let html = tpl.vars ? `<div class="integ-muted" style="font-size:11.5px;margin:6px 0 4px;">${escapeHtml(intro || (cols.length
+    ? 'O que vai em cada variável: escolha uma coluna da planilha ou escreva um texto. Também vale {primeiro_nome} e {nome}.'
+    : 'O que vai em cada variável: escreva um texto ou use {primeiro_nome} e {nome} (o nome do contato).'))}</div>` : '';
   for (let i = 1; i <= tpl.vars; i++) {
-    html += `<label style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:12.5px;color:var(--text);"><span style="min-width:44px;">{{${i}}}</span><input class="field-input" id="${prefix}-p${i}" value="${escapeHtml(vals[i - 1])}" style="flex:1;" oninput="updateCloudPreview('${prefix}')"></label>`;
+    // Coluna escolhida: o valor guardado é {col:Coluna|se vazio}; a pessoa só vê a coluna e o texto para célula vazia.
+    const m = String(vals[i - 1] || '').match(/^\{col:([^}|]+)(?:\|([^}]*))?\}$/);
+    const picked = m && cols.includes(m[1]) ? m[1] : '';
+    const picker = cols.length ? `<select class="field-input" id="${prefix}-c${i}" style="flex:0 0 190px;" title="Preencher com uma coluna da planilha" onchange="syncCloudParam('${prefix}', ${i})">
+        <option value="">Texto livre</option>
+        ${cols.map(c => `<option value="${escapeHtml(c)}" ${c === picked ? 'selected' : ''}>Coluna: ${escapeHtml(c)}</option>`).join('')}
+      </select>` : '';
+    html += `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:12.5px;color:var(--text);flex-wrap:wrap;"><span style="min-width:44px;">{{${i}}}</span>${picker}
+      <input type="${picked ? 'hidden' : 'text'}" class="field-input" id="${prefix}-p${i}" value="${escapeHtml(vals[i - 1])}" style="flex:1;min-width:160px;" oninput="updateCloudPreview('${prefix}')">
+      <input class="field-input" id="${prefix}-f${i}" value="${escapeHtml(picked ? m[2] || '' : '')}" placeholder="Se a célula estiver vazia, usar... (ex.: sua empresa)" style="flex:1;min-width:160px;${picked ? '' : 'display:none;'}" oninput="syncCloudParam('${prefix}', ${i})"></div>`;
   }
   if (tpl.headerType) {
     const label = (CLOUD_HEADER_TYPES[tpl.headerType] || { label: 'Mídia' }).label;
@@ -14110,12 +14133,35 @@ function cloudParamsHtml(prefix, tpl, values, name, intro) {
       ? `<div class="integ-muted" style="font-size:12px;margin-top:4px;">${uiIco('clip', 12)} Vai com ${label.toLowerCase()} no topo: ${escapeHtml(tpl.headerFileName || 'arquivo do modelo')}</div>`
       : `<div style="font-size:12px;margin-top:4px;color:var(--red);">Este modelo tem ${label.toLowerCase()} no cabeçalho, mas nenhum arquivo foi escolhido. Escolha em Conexões → Modelos.</div>`;
   }
-  return html + `<div class="integ-muted" id="${prefix}-prev" style="font-size:12px;margin-top:4px;white-space:pre-wrap;">Prévia: ${escapeHtml(cloudPreview(tpl, vals, name))}</div>`;
+  return html + `<div class="integ-muted" id="${prefix}-prev" style="font-size:12px;margin-top:4px;white-space:pre-wrap;">Prévia: ${escapeHtml(cloudPreview(tpl, vals, name, sample && sample.fields))}</div>`;
 }
 
 function updateCloudPreview(prefix) {
   const p = _cloudPrev[prefix], el = document.getElementById(prefix + '-prev');
-  if (p && el) el.textContent = 'Prévia: ' + cloudPreview(p.tpl, readCloudParams(prefix, p.tpl), p.name);
+  if (p && el) el.textContent = 'Prévia: ' + cloudPreview(p.tpl, readCloudParams(prefix, p.tpl), p.name, p.fields);
+}
+
+// Variável ligada a uma coluna da planilha: monta {col:Coluna|texto para célula vazia} no campo da variável.
+function syncCloudParam(prefix, i) {
+  const sel = document.getElementById(`${prefix}-c${i}`), input = document.getElementById(`${prefix}-p${i}`), fb = document.getElementById(`${prefix}-f${i}`);
+  if (!sel || !input || !fb) return;
+  const col = sel.value;
+  if (col) {
+    input.type = 'hidden'; fb.style.display = '';
+    const empty = fb.value.trim().replace(/[{}|]/g, '');
+    input.value = `{col:${col}${empty ? '|' + empty : ''}}`;
+  } else if (input.type === 'hidden') {
+    input.type = 'text'; fb.style.display = 'none'; fb.value = ''; input.value = ''; input.focus();
+  }
+  updateCloudPreview(prefix);
+}
+
+// Mesma regra do Worker: {col:Coluna} vira o valor do contato; {col:Coluna|texto} usa o texto se a célula estiver vazia.
+function fillCampColumns(value, fields) {
+  const norm = v => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+  const byKey = {};
+  Object.entries(fields || {}).forEach(([k, v]) => { byKey[norm(k)] = String(v == null ? '' : v).trim(); });
+  return String(value || '').replace(/\{col:([^}|]+)(?:\|([^}]*))?\}/g, (_, col, fb) => byKey[norm(col)] || String(fb || '').trim());
 }
 
 function readCloudParams(prefix, tpl) {
@@ -14182,10 +14228,10 @@ async function setCloudTemplateMedia(name, type, input) {
   } catch (e) { showToast('Não salvou o arquivo: ' + e.message, 'error', 7000); }
 }
 
-function cloudPreview(tpl, params, name) {
+function cloudPreview(tpl, params, name, fields) {
   if (!tpl) return '';
   const first = String(name || 'Maria Silva').split(/\s+/)[0];
-  const fill = v => String(v || '').split('{nome}').join(name || 'Maria Silva').split('{primeiro_nome}').join(first) || '-';
+  const fill = v => fillCampColumns(v, fields).split('{nome}').join(name || 'Maria Silva').split('{primeiro_nome}').join(first) || '-';
   return (tpl.body || '').replace(/\{\{(\d+)\}\}/g, (_, n) => fill(params[Number(n) - 1]));
 }
 
@@ -14488,7 +14534,15 @@ function renderCampCloudParams(values) {
   if (!d || !box) return;
   const tpl = cloudSelectedTpl('camp-cloud-tpl', _cloudTplCache[d.act + '|' + d.cloudLine]);
   if (!tpl) { box.innerHTML = ''; return; }
-  box.innerHTML = cloudParamsHtml('camp-cloud', tpl, values);
+  const sample = (d.recipients || []).find(r => r.fields) || null;
+  box.innerHTML = cloudParamsHtml('camp-cloud', tpl, values, null, null, d.sheetColumns || [], sample);
+}
+
+// Valores já digitados nas variáveis (para redesenhar sem perder o que a pessoa escreveu).
+function currentCampCloudParams() {
+  const d = _campaignDraft;
+  const tpl = d && cloudSelectedTpl('camp-cloud-tpl', _cloudTplCache[d.act + '|' + d.cloudLine]);
+  return tpl && document.getElementById('camp-cloud-p1') ? readCloudParams('camp-cloud', tpl) : null;
 }
 
 // Devolve { ok, template } (template null quando não há linha oficial na campanha).
