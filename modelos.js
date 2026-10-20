@@ -12,6 +12,9 @@
     REJECTED: ['Rejeitado', 'bad'], PAUSED: ['Pausado', 'wait'], DISABLED: ['Desativado', 'bad']
   };
   var CATEGORIA = { MARKETING: 'Marketing', UTILITY: 'Utilidade', AUTHENTICATION: 'Autenticação' };
+  // Cabeçalho com mídia: foto, vídeo ou PDF (a Meta não aceita áudio em modelo).
+  var MIDIA = { IMAGE: { label: 'Foto', ico: 'image', accept: 'image/jpeg,image/png', dica: 'JPG ou PNG, até 5 MB' }, VIDEO: { label: 'Vídeo', ico: 'video', accept: 'video/mp4', dica: 'MP4, até 16 MB' }, DOCUMENT: { label: 'PDF', ico: 'clip', accept: 'application/pdf', dica: 'PDF, até 24 MB' } };
+  function idDaMidia(url) { var m = String(url || '').match(/\/media\/([a-f0-9]+)$/); return m ? m[1] : ''; }
 
   // Modelos prontos em português (seguem as regras da Meta: o texto não começa nem termina com variável).
   var PRONTOS = [
@@ -90,8 +93,9 @@
       (rows.length ? '<div class="mo-tabela"><div class="mo-row mo-head"><span>Nome</span><span>Categoria</span><span>Idioma</span><span>Status</span><span></span></div>' +
         rows.map(function (t) {
           var s = STATUS[t.status] || [t.status || '—', 'wait'];
+          var mid = t.headerType && MIDIA[String(t.headerType).toUpperCase()];
           return '<div class="mo-row" onclick="modelosAbrir(\'' + escapeJsString(t.name) + '\',\'' + escapeJsString(t.language || '') + '\')">' +
-            '<span class="mo-nome"><b>' + esc(t.name) + '</b><small>' + esc(String(t.body || '').slice(0, 90)) + '</small></span>' +
+            '<span class="mo-nome"><b>' + (mid ? '<span title="' + mid.label + ' no cabeçalho">' + ico(mid.ico, 13) + '</span> ' : '') + esc(t.name) + '</b><small>' + esc(String(t.body || '').slice(0, 90)) + '</small></span>' +
             '<span><span class="mo-cat ' + (t.category === 'MARKETING' ? 'mk' : 'ut') + '">' + esc(CATEGORIA[t.category] || t.category || '') + '</span></span>' +
             '<span class="mo-idioma">' + esc(t.language || '') + '</span>' +
             '<span><span class="mo-st ' + s[1] + '">' + esc(s[0]) + '</span></span>' +
@@ -139,12 +143,13 @@
   window.modelosAbrir = function (name, language) {
     var t = st.list.find(function (x) { return x.name === name && (x.language || '') === language; });
     if (!t) return;
-    modelosEditor({ name: t.name, category: t.category, headerType: t.header ? 'TEXT' : 'NONE', header: t.header || '', body: t.body || '', footer: t.footer || '', examples: [], buttons: Array.isArray(t.buttons) ? t.buttons : [], readonly: true, status: t.status, language: t.language, rejected: t.rejected });
+    var ht = t.headerType ? String(t.headerType).toUpperCase() : t.header ? 'TEXT' : 'NONE';
+    modelosEditor({ name: t.name, category: t.category, headerType: ht, header: ht === 'TEXT' ? t.header || '' : '', headerMedia: t.headerUrl ? { id: idDaMidia(t.headerUrl), url: t.headerUrl, fileName: t.headerFileName || '' } : null, body: t.body || '', footer: t.footer || '', examples: [], buttons: Array.isArray(t.buttons) ? t.buttons : [], readonly: true, status: t.status, language: t.language, rejected: t.rejected });
   };
 
   // ---------------- Editor ----------------
   window.modelosEditor = function (dados) {
-    ed = Object.assign({ name: '', category: 'MARKETING', headerType: 'NONE', header: '', body: '', footer: '', examples: [], buttons: [], readonly: false }, dados || {});
+    ed = Object.assign({ name: '', category: 'MARKETING', headerType: 'NONE', header: '', headerMedia: null, body: '', footer: '', examples: [], buttons: [], readonly: false }, dados || {});
     var ro = ed.readonly, dis = ro ? ' disabled' : '';
     var s = ed.status ? (STATUS[ed.status] || [ed.status, 'wait']) : null;
     var linhas = linhasOficiais(st.act);
@@ -159,8 +164,9 @@
           campo('Categoria', '<select class="field-input" id="me-cat"' + dis + '><option value="MARKETING"' + (ed.category === 'MARKETING' ? ' selected' : '') + '>Marketing (ofertas, convites)</option><option value="UTILITY"' + (ed.category === 'UTILITY' ? ' selected' : '') + '>Utilidade (confirmações, avisos)</option></select>') +
           campo('Número', '<input class="field-input" value="' + esc(linhaNome) + '" disabled><small class="mo-dica">O número não muda depois de criado</small>') +
         '</div>' +
-        campo('Cabeçalho', '<select class="field-input" id="me-htype" onchange="modelosAtualiza()"' + dis + '><option value="NONE"' + (ed.headerType === 'NONE' ? ' selected' : '') + '>Sem cabeçalho</option><option value="TEXT"' + (ed.headerType === 'TEXT' ? ' selected' : '') + '>Texto</option></select>') +
+        campo('Cabeçalho', '<select class="field-input" id="me-htype" onchange="modelosAtualiza()"' + dis + '>' + [['NONE', 'Sem cabeçalho'], ['TEXT', 'Texto'], ['IMAGE', 'Foto'], ['VIDEO', 'Vídeo'], ['DOCUMENT', 'PDF']].map(function (o) { return '<option value="' + o[0] + '"' + (ed.headerType === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>') +
         '<div id="me-hbox"' + (ed.headerType === 'TEXT' ? '' : ' hidden') + '>' + campo('Texto do cabeçalho', '<input class="field-input" id="me-header" maxlength="60" value="' + esc(ed.header) + '" oninput="modelosAtualiza()"' + dis + '><small class="mo-dica" id="me-hcount"></small>') + '</div>' +
+        '<div id="me-mbox"' + (MIDIA[ed.headerType] ? '' : ' hidden') + '></div>' +
         '<div class="mo-lab-row"><label class="field-label">Corpo da mensagem</label>' + (ro ? '' : '<button type="button" class="chat-pill" onclick="modelosVariavel()">+ Adicionar variável</button>') + '</div>' +
         '<textarea class="field-input mo-body" id="me-body" rows="9" maxlength="1024" placeholder="Olá, {{1}}! ..." oninput="modelosAtualiza()"' + dis + '>' + esc(ed.body) + '</textarea>' +
         '<small class="mo-dica" id="me-bcount"></small>' +
@@ -203,6 +209,7 @@
     if (!ed) return;
     lerForm();
     var hbox = document.getElementById('me-hbox'); if (hbox) hbox.hidden = ed.headerType !== 'TEXT';
+    midiaBox();
     var hc = document.getElementById('me-hcount'); if (hc) hc.textContent = (ed.header || '').length + '/60';
     var bc = document.getElementById('me-bcount'); if (bc) bc.textContent = (ed.body || '').length + '/1024';
     // exemplos das variáveis
@@ -224,11 +231,48 @@
     var wa = function (h) { return h.replace(/\*([^*\n]+)\*/g, '<b>$1</b>').replace(/_([^_\n]+)_/g, '<i>$1</i>').replace(/\n/g, '<br>'); };
     var prev = document.getElementById('me-prev');
     if (!prev) return;
-    prev.innerHTML = (ed.headerType === 'TEXT' && ed.header ? '<div class="mo-b-h">' + troca(ed.header) + '</div>' : '') +
+    var m = MIDIA[ed.headerType], arq = ed.headerMedia;
+    var topo = !m ? '' : ed.headerType === 'IMAGE' && arq && arq.url ? '<img class="mo-b-img" src="' + esc(arq.url) + '" alt="">'
+      : '<div class="mo-b-midia">' + ico(m.ico, 22) + '<span>' + esc(arq && arq.fileName ? arq.fileName : m.label) + '</span></div>';
+    prev.innerHTML = topo + (ed.headerType === 'TEXT' && ed.header ? '<div class="mo-b-h">' + troca(ed.header) + '</div>' : '') +
       '<div class="mo-b-c">' + (ed.body ? wa(troca(ed.body)) : '<span class="integ-muted">O texto da mensagem aparece aqui.</span>') + '</div>' +
       (ed.footer ? '<div class="mo-b-f">' + esc(ed.footer) + '</div>' : '') +
       '<div class="mo-b-hora">12:00</div>' +
       (ed.buttons.length ? '<div class="mo-b-bts">' + ed.buttons.map(function (b) { return '<div class="mo-b-bt">' + ico(b.type === 'URL' ? 'link' : b.type === 'PHONE_NUMBER' ? 'phone' : 'swap', 13) + ' ' + esc(b.text || 'Botão') + '</div>'; }).join('') + '</div>' : '');
+  };
+
+  // Arquivo do cabeçalho: no modelo novo vai junto para a aprovação; no modelo já criado, troca o que vai nos envios.
+  function midiaBox() {
+    var box = document.getElementById('me-mbox');
+    if (!box) return;
+    var m = MIDIA[ed.headerType];
+    box.hidden = !m;
+    if (!m) return;
+    var arq = ed.headerMedia;
+    box.innerHTML = campo('Arquivo do cabeçalho (' + m.label.toLowerCase() + ')',
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
+        '<label class="chat-pill" style="cursor:pointer;">' + ico('clip', 14) + ' ' + (arq ? 'Trocar arquivo' : 'Escolher arquivo') + '<input type="file" accept="' + m.accept + '" style="display:none;" onchange="modelosArquivo(this)"></label>' +
+        '<span id="me-mfb" class="mo-dica">' + (arq ? ico('check', 12) + ' ' + esc(arq.fileName || 'arquivo escolhido') : ed.readonly ? '<span style="color:var(--red);">Nenhum arquivo escolhido: os envios deste modelo não saem até você escolher.</span>' : m.dica) + '</span>' +
+      '</div>' +
+      '<small class="mo-dica">' + (ed.readonly ? 'Trocar o arquivo não precisa de nova aprovação: os próximos envios vão com ele.' : 'Vai como exemplo para a aprovação da Meta e também em cada envio. A Meta não aceita áudio em modelo.') + '</small>');
+  }
+
+  window.modelosArquivo = async function (input) {
+    var file = input.files && input.files[0];
+    input.value = '';
+    if (!file || !ed) return;
+    var fb = document.getElementById('me-mfb');
+    if (fb) { fb.style.color = 'var(--muted)'; fb.textContent = 'Enviando arquivo...'; }
+    try {
+      var up = await window._fb.uploadCampaignMedia(st.act, file, true);
+      if (ed.readonly) {
+        await window._fb.whatsapp('/whatsapp/cloud-template-media', st.act, { line: st.line, name: ed.name, headerType: ed.headerType.toLowerCase(), headerMediaId: up.id });
+        showToast('Arquivo do cabeçalho salvo. Os próximos envios desse modelo vão com ele.', 'success', 6000);
+        carregar(true);
+      }
+      ed.headerMedia = { id: up.id, url: up.url, fileName: up.fileName };
+      midiaBox(); modelosPrevia();
+    } catch (e) { if (fb) { fb.style.color = 'var(--red)'; fb.textContent = 'Erro: ' + e.message; } }
   };
 
   window.modelosVariavel = function () {
@@ -281,7 +325,9 @@
     if (/^\{\{\d+\}\}/.test(body) || /\{\{\d+\}\}$/.test(body)) return erro('O texto não pode começar nem terminar com variável.');
     var n = vars(body);
     for (var i = 0; i < n; i++) if (!String(ed.examples[i] || '').trim()) return erro('Preencha o exemplo da variável {{' + (i + 1) + '}}.');
+    if (MIDIA[ed.headerType] && !(ed.headerMedia && ed.headerMedia.id)) return erro('Escolha o arquivo do cabeçalho (' + MIDIA[ed.headerType].label.toLowerCase() + ').');
     var payload = { line: st.line, name: nome, category: ed.category, header: ed.headerType === 'TEXT' ? String(ed.header || '').trim() : '', body: body, footer: String(ed.footer || '').trim(), examples: ed.examples.slice(0, n).map(function (x) { return String(x).trim(); }) };
+    if (MIDIA[ed.headerType]) { payload.headerType = ed.headerType.toLowerCase(); payload.headerMediaId = ed.headerMedia.id; }
     if (botoesLiberados() && ed.buttons.length) {
       for (var j = 0; j < ed.buttons.length; j++) {
         var b = ed.buttons[j];
@@ -295,7 +341,7 @@
           : { type: 'QUICK_REPLY', text: b.text.trim() };
       });
     }
-    btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'Enviando para a Meta...';
+    btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = MIDIA[ed.headerType] ? 'Enviando o arquivo e o modelo para a Meta...' : 'Enviando para a Meta...';
     try {
       var r = await window._fb.whatsapp('/whatsapp/cloud-template-create', st.act, payload);
       closeHuvenModal();
@@ -363,6 +409,9 @@
     '.mo-bolha{background:#FFFFFF;color:#111B21;border-radius:8px;border-top-left-radius:2px;padding:8px 10px 6px;max-width:300px;font-size:13px;line-height:1.45;box-shadow:0 1px .5px rgba(0,0,0,.13);overflow-wrap:anywhere}',
     'html[data-theme="dark"] .mo-bolha{background:#202C33;color:#E9EDEF}',
     '.mo-b-h{font-weight:700;margin-bottom:4px}',
+    '.mo-b-img{display:block;width:100%;max-height:180px;object-fit:cover;border-radius:6px;margin-bottom:6px}',
+    '.mo-b-midia{display:flex;align-items:center;justify-content:center;gap:8px;height:110px;border-radius:6px;margin-bottom:6px;background:rgba(0,0,0,.06);color:#667781;font-size:12px;overflow:hidden}',
+    'html[data-theme="dark"] .mo-b-midia{background:rgba(255,255,255,.06)}',
     '.mo-b-f{font-size:12px;color:#667781;margin-top:6px}',
     '.mo-b-hora{font-size:10.5px;color:#667781;text-align:right;margin-top:2px}',
     '.mo-b-bts{margin:6px -10px -6px;border-top:1px solid rgba(0,0,0,.08)}',
