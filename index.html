@@ -2583,13 +2583,19 @@ body.card-dragging .kanban-card:hover { transform: none; }
       act = normalizeAct(act);
       const old = await getDocs(query(collection(db, 'whatsapp_contacts'), where('act', '==', act)));
       const batch = writeBatch(db);
-      const size = 2000;
-      const chunks = Math.ceil(contacts.length / size);
-      for (let i = 0; i < chunks; i++) {
-        batch.set(doc(db, 'whatsapp_contacts', `${act}__${i}`), {
-          act, index: i, contacts: contacts.slice(i * size, (i + 1) * size), updatedAt: new Date().toISOString()
-        });
-      }
+      // Até 2.000 contatos por documento, sem passar de ~700 KB (o limite do Firestore é 1 MB; colunas extras pesam).
+      const parts = [];
+      let cur = [], bytes = 0;
+      contacts.forEach(c => {
+        const b = JSON.stringify(c).length + 8;
+        if (cur.length && (cur.length >= 2000 || bytes + b > 700000)) { parts.push(cur); cur = []; bytes = 0; }
+        cur.push(c); bytes += b;
+      });
+      if (cur.length) parts.push(cur);
+      const chunks = parts.length;
+      parts.forEach((list, i) => {
+        batch.set(doc(db, 'whatsapp_contacts', `${act}__${i}`), { act, index: i, contacts: list, updatedAt: new Date().toISOString() });
+      });
       old.forEach(d => { if ((d.data().index || 0) >= chunks) batch.delete(d.ref); });
       await batch.commit();
     },
@@ -3566,6 +3572,7 @@ body.card-dragging .kanban-card:hover { transform: none; }
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <select id="contatos-client-select" class="field-input" style="display:none; width:auto; padding:8px 10px; font-size:13px;" onchange="onContatosClientChange()"></select>
             <button class="chat-pill" onclick="pullContactsFromWhatsApp()" title="Traz os contatos do WhatsApp conectado para esta base">📲 Puxar do WhatsApp</button>
+            <button class="chat-pill" onclick="openContactsSheetImport()" title="Adiciona contatos de uma planilha .xlsx ou .csv">📄 Importar planilha</button>
             <button class="chat-pill" style="color:var(--red);border-color:rgba(248,113,113,.4);" onclick="deleteContactsBase()" title="Apaga todos os contatos importados deste cliente (os leads do funil ficam)">🗑 Apagar base</button>
             <button class="chat-pill" onclick="openTagManager()"><i data-ico="tag"></i> Etiquetas</button>
           </div>
@@ -6838,14 +6845,14 @@ function buildContactEntries(act) {
       const k = chatPhoneKey(c.phone);
       if (!k || leadPhones.has(k) || seen.has(k)) return;
       seen.add(k);
-      out.push({ key: 'C:' + k, kind: 'contact', name: c.name || 'Contato do WhatsApp', phone: c.phone, email: '', stage: '__wa_contact__', act, tags: Array.isArray(c.tags) ? c.tags : [], contact: c });
+      out.push({ key: 'C:' + k, kind: 'contact', name: c.name || 'Contato do WhatsApp', phone: c.phone, email: c.email || '', stage: '__wa_contact__', act, tags: Array.isArray(c.tags) ? c.tags : [], contact: c });
     });
   }
   return out;
 }
 
 // Origem mostrada na lista de contatos (lead: origem ou rede social; contato: base do WhatsApp).
-const contactOrigin = e => e.lead ? (e.lead.origem || e.lead.redeSocial || '') : 'Base do WhatsApp';
+const contactOrigin = e => e.lead ? (e.lead.origem || e.lead.redeSocial || '') : ((e.contact && e.contact.origem) || 'Base do WhatsApp');
 
 function clearContatosFilters() {
   ['contatos-origem', 'contatos-from', 'contatos-to'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
@@ -8350,7 +8357,7 @@ async function loadPreviousCampaignRecipients() {
     if (!_campaignDraft || _campaignDraft.source !== 'previous') return;
     const rows = _campaignDraft.prevRows.filter(r => filter === 'all' || (filter === 'sent' ? r.status === 'sent' : r.status !== 'sent'));
     const labels = { all: '', sent: ', só quem recebeu', notsent: ', só quem não recebeu' };
-    setCampaignRecipients(rows.map(r => ({ name: r.name, phone: r.phone, jid: r.jid })), `Contatos de "${c.name || 'Campanha'}"${labels[filter]}`);
+    setCampaignRecipients(rows.map(r => ({ name: r.name, phone: r.phone, jid: r.jid, fields: r.fields })), `Contatos de "${c.name || 'Campanha'}"${labels[filter]}`);
   } catch (e) {
     summary.innerHTML = `<span style="color:#f87171;">${escapeHtml(e.message)}</span>`;
   }
@@ -8440,7 +8447,7 @@ function updateCampaignPickRecipients() {
   const label = tagNames.length && chosen.length === filtered.length && filtered.every(e => p.selected.has(e.key))
     ? `Etiquetas: ${tagNames.join(', ')}`
     : `Contatos escolhidos (${chosen.length})`;
-  setCampaignRecipients(chosen.map(e => ({ name: e.name, phone: e.phone, jid: e.lead ? e.lead.whatsappJid : '' })), label);
+  setCampaignRecipients(chosen.map(e => ({ name: e.name, phone: e.phone, jid: e.lead ? e.lead.whatsappJid : '', fields: e.contact && e.contact.fields })), label);
 }
 
 
@@ -8523,7 +8530,9 @@ function setCampaignRecipients(list, label) {
     out.push({ name: String(item.name || '').trim().slice(0, 80), phone, jid, ...(item.fields ? { fields: item.fields } : {}) });
   }
   _campaignDraft.recipients = out;
-  if (!out.some(r => r.fields)) _campaignDraft.sheetColumns = [];
+  // Colunas extras dos contatos (planilha da campanha ou importada em Contatos): servem para as variáveis.
+  _campaignDraft.sheetColumns = [...new Set(out.flatMap(r => r.fields ? Object.keys(r.fields) : []))].slice(0, 30);
+  if (document.getElementById('camp-cloud-tpl') && typeof renderCampCloudParams === 'function') renderCampCloudParams(currentCampCloudParams());
   _campaignDraft.label = label;
   _campaignDraft.invalid = invalid;
   _campaignDraft.duplicates = list.length - invalid - out.length;
@@ -8602,12 +8611,10 @@ async function loadCampaignSheet(input) {
     // Todas as colunas com título ficam guardadas no contato: servem para as variáveis ({col:Coluna}).
     const titles = dataRows === rows ? [] : rows[0].map(h => String(h || '').trim().slice(0, 60));
     const cols = titles.map((t, i) => ({ t, i })).filter(c => c.t && c.i !== phoneCol).slice(0, 30);
-    _campaignDraft.sheetColumns = cols.map(c => c.t);
     setCampaignRecipients(dataRows.map(r => ({
       name: nameCol >= 0 ? r[nameCol] : '', phone: r[phoneCol],
       fields: cols.length ? Object.fromEntries(cols.map(c => [c.t, String(r[c.i] == null ? '' : r[c.i]).trim().slice(0, 200)])) : undefined
     })), `Planilha ${file.name}`);
-    if (document.getElementById('camp-cloud-tpl')) renderCampCloudParams(currentCampCloudParams());
   } catch (e) {
     showToast('Não foi possível ler a planilha: ' + e.message, 'warning');
   }
@@ -8664,6 +8671,102 @@ async function pullContactsFromWhatsApp(line, mode) {
   } catch (e) { showToast('Não puxou: ' + e.message, 'error', 7000); }
 }
 window.pullContactsFromWhatsApp = pullContactsFromWhatsApp;
+
+// ----- Contatos: importar planilha (.xlsx/.csv) para a base de contatos do cliente -----
+// Nome, telefone e e-mail viram campos do contato; as outras colunas ficam em "fields" (servem para as variáveis das campanhas).
+let _ctSheet = null;
+
+async function openContactsSheetImport() {
+  const act = normalizeActValue(contatosAct());
+  if (!act) return showToast('Escolha o cliente primeiro.', 'warning');
+  _ctSheet = { act, rows: [], titles: [] };
+  if (!_contactTagsCache[act]) await loadContactTags(act).catch(() => {});
+  openHuvenModal('Importar contatos de planilha', `
+    <div class="integ-muted" style="font-size:12.5px;line-height:1.55;margin-bottom:10px;">Planilha <b>.xlsx</b> ou <b>.csv</b> com os títulos na primeira linha (ex.: Nome, Telefone, E-mail, Empresa). Telefone com DDD. Números repetidos não duplicam: o contato que já existe só ganha os dados que faltavam.</div>
+    <input type="file" class="field-input" accept=".xlsx,.xls,.csv" onchange="readContactsSheet(this)">
+    <div id="ct-sheet-map" style="margin-top:12px;"></div>`, 620);
+}
+
+async function readContactsSheet(input) {
+  const file = input.files && input.files[0];
+  const box = document.getElementById('ct-sheet-map');
+  if (!file || !box || !_ctSheet) return;
+  box.innerHTML = '<div class="integ-muted">Lendo a planilha...</div>';
+  try {
+    await ensureXlsxLoaded();
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' }).filter(r => r.some(v => String(v).trim()));
+    if (rows.length < 2) throw new Error('A planilha precisa dos títulos na primeira linha e pelo menos um contato.');
+    const titles = rows[0].map((t, i) => String(t || '').trim() || `Coluna ${i + 1}`);
+    const norm = v => String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const find = re => titles.findIndex(t => re.test(norm(t)));
+    _ctSheet = { ..._ctSheet, fileName: file.name, titles, rows: rows.slice(1) };
+    const phoneCol = find(/tel|fone|phone|whats|celular|numero/);
+    const nameCol = find(/^nome|name|cliente|contato/);
+    const emailCol = find(/e-?mail/);
+    const opt = (sel, none) => `${none ? `<option value="-1">${none}</option>` : ''}${titles.map((t, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}`;
+    const tags = _contactTagsCache[_ctSheet.act] || [];
+    box.innerHTML = `
+      <div style="font-size:12.5px;color:var(--text);margin-bottom:8px;"><b>${_ctSheet.rows.length}</b> linha(s) em "${escapeHtml(file.name)}". Confira as colunas:</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
+        <label class="field-label">Telefone<select class="field-input" id="ct-col-phone">${opt(phoneCol, 'Escolha a coluna')}</select></label>
+        <label class="field-label">Nome<select class="field-input" id="ct-col-name">${opt(nameCol, 'Sem nome')}</select></label>
+        <label class="field-label">E-mail<select class="field-input" id="ct-col-email">${opt(emailCol, 'Sem e-mail')}</select></label>
+      </div>
+      <label class="integ-toggle" style="display:flex;margin:10px 0 6px;"><input type="checkbox" id="ct-keep-extra" checked> Guardar as outras colunas (servem para as variáveis das campanhas, ex.: Empresa)</label>
+      <label class="field-label" style="margin-top:6px;">Etiqueta para estes contatos (opcional)
+        <select class="field-input" id="ct-tag"><option value="">Sem etiqueta</option>${tags.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join('')}</select>
+      </label>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:12px;">
+        <button class="btn-save" id="ct-import-btn" style="width:auto;padding:9px 16px;" onclick="importContactsSheet()">Importar contatos</button>
+        <span id="ct-import-fb" class="integ-muted" style="font-size:12.5px;"></span>
+      </div>`;
+  } catch (e) { box.innerHTML = `<div class="integ-error">Não foi possível ler: ${escapeHtml(e.message)}</div>`; }
+}
+
+async function importContactsSheet() {
+  const st = _ctSheet;
+  const fb = document.getElementById('ct-import-fb'), btn = document.getElementById('ct-import-btn');
+  if (!st || !st.rows.length) return;
+  const col = id => Number(document.getElementById(id).value);
+  const phoneCol = col('ct-col-phone'), nameCol = col('ct-col-name'), emailCol = col('ct-col-email');
+  if (phoneCol < 0) { fb.style.color = 'var(--red)'; fb.textContent = 'Escolha a coluna do telefone.'; return; }
+  const keepExtra = document.getElementById('ct-keep-extra').checked;
+  const tag = document.getElementById('ct-tag').value;
+  const extraCols = keepExtra ? st.titles.map((t, i) => ({ t, i })).filter(c => ![phoneCol, nameCol, emailCol].includes(c.i)).slice(0, 30) : [];
+  btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'Importando...';
+  try {
+    const existing = await window._fb.getWhatsAppContacts(st.act);
+    const byPhone = new Map(existing.map(c => [chatPhoneKey(c.phone), c]));
+    let added = 0, updated = 0, invalid = 0;
+    const nowIso = new Date().toISOString();
+    st.rows.forEach(r => {
+      let digits = String(r[phoneCol] == null ? '' : r[phoneCol]).replace(/\D/g, '');
+      if (digits.startsWith('55') && digits.length >= 12) digits = digits.slice(2);
+      if (digits.length < 10 || digits.length > 11) { invalid++; return; }
+      const key = chatPhoneKey(digits);
+      const name = nameCol >= 0 ? String(r[nameCol] || '').trim().slice(0, 80) : '';
+      const email = emailCol >= 0 ? String(r[emailCol] || '').trim().slice(0, 120) : '';
+      const fields = Object.fromEntries(extraCols.map(c => [c.t.slice(0, 60), String(r[c.i] == null ? '' : r[c.i]).trim().slice(0, 200)]).filter(([, v]) => v));
+      const cur = byPhone.get(key);
+      if (!cur) {
+        added++;
+        byPhone.set(key, { name, phone: digits, ...(email ? { email } : {}), ...(Object.keys(fields).length ? { fields } : {}), ...(tag ? { tags: [tag] } : {}), origem: 'Planilha ' + String(st.fileName || '').slice(0, 60), createdAt: nowIso });
+      } else {
+        updated++;
+        byPhone.set(key, { ...cur, name: cur.name || name, ...(email && !cur.email ? { email } : {}), ...(Object.keys(fields).length ? { fields: { ...(cur.fields || {}), ...fields } } : {}), ...(tag ? { tags: [...new Set([...(cur.tags || []), tag])] } : {}) });
+      }
+    });
+    const all = [...byPhone.values()];
+    await window._fb.saveWhatsAppContacts(st.act, all);
+    _crmContactsCache[st.act] = all;
+    closeHuvenModal();
+    showToast(`${added} contato(s) novo(s)${updated ? `, ${updated} já existiam e foram completados` : ''}${invalid ? `, ${invalid} linha(s) sem telefone válido ficaram de fora` : ''}. Total na base: ${all.length}.`, 'success', 9000);
+    auditLog(st.act, 'contatos', `Importou ${added} contato(s) da planilha "${st.fileName || ''}"`);
+    if (typeof renderContatos === 'function') renderContatos();
+  } catch (e) { btn.disabled = false; fb.style.color = 'var(--red)'; fb.textContent = 'Erro: ' + e.message; }
+}
+window.openContactsSheetImport = openContactsSheetImport;
 
 async function importContactsToCrm() {
   if (!_campaignDraft) return;
