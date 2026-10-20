@@ -13319,6 +13319,10 @@ function renderChatMessages() {
     let media = '';
     if (m.mediaUrl && (m.type === 'sticker' || m.type === 'image')) {
       media = `<img src="${escapeHtml(m.mediaUrl)}" alt="" class="${m.type === 'sticker' ? 'chat-sticker' : ''}"><br>`;
+    } else if (m.mediaUrl && m.type === 'video') {
+      media = `<video src="${escapeHtml(m.mediaUrl)}" controls></video><br>`;
+    } else if (m.mediaUrl && m.type === 'document') {
+      media = `<a href="${escapeHtml(m.mediaUrl)}" target="_blank" rel="noopener" style="color:var(--accent2);">${uiIco('download', 13)} ${escapeHtml(m.fileName || 'Abrir PDF')}</a><br>`;
     } else if (['image', 'video', 'audio', 'document', 'sticker'].includes(m.type)) {
       const loaded = _chatMedia[m.id];
       if (loaded && loaded.url) {
