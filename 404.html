@@ -2415,6 +2415,28 @@ body.card-dragging .kanban-card:hover { transform: none; }
       const snap = await getDocs(query(collection(db, 'campaigns', id, 'recipients'), limit(max || 500)));
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     },
+    // Editar campanha: mode 'replace' tira quem ainda não recebeu e entra a lista nova; 'add' só acrescenta.
+    // Quem já recebeu (ou já está na campanha, no 'add') não entra de novo.
+    async updateCampaignRecipients(id, mode, recipients) {
+      const snap = await getDocs(collection(db, 'campaigns', id, 'recipients'));
+      const all = snap.docs.map(d => ({ ref: d.ref, ...d.data() }));
+      const keyOf = r => String(r.phone || r.jid || '');
+      const removed = mode === 'replace' ? all.filter(r => r.status === 'pending') : [];
+      const kept = all.filter(r => !removed.includes(r));
+      const seen = new Set(kept.map(keyOf));
+      let order = all.reduce((m, r) => Math.max(m, Number(r.order) || 0), -1) + 1;
+      const fresh = recipients.filter(r => { const k = keyOf(r); if (!k || seen.has(k)) return false; seen.add(k); return true; });
+      const ops = [...removed.map(r => ({ del: r.ref })), ...fresh.map(r => ({ add: r }))];
+      for (let i = 0; i < ops.length; i += 400) {
+        const batch = writeBatch(db);
+        ops.slice(i, i + 400).forEach(op => {
+          if (op.del) batch.delete(op.del);
+          else batch.set(doc(collection(db, 'campaigns', id, 'recipients')), { ...op.add, order: order++, status: 'pending' });
+        });
+        await batch.commit();
+      }
+      return { total: kept.length + fresh.length, added: fresh.length, removed: removed.length, skipped: recipients.length - fresh.length };
+    },
     async deleteCampaign(id) {
       while (true) {
         const snap = await getDocs(query(collection(db, 'campaigns', id, 'recipients'), limit(400)));
@@ -8074,6 +8096,22 @@ function editCampaign(id) {
   if (editor) editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+// Editar campanha: manter, trocar quem ainda não recebeu, ou acrescentar contatos.
+function setCampEditContacts(mode) {
+  const d = _campaignDraft;
+  if (!d) return;
+  d.editContacts = mode;
+  ['keep', 'replace', 'add'].forEach(k => { const b = document.getElementById('camp-editc-' + k); if (b) b.style.background = k === mode ? '' : 'transparent'; });
+  const wrap = document.getElementById('camp-audience-wrap');
+  if (wrap) wrap.style.display = mode === 'keep' ? 'none' : '';
+  const c = d.copyFrom || {};
+  const pending = Math.max(0, (Number(c.total) || 0) - (Number(c.sent) || 0) - (Number(c.failed) || 0) - (Number(c.skipped) || 0));
+  const hint = document.getElementById('camp-editc-hint');
+  if (hint) hint.textContent = mode === 'keep' ? 'A lista de contatos não muda.'
+    : mode === 'replace' ? `Os ${pending} contato(s) que ainda não receberam saem da campanha e entra a lista escolhida abaixo. Quem já recebeu fica no histórico e não recebe de novo.`
+    : 'Os contatos escolhidos abaixo entram no fim da fila. Quem já está na campanha não é repetido.';
+}
+
 async function saveCampaignEdit() {
   const d = _campaignDraft;
   const c = d && d.copyFrom;
@@ -8095,8 +8133,27 @@ async function saveCampaignEdit() {
   if (read.error) { setFb('#f87171', read.error); return; }
   const dispatch = { ...read.dispatch };
   if (c.dispatch && c.dispatch.warmupStartedAt) dispatch.warmupStartedAt = c.dispatch.warmupStartedAt;
+  const contactsMode = d.editContacts || 'keep';
+  if (contactsMode !== 'keep') {
+    if (!d.recipients.length) { setFb('#f87171', 'Escolha os novos contatos (a lista está vazia).'); return; }
+    const what = contactsMode === 'replace' ? `Trocar os contatos que ainda não receberam por ${d.recipients.length} contato(s)?` : `Adicionar ${d.recipients.length} contato(s) à campanha?`;
+    if (!await showConfirm(what + (c.status === 'done' ? ' A campanha estava concluída e volta a enviar.' : ''), 'Contatos da campanha', 'Confirmar')) return;
+  }
   setFb('var(--muted)', 'Salvando...');
   try {
+    let contactsInfo = null;
+    if (contactsMode !== 'keep') {
+      // Pausa enquanto troca a lista, para o envio não pegar um contato que está saindo.
+      const wasRunning = c.status === 'running';
+      if (wasRunning) await window._fb.updateCampaign(c.id, { status: 'paused' });
+      try {
+        contactsInfo = await window._fb.updateCampaignRecipients(c.id, contactsMode, d.recipients);
+      } finally {
+        if (wasRunning) await window._fb.updateCampaign(c.id, { status: 'running' });
+      }
+      const back = c.status === 'done' && contactsInfo.added ? { status: 'running', finishedAt: null } : {};
+      await window._fb.updateCampaign(c.id, { total: contactsInfo.total, audienceType: d.source, audienceLabel: d.label, ...back });
+    }
     await window._fb.updateCampaign(c.id, {
       name, templates: qrMode ? templates : [],
       media: qrMode && mediaType !== 'text' && d.media ? { type: d.media.type, url: d.media.url, mimetype: d.media.mimetype, fileName: d.media.fileName } : null,
@@ -8105,8 +8162,8 @@ async function saveCampaignEdit() {
       cloudTemplate: cloudTpl.template,
       editedAt: new Date().toISOString()
     });
-    showToast('Campanha atualizada. As mudanças valem a partir do próximo envio.', 'success');
-    auditLog(d.act, 'campanha', `Editou a campanha "${name}"`);
+    showToast('Campanha atualizada. As mudanças valem a partir do próximo envio.' + (contactsInfo ? ` Contatos: ${contactsInfo.added} entraram${contactsInfo.removed ? `, ${contactsInfo.removed} saíram` : ''}${contactsInfo.skipped ? `, ${contactsInfo.skipped} já estavam na campanha` : ''}.` : ''), 'success', 8000);
+    auditLog(d.act, 'campanha', `Editou a campanha "${name}"` + (contactsInfo ? ` (contatos: +${contactsInfo.added}${contactsInfo.removed ? ' -' + contactsInfo.removed : ''})` : ''));
     closeCampaignEditor();
   } catch (e) { setFb('#f87171', 'Erro: ' + e.message); }
 }
@@ -8141,7 +8198,7 @@ function openCampaignEditor(copyFrom, opts = {}) {
     </div>
     <label class="field-label">Nome da campanha</label>
     <input class="field-input" id="camp-name" placeholder="Ex.: Promoção de outubro" style="margin-bottom:6px;" value="${editing ? escapeHtml(copyFrom.name || '') : copyFrom ? escapeHtml((copyFrom.name || 'Campanha') + ' (nova)') : ''}">
-    ${editing ? `<div style="${hint}">Você pode mudar o nome, as mensagens, o arquivo, o WhatsApp e o ritmo de envio. Os contatos continuam os mesmos (${Number(copyFrom.total) || 0}, dos quais ${Number(copyFrom.sent) || 0} já receberam). As mudanças valem a partir do próximo envio.</div>` : copyFrom ? `<div style="${hint}">Baseada em "${escapeHtml(copyFrom.name || 'Campanha')}". Mude o que quiser: mensagens (adicione ou apague variações), arquivo, contatos e regras.</div>` : ''}
+    ${editing ? `<div style="${hint}">Você pode mudar o nome, as mensagens, o arquivo, o WhatsApp, o ritmo de envio e os contatos (hoje são ${Number(copyFrom.total) || 0}, dos quais ${Number(copyFrom.sent) || 0} já receberam). As mudanças valem a partir do próximo envio.</div>` : copyFrom ? `<div style="${hint}">Baseada em "${escapeHtml(copyFrom.name || 'Campanha')}". Mude o que quiser: mensagens (adicione ou apague variações), arquivo, contatos e regras.</div>` : ''}
     <div id="camp-mode-box"></div>
     <div id="camp-lines-box"></div>
     <div id="camp-cloud-box"></div>
@@ -8160,6 +8217,11 @@ function openCampaignEditor(copyFrom, opts = {}) {
     ${whatsappVariationsHtml('camp', copyFrom && Array.isArray(copyFrom.templates) ? copyFrom.templates : [])}
     </div>
 
+    ${editing ? `<div style="${section}">Contatos</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+      ${[['keep', 'Manter os contatos'], ['replace', 'Trocar quem ainda não recebeu'], ['add', 'Adicionar mais contatos']].map(([k, l]) => `<button id="camp-editc-${k}" style="${wbtn}" onclick="setCampEditContacts('${k}')">${l}</button>`).join('')}
+    </div>
+    <div id="camp-editc-hint" style="${hint}"></div>` : ''}
     <div id="camp-audience-wrap">
     <div style="${section}">Para quem enviar</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
@@ -8239,7 +8301,10 @@ function openCampaignEditor(copyFrom, opts = {}) {
   if (editing) {
     applyCampaignCopy(copyFrom);
     if (copyFrom.media && copyFrom.media.url) _campaignDraft.media = { ...copyFrom.media };
-    document.getElementById('camp-audience-wrap').style.display = 'none';
+    const prevBtn = document.getElementById('camp-src-previous');
+    if (prevBtn) prevBtn.style.display = 'none'; // em edição, "mesmos contatos" é a própria campanha
+    selectCampaignSource('crm');
+    setCampEditContacts('keep');
     const startRadio = document.querySelector('input[name="camp-start"]');
     if (startRadio && startRadio.closest('div')) startRadio.closest('div').style.display = 'none';
   } else if (copyFrom) {
