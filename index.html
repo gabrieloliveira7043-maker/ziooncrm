@@ -14104,6 +14104,12 @@ function cloudParamsHtml(prefix, tpl, values, name, intro) {
   for (let i = 1; i <= tpl.vars; i++) {
     html += `<label style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:12.5px;color:var(--text);"><span style="min-width:44px;">{{${i}}}</span><input class="field-input" id="${prefix}-p${i}" value="${escapeHtml(vals[i - 1])}" style="flex:1;" oninput="updateCloudPreview('${prefix}')"></label>`;
   }
+  if (tpl.headerType) {
+    const label = (CLOUD_HEADER_TYPES[tpl.headerType] || { label: 'Mídia' }).label;
+    html += tpl.headerUrl
+      ? `<div class="integ-muted" style="font-size:12px;margin-top:4px;">${uiIco('clip', 12)} Vai com ${label.toLowerCase()} no topo: ${escapeHtml(tpl.headerFileName || 'arquivo do modelo')}</div>`
+      : `<div style="font-size:12px;margin-top:4px;color:var(--red);">Este modelo tem ${label.toLowerCase()} no cabeçalho, mas nenhum arquivo foi escolhido. Escolha em Conexões → Modelos.</div>`;
+  }
   return html + `<div class="integ-muted" id="${prefix}-prev" style="font-size:12px;margin-top:4px;white-space:pre-wrap;">Prévia: ${escapeHtml(cloudPreview(tpl, vals, name))}</div>`;
 }
 
@@ -14119,7 +14125,61 @@ function readCloudParams(prefix, tpl) {
 }
 
 function cloudTplObject(tpl, params) {
-  return tpl ? { name: tpl.name, language: tpl.language, params, body: tpl.body } : null;
+  if (!tpl) return null;
+  const out = { name: tpl.name, language: tpl.language, params, body: tpl.body };
+  if (tpl.headerType) Object.assign(out, { headerType: tpl.headerType, headerUrl: tpl.headerUrl || '', headerFileName: tpl.headerFileName || '' });
+  return out;
+}
+
+// Cabeçalho com mídia nos modelos da API oficial. A Meta não aceita áudio em modelo.
+const CLOUD_HEADER_TYPES = { image: { label: 'Foto', accept: 'image/jpeg,image/png', hint: 'JPG ou PNG, até 5 MB' }, video: { label: 'Vídeo', accept: 'video/mp4', hint: 'MP4, até 16 MB' }, document: { label: 'PDF', accept: 'application/pdf', hint: 'PDF, até 24 MB' } };
+let _cntHeaderMedia = null;
+
+function cloudHeaderPreviewHtml(t) {
+  if (!t.headerType) return '';
+  const info = CLOUD_HEADER_TYPES[t.headerType] || { label: 'Mídia' };
+  const media = !t.headerUrl ? `<span style="color:var(--red);">nenhum arquivo escolhido</span>`
+    : t.headerType === 'image' ? `<img src="${escapeHtml(t.headerUrl)}" alt="" style="max-width:160px;max-height:110px;border-radius:8px;display:block;margin-top:4px;">`
+    : `<a href="${escapeHtml(t.headerUrl)}" target="_blank" rel="noopener" style="color:var(--accent2);">${escapeHtml(t.headerFileName || 'ver arquivo')}</a>`;
+  return `<div style="font-size:12px;color:var(--muted2);margin-bottom:4px;">${uiIco(t.headerType === 'image' ? 'image' : t.headerType === 'video' ? 'video' : 'clip', 13)} Cabeçalho: ${info.label} · ${media}
+    <label class="chat-pill" style="cursor:pointer;margin-left:6px;">${t.headerUrl ? 'Trocar arquivo' : 'Escolher arquivo'}<input type="file" accept="${info.accept}" style="display:none;" onchange="setCloudTemplateMedia('${escapeJsString(t.name)}','${t.headerType}',this)"></label></div>`;
+}
+
+function onCntHeaderType() {
+  const type = document.getElementById('cnt-htype')?.value || '';
+  _cntHeaderMedia = null;
+  const text = document.getElementById('cnt-header'), box = document.getElementById('cnt-hmedia');
+  if (text) text.style.display = type === 'text' ? '' : 'none';
+  if (!box) return;
+  const info = CLOUD_HEADER_TYPES[type];
+  box.innerHTML = info ? `<label class="chat-pill" style="cursor:pointer;">${uiIco('clip', 14)} Escolher ${info.label.toLowerCase()}<input type="file" accept="${info.accept}" style="display:none;" onchange="uploadCntHeader(this)"></label> <span id="cnt-hmedia-fb" class="integ-muted" style="font-size:12px;">${info.hint}</span>` : '';
+}
+
+async function uploadCntHeader(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  const fb = document.getElementById('cnt-hmedia-fb');
+  if (!file || !_cloudCtx) return;
+  _cntHeaderMedia = null;
+  if (fb) { fb.style.color = 'var(--muted)'; fb.textContent = 'Enviando arquivo...'; }
+  try {
+    _cntHeaderMedia = await window._fb.uploadCampaignMedia(_cloudCtx.act, file, true);
+    if (fb) fb.innerHTML = `${uiIco('check', 13)} ${escapeHtml(_cntHeaderMedia.fileName)}`;
+  } catch (e) { if (fb) { fb.style.color = 'var(--red)'; fb.textContent = 'Erro: ' + e.message; } }
+}
+
+async function setCloudTemplateMedia(name, type, input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file || !_cloudCtx) return;
+  const { act, line } = _cloudCtx;
+  try {
+    showToast('Enviando arquivo...', 'info', 2500);
+    const up = await window._fb.uploadCampaignMedia(act, file, true);
+    await window._fb.whatsapp('/whatsapp/cloud-template-media', act, { line, name, headerType: type, headerMediaId: up.id });
+    renderCloudTemplates(await cloudTemplatesFor(act, line, true));
+    showToast('Arquivo do cabeçalho salvo. Os próximos envios desse modelo vão com ele.', 'success', 6000);
+  } catch (e) { showToast('Não salvou o arquivo: ' + e.message, 'error', 7000); }
 }
 
 function cloudPreview(tpl, params, name) {
@@ -14222,8 +14282,13 @@ function renderCloudTemplates(list) {
         <div style="flex:2;min-width:200px;"><label class="field-label">Nome (sem acento, vira minúsculas_com_underline)</label><input class="field-input" id="cnt-name" placeholder="boas_vindas_lead"></div>
         <div style="flex:1;min-width:140px;"><label class="field-label">Categoria</label><select class="field-input" id="cnt-cat"><option value="MARKETING">Marketing (ofertas, convites)</option><option value="UTILITY">Utilidade (confirmações, avisos do pedido)</option></select></div>
       </div>
-      <label class="field-label" style="margin-top:8px;">Cabeçalho (opcional, até 60 caracteres)</label>
-      <input class="field-input" id="cnt-header" maxlength="60">
+      <label class="field-label" style="margin-top:8px;">Cabeçalho (opcional)</label>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <select class="field-input" id="cnt-htype" style="width:auto;" onchange="onCntHeaderType()"><option value="">Sem cabeçalho</option><option value="text">Texto</option><option value="image">Foto</option><option value="video">Vídeo</option><option value="document">PDF</option></select>
+        <input class="field-input" id="cnt-header" maxlength="60" placeholder="Até 60 caracteres" style="flex:1;min-width:180px;display:none;">
+        <span id="cnt-hmedia"></span>
+      </div>
+      <div class="integ-muted" style="font-size:11.5px;margin:4px 0;">A foto, o vídeo ou o PDF vai no topo da mensagem, junto com o texto. A Meta não aceita áudio em modelo: áudio só dá para mandar pelo Chat, dentro das 24 h depois da última mensagem do contato.</div>
       <label class="field-label" style="margin-top:8px;">Texto da mensagem</label>
       <textarea class="field-input" id="cnt-body" rows="4" maxlength="1024" placeholder="Oi {{1}}, tudo bem? Vi que você se cadastrou para saber mais sobre ... Posso te explicar como funciona?" oninput="renderCloudNewExamples()"></textarea>
       <div class="integ-muted" style="font-size:11.5px;margin:4px 0;">Use {{1}}, {{2}}... para o que muda em cada envio (ex.: o nome). A Meta pede um exemplo de cada um e não aceita o texto começando ou terminando com variável.</div>
@@ -14240,7 +14305,7 @@ function renderCloudTemplates(list) {
           <span style="flex:1;"></span>
           <button class="chat-pill" style="color:var(--red);" onclick="deleteCloudTemplate('${escapeJsString(t.name)}')">Apagar</button>
         </div>
-        ${t.header ? `<div style="font-size:12.5px;font-weight:600;color:var(--text);">${escapeHtml(t.header)}</div>` : ''}
+        ${cloudHeaderPreviewHtml(t)}${t.header ? `<div style="font-size:12.5px;font-weight:600;color:var(--text);">${escapeHtml(t.header)}</div>` : ''}
         <div style="font-size:12.5px;color:var(--text);white-space:pre-wrap;">${escapeHtml(t.body)}</div>
         ${t.footer ? `<div class="integ-muted" style="font-size:11.5px;">${escapeHtml(t.footer)}</div>` : ''}
       </div>`).join('') || '<div class="integ-muted">Nenhum modelo ainda. Crie o primeiro: a Meta costuma aprovar em minutos.</div>'}</div>`;
@@ -14304,10 +14369,15 @@ async function createCloudTemplate() {
   const val = id => (document.getElementById(id)?.value || '').trim();
   btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'Enviando para a Meta...';
   try {
+    const htype = val('cnt-htype');
+    if (CLOUD_HEADER_TYPES[htype] && !_cntHeaderMedia) throw new Error('Escolha o arquivo do cabeçalho (' + CLOUD_HEADER_TYPES[htype].label.toLowerCase() + ').');
+    if (CLOUD_HEADER_TYPES[htype]) fb.textContent = 'Enviando o arquivo e o modelo para a Meta...';
     const r = await window._fb.whatsapp('/whatsapp/cloud-template-create', act, {
-      line, name: val('cnt-name'), category: val('cnt-cat'), header: val('cnt-header'), body: val('cnt-body'), footer: val('cnt-footer'),
+      line, name: val('cnt-name'), category: val('cnt-cat'), header: htype === 'text' ? val('cnt-header') : '', body: val('cnt-body'), footer: val('cnt-footer'),
+      headerType: CLOUD_HEADER_TYPES[htype] ? htype : '', headerMediaId: CLOUD_HEADER_TYPES[htype] ? _cntHeaderMedia.id : '',
       examples: [...document.querySelectorAll('#cnt-examples input')].map(i => i.value.trim())
     });
+    _cntHeaderMedia = null;
     showToast(`Modelo "${r.name}" enviado. Status: ${(CLOUD_STATUS[r.status] || [r.status])[0]}. Clique em Atualizar daqui a pouco para ver a aprovação.`, 'success', 8000);
     renderCloudTemplates(await cloudTemplatesFor(act, line, true));
   } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = e.message; btn.disabled = false; }
@@ -19549,7 +19619,7 @@ function onCrmClientChange() {
 
 </script>
 <script src="ajuda-ia.js?v=3" defer></script>
-<script src="modelos.js?v=1" defer></script>
+<script src="modelos.js?v=2" defer></script>
 </body>
 </html>
 
