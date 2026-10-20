@@ -7955,7 +7955,7 @@ async function openCampaignDetail(id) {
   try {
     const rows = await window._fb.getCampaignRecipients(id, 500);
     rows.sort((a, b) => (a.order || 0) - (b.order || 0));
-    const labels = { pending: 'Na fila', sent: 'Enviada', skipped: 'Pulada', failed: 'Erro' };
+    const labels = { pending: 'Na fila', sending: 'Enviando', sent: 'Enviada', skipped: 'Pulada', failed: 'Erro' };
     body.innerHTML = `<div style="color:var(--muted);margin-bottom:8px;">Mostrando ${rows.length} contato(s)${rows.length === 500 ? ' (os primeiros 500)' : ''}.</div>
       <table style="width:100%;border-collapse:collapse;">
         <tr style="text-align:left;color:var(--muted);font-size:12px;"><th style="padding:4px;">Nome</th><th style="padding:4px;">Telefone</th><th style="padding:4px;">Situação</th></tr>
