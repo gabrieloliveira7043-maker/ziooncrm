@@ -10151,7 +10151,8 @@ function renderAutomationEditor() {
       <label class="integ-toggle" style="margin-top:8px;"><input type="checkbox" id="au-hours" ${d.hours && d.hours.enabled ? 'checked' : ''}> Enviar só em horário comercial, das
         <input type="number" id="au-start" class="field-input" min="0" max="23" value="${d.hours ? d.hours.start : 8}" style="width:64px;"> às
         <input type="number" id="au-end" class="field-input" min="1" max="24" value="${d.hours ? d.hours.end : 20}" style="width:64px;"> h</label>
-      <div class="integ-muted" style="margin-top:6px;">Use {primeiro_nome} e {nome} nas mensagens. Os envios respeitam os limites por hora e por dia do número.</div>
+      ${varChipsHtml('auto')}
+      <div class="integ-muted" style="margin-top:6px;">Clique para inserir no texto. {atendente} vira o nome do atendente do WhatsApp que envia (defina em Conexões). Os envios respeitam os limites por hora e por dia do número.</div>
     </div>
     <div class="integ-row" style="margin-top:14px;">
       <button class="integ-btn primary" onclick="saveAutomationDraft()">Salvar automação</button>
@@ -11944,6 +11945,24 @@ function aiFlowNodeCopy() {
   });
 }
 
+// Botões de variável: clicar insere o marcador onde está o cursor (no último campo de texto clicado).
+let _varField = null;
+document.addEventListener('focusin', e => { if (e.target.matches && e.target.matches('textarea, input.field-input[type="text"], input.field-input:not([type])')) _varField = e.target; });
+function varChipsHtml(scope) {
+  const vars = [['{primeiro_nome}', 'Primeiro nome'], ['{nome}', 'Nome completo'], ['{atendente}', 'Atendente']];
+  return `<div class="var-chips" data-scope="${scope || ''}" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">${vars.map(([v, l]) =>
+    `<button type="button" class="chat-pill" title="Inserir ${v}" onmousedown="event.preventDefault()" onclick="insertVarChip(this, '${v}')">+ ${l}</button>`).join('')}</div>`;
+}
+function insertVarChip(btn, v) {
+  const box = btn.closest('.var-chips').parentElement;
+  let f = _varField && box.contains(_varField) ? _varField : null;
+  if (!f) { const all = box.querySelectorAll('textarea'); f = all[0] || null; }
+  if (!f) return;
+  const a = f.selectionStart != null ? f.selectionStart : f.value.length, b = f.selectionEnd != null ? f.selectionEnd : a;
+  f.value = f.value.slice(0, a) + v + f.value.slice(b);
+  f.focus(); f.setSelectionRange(a + v.length, a + v.length);
+  f.dispatchEvent(new Event('input', { bubbles: true }));
+}
 function setFlowTemplate(i, value) {
   const n = _flow.nodes.find(x => x.id === _flowSel);
   if (!n) return;
@@ -12000,7 +12019,8 @@ function renderFlowInspector() {
       ${temps.map((t, i) => `<textarea class="field-input" rows="3" style="margin-bottom:6px;" placeholder="${i === 0 ? 'Oi {primeiro_nome}, ...' : 'Outra versão (sorteada)'}" oninput="setFlowTemplate(${i}, this.value)">${escapeHtml(t || '')}</textarea>`).join('')}
       ${temps.length < 3 ? `<button class="ci-add" onclick="setFlowTemplate(${temps.length}, ''); renderFlowInspector()">+ outra versão</button>` : ''}
       <button class="ci-add" style="margin-left:6px;" onclick="aiFlowNodeCopy()">${uiIco('sparkles', 13)} Sugerir texto com IA</button>
-      <div class="integ-muted" style="margin-top:6px;">Use {primeiro_nome} e {nome}. Com várias versões, uma é sorteada a cada envio.</div>`;
+      ${varChipsHtml('flow')}
+      <div class="integ-muted" style="margin-top:6px;">Clique para inserir no texto. {atendente} vira o nome do atendente do WhatsApp que envia (defina em Conexões). Com várias versões, uma é sorteada a cada envio.</div>`;
   }
   if (n.type !== 'trigger') html += `<button class="huv-btn" style="margin-top:16px;color:var(--red);border-color:var(--red);" onclick="deleteFlowNode('${n.id}')">Excluir bloco</button>`;
   box.innerHTML = html;
@@ -14848,8 +14868,8 @@ const WA_MAIN = 'main';
 
 function waLines(act) {
   const s = WHATSAPP_SETTINGS[normalizeActValue(act)] || {};
-  const extra = (Array.isArray(s.lines) ? s.lines : []).filter(l => l && l.id && l.id !== WA_MAIN).map(l => ({ id: l.id, label: l.label || l.id }));
-  return (s.mainRemoved && extra.length ? [] : [{ id: WA_MAIN, label: s.mainLabel || 'Principal' }]).concat(extra);
+  const extra = (Array.isArray(s.lines) ? s.lines : []).filter(l => l && l.id && l.id !== WA_MAIN).map(l => ({ id: l.id, label: l.label || l.id, attendant: l.attendant || '' }));
+  return (s.mainRemoved && extra.length ? [] : [{ id: WA_MAIN, label: s.mainLabel || 'Principal', attendant: s.mainAttendant || '' }]).concat(extra);
 }
 const waDefaultLine = act => waLines(act)[0].id;
 // Chat: WhatsApps que este login enxerga (perms.chatLines do login de equipe; vazio = todos).
@@ -14925,6 +14945,7 @@ async function renderWaLinesBox(act, el) {
       ${ok ? `<button style="${wbtn}" onclick="openCloudTemplates('${a}','${id}')">Modelos</button>` : ''}
       ${isAdminUser() ? `<button class="chat-pill" onclick="openCloudSetup('${a}','${id}')">Credenciais</button>` : ''}
       <button class="chat-pill" onclick="renameWaLine('${a}','${id}')">Renomear</button>
+      <button class="chat-pill" title="Nome usado na variável {atendente} das mensagens enviadas por este número" onclick="setWaAttendant('${a}','${id}')">${l.attendant ? 'Atendente: ' + escapeHtml(l.attendant) : 'Definir atendente'}</button>
       ${waLines(act).length > 1 ? `<button class="chat-pill" style="color:var(--red);border-color:rgba(248,113,113,.4);" onclick="removeWaLine('${a}','${id}')">Excluir</button>` : ''}
     </div>`;
     }
@@ -14932,6 +14953,7 @@ async function renderWaLinesBox(act, el) {
       <div style="flex:1;min-width:0;"><div class="wa-line-name">${escapeHtml(l.label)}</div><div class="wa-line-sub">${whatsappStateBadge(st)}${num ? ' · ' + escapeHtml(num) : ''}</div></div>
       ${st.state === 'open' ? `<button style="${wbtn}" onclick="disconnectWhatsApp('${a}','${id}')">Desconectar</button>` : `<button style="${wbtn}" onclick="openWhatsAppConnect('${a}','${escapeJsString(getClientDisplayName(act) + ' · ' + l.label)}','${id}')">Conectar</button>`}
       <button class="chat-pill" onclick="renameWaLine('${a}','${id}')">Renomear</button>
+      <button class="chat-pill" title="Nome usado na variável {atendente} das mensagens enviadas por este número" onclick="setWaAttendant('${a}','${id}')">${l.attendant ? 'Atendente: ' + escapeHtml(l.attendant) : 'Definir atendente'}</button>
       ${waLines(act).length > 1 ? `<button class="chat-pill" style="color:var(--red);border-color:rgba(248,113,113,.4);" onclick="removeWaLine('${a}','${id}')">Excluir</button>` : ''}
     </div>`;
   }).join('') + `<button class="chat-pill" style="margin-top:6px;" onclick="addWaLine('${a}')">+ Conectar outro WhatsApp</button>${isAdminUser() ? ` <button class="chat-pill" style="margin-top:6px;" onclick="openCloudSetup('${a}')">+ API oficial</button>` : ''}`;
@@ -14966,6 +14988,21 @@ async function addWaLine(act) {
     WHATSAPP_SETTINGS[act] = { ...s, lines };
     refreshWaLinesFor(act);
     openWhatsAppConnect(act, getClientDisplayName(act) + ' · ' + label, id);
+  } catch (e) { showToast('Erro: ' + e.message, 'error'); }
+}
+
+// Nome do atendente deste número: preenche {atendente} nas automações, campanhas e 1ª mensagem.
+async function setWaAttendant(act, id) {
+  const cur = (waLines(act).find(l => l.id === id) || {}).attendant || '';
+  const v = prompt('Nome do atendente deste WhatsApp (vai no lugar de {atendente} nas mensagens automáticas). Deixe vazio para tirar:', cur);
+  if (v === null) return;
+  const attendant = v.trim().slice(0, 40);
+  try {
+    await window._fb.whatsapp('/whatsapp/line-attendant', act, { line: id, attendant });
+    const s = WHATSAPP_SETTINGS[act] || {};
+    WHATSAPP_SETTINGS[act] = id === WA_MAIN ? { ...s, mainAttendant: attendant } : { ...s, lines: (s.lines || []).map(l => l.id === id ? { ...l, attendant } : l) };
+    refreshWaLinesFor(act);
+    showToast(attendant ? `Atendente deste WhatsApp: ${attendant}` : 'Atendente removido.', 'success');
   } catch (e) { showToast('Erro: ' + e.message, 'error'); }
 }
 
