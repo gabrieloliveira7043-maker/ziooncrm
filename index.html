@@ -6995,7 +6995,7 @@ function renderContatos() {
       <span><span class="ct-stage" style="background:${stageColor.bg};color:${stageColor.color};">${escapeHtml(stageLabel)}</span></span>
       <span class="ct-cell ct-sub" title="${escapeHtml(origem)}">${escapeHtml(limitText(origem, 40) || '—')}</span>
       <span class="ct-cell ct-sub">${e.lead && e.lead.createdAt ? fmtDate(e.lead.createdAt) : '—'}</span>
-      <span class="ct-acts">${canChat ? `<button class="ct-chat" onclick="openContatoChat('${key}')" title="Abrir no Chat do CRM" aria-label="Abrir conversa"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>` : ''}${e.phone ? `<button class="ct-chat" onclick="callWhatsApp({ phone: '${escapeJsString(e.phone)}', leadId: '${e.lead ? escapeJsString(e.lead.id) : ''}' })" title="Ligar no WhatsApp" aria-label="Ligar no WhatsApp"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg></button>` : ''}</span>
+      <span class="ct-acts">${canChat ? `<button class="ct-chat" onclick="openContatoChat('${key}')" title="Abrir no Chat do CRM" aria-label="Abrir conversa"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>` : ''}${e.phone ? `<button class="ct-chat" onclick="callWhatsApp({ phone: '${escapeJsString(e.phone)}', leadId: '${e.lead ? escapeJsString(e.lead.id) : ''}', act: '${escapeJsString(act || '')}', name: '${escapeJsString(e.name || '')}' })" title="Ligar no WhatsApp" aria-label="Ligar no WhatsApp"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg></button>` : ''}</span>
     </div>`;
   }).join('') + '</div>' + (_contatosFiltered.length > _contatosShown
     ? `<div style="text-align:center;padding:12px;"><button class="chat-pill" onclick="_contatosShown += 300; renderContatos();">Mostrar mais (${_contatosFiltered.length - _contatosShown} restantes)</button></div>` : '');
@@ -13377,7 +13377,7 @@ function renderChatHeader() {
       </div>
     </div>
     ${!lead && c.phone && !chatContactFor(c, chatContactIndex(_chatAct)) ? `<button class="chat-pill" onclick="saveChatAsContact()" title="Guarda este número na base de contatos do CRM">＋ Salvar contato</button>` : ''}
-    ${c.phone && !c.isGroup && c.channel !== 'instagram' ? `<button class="chat-pill" onclick="callWhatsApp({ phone: '${escapeJsString(c.phone)}', leadId: '${lead ? escapeJsString(lead.id) : ''}' })" title="Abre a conversa no WhatsApp para ligar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg> Ligar</button>` : ''}
+    ${c.phone && !c.isGroup && c.channel !== 'instagram' ? `<button class="chat-pill" onclick="callWhatsApp({ phone: '${escapeJsString(c.phone)}', leadId: '${lead ? escapeJsString(lead.id) : ''}', act: '${escapeJsString(_chatAct || '')}', chatKey: '${escapeJsString(c.id)}', name: '${escapeJsString(chatName(c, lead))}' })" title="Abre a conversa no WhatsApp para ligar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg> Ligar</button>` : ''}
     <button class="chat-pill" onclick="openChatTags()">${uiIco('tag')} Etiquetas</button>
     ${lead ? `<button class="chat-pill" onclick="openMoveModal('${escapeJsString(lead.id)}')">Mover no funil</button>` : ''}
     ${c.isGroup ? '' : lead && aiLeadState(lead) === 'active' ? aiLeadBtnHtml(lead, 'chat') : `<button class="chat-pill" onclick="chatAiTakeover()" title="A IA passa a atender esta conversa e responde a última mensagem do contato">${uiIco('bot')} IA assumir</button>`}
@@ -13923,6 +13923,13 @@ function chatDateTimeLocal(date) {
 
 function chatNoteHtml(n) {
   const time = new Date(n.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  if (n.call) {
+    const nid = escapeJsString(n.id);
+    return `<div class="chat-note"><div class="chat-note-head">${uiIco('phone', 12)} Ligação · ${escapeHtml(n.by || '')} · ${time}<span class="sp"></span>
+      <button onclick="saveCallNoteResult('${nid}', 'atendeu')" style="${n.result === 'atendeu' ? 'font-weight:700;' : ''}">✅ Atendeu</button>
+      <button onclick="saveCallNoteResult('${nid}', 'nao_atendeu')" style="${n.result === 'nao_atendeu' ? 'font-weight:700;' : ''}">❌ Não atendeu</button>
+      <button onclick="deleteChatNoteUi('${nid}')">Excluir</button></div>${escapeHtml(n.text || '')}</div>`;
+  }
   const rem = n.remindAt ? new Date(n.remindAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
   const id = escapeJsString(n.id);
   return `<div class="chat-note"><div class="chat-note-head">${uiIco('note', 12)} Nota interna · ${escapeHtml(n.by || '')} · ${time}
@@ -18320,40 +18327,67 @@ function callWhatsApp(opts) {
   else window.location.href = `whatsapp://send?phone=${digits}`;
   if (!mobile) showToast(`Abrindo a conversa no ${target === 'web' ? 'WhatsApp Web' : 'aplicativo do WhatsApp'}: clique no ícone de telefone para ligar. (Toque aqui para trocar entre app e Web.)`, 'info', 7000,
     { onClick: () => setWaCallTarget('', null), clickLabel: 'Trocar onde abrir' });
-  if (lead) { logWhatsAppCall(lead); askCallResultOnReturn(lead.id); }
+  // Registro: nota na conversa do Chat (vale para qualquer contato) e, se for lead, linha no histórico.
+  const act = normalizeActValue(opts.act || (lead && lead.act) || '');
+  const chatKey = opts.chatKey || chatPhoneKey(digits);
+  const name = opts.name || (lead && lead.name) || chatFormatPhone(digits);
+  const info = { leadId: lead ? lead.id : '', act, chatKey, name, noteId: '' };
+  if (lead) logWhatsAppCall(lead);
+  if (act && chatKey) {
+    const me = chatMe();
+    window._fb.addChatNote({ act, chatKey, chatName: name, text: '📞 Tentativa de ligação pelo WhatsApp', by: me.name, byUid: me.uid, at: new Date().toISOString(), done: true, call: 'whatsapp' })
+      .then(id => { info.noteId = id; }).catch(e => console.warn('Ligação não registrada no Chat:', e));
+  }
+  askCallResultOnReturn(info);
 }
 
 // Ao voltar para o CRM depois de abrir o WhatsApp, pergunta como foi a ligação e grava no histórico.
 let _pendingCall = null;
-function askCallResultOnReturn(leadId) {
-  _pendingCall = { leadId, at: Date.now() };
+function askCallResultOnReturn(info) {
+  _pendingCall = { info, at: Date.now() };
   const check = () => {
     if (!_pendingCall || document.hidden || Date.now() - _pendingCall.at < 3000) return;
-    const id = _pendingCall.leadId;
+    const pending = _pendingCall.info;
     _pendingCall = null;
     window.removeEventListener('focus', check);
     document.removeEventListener('visibilitychange', check);
-    openCallResult(id);
+    openCallResult(pending);
   };
   window.addEventListener('focus', check);
   document.addEventListener('visibilitychange', check);
 }
 
-function openCallResult(leadId) {
-  const lead = getLeads().find(l => l.id === leadId);
-  if (!lead) return;
-  const id = escapeJsString(leadId);
+let _callResultInfo = null;
+function openCallResult(info) {
+  _callResultInfo = info;
   openHuvenModal('Como foi a ligação?', `
-    <div style="font-size:13px;color:var(--text);margin-bottom:12px;">Ligação pelo WhatsApp com <b>${escapeHtml(lead.name || lead.phone || 'o lead')}</b>.</div>
+    <div style="font-size:13px;color:var(--text);margin-bottom:12px;">Ligação pelo WhatsApp com <b>${escapeHtml(info.name || 'o contato')}</b>.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="saveCallResult('${id}', 'atendeu')">✅ Atendeu</button>
-      <button class="huv-btn" onclick="saveCallResult('${id}', 'nao_atendeu')">❌ Não atendeu</button>
+      <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="saveCallResultFor('atendeu')">✅ Atendeu</button>
+      <button class="huv-btn" onclick="saveCallResultFor('nao_atendeu')">❌ Não atendeu</button>
       <button class="huv-btn" style="margin-left:auto;" onclick="closeHuvenModal()">Pular</button>
     </div>`, 420);
 }
 
 const CALL_RESULT_LABELS = { atendeu: '✅ atendeu', nao_atendeu: '❌ não atendeu' };
-async function saveCallResult(leadId, result, index) {
+
+// Resposta da pergunta: grava na nota do Chat e, se for lead, no histórico.
+async function saveCallResultFor(result) {
+  const info = _callResultInfo;
+  closeHuvenModal();
+  if (!info) return;
+  if (info.noteId) await saveCallNoteResult(info.noteId, result, true);
+  if (info.leadId) await saveCallResult(info.leadId, result, null, true);
+  showToast(result === 'atendeu' ? 'Ligação registrada: atendeu.' : 'Ligação registrada: não atendeu.', 'success');
+}
+
+async function saveCallNoteResult(noteId, result, quiet) {
+  try {
+    await window._fb.updateChatNote(noteId, { result, text: `📞 Ligação pelo WhatsApp · ${CALL_RESULT_LABELS[result]}` });
+    if (!quiet) showToast('Resultado da ligação salvo.', 'success');
+  } catch (e) { showToast('Não salvou o resultado: ' + e.message, 'error'); }
+}
+async function saveCallResult(leadId, result, index, quiet) {
   closeHuvenModal();
   const lead = getLeads().find(l => l.id === leadId);
   if (!lead) return;
@@ -18370,7 +18404,7 @@ async function saveCallResult(leadId, result, index) {
   try {
     if (lead._docId) await window._fb.saveLeadsBatch([{ _docId: lead._docId, history }]);
     else await saveLeadToDb(lead);
-    showToast(result === 'atendeu' ? 'Ligação registrada: atendeu.' : 'Ligação registrada: não atendeu.', 'success');
+    if (!quiet) showToast(result === 'atendeu' ? 'Ligação registrada: atendeu.' : 'Ligação registrada: não atendeu.', 'success');
     if (document.getElementById('history-modal')?.classList.contains('open')) showHistory(leadId);
   } catch (e) { showToast('Não salvou o resultado: ' + e.message, 'error'); }
 }
