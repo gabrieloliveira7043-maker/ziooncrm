@@ -13715,7 +13715,9 @@ function pickQuickReply(id) {
   const q = (_qrCache[_chatAct] || []).find(x => x.id === id);
   const ta = document.getElementById('chat-text');
   if (!q || !ta) return;
-  const text = q.text.replace(/\{nome\}/gi, chatFirstName());
+  // {atendente}: primeiro nome de quem está logado (ex.: Gustavo ou Victor), para a mesma resposta servir à equipe toda.
+  const me = chatMe().name.trim().split(/\s+/)[0];
+  const text = q.text.replace(/\{nome\}/gi, chatFirstName()).replace(/\{atendente\}/gi, me);
   ta.value = _qrBySlash || !ta.value.trim() ? text : ta.value.replace(/\s*$/, ' ') + text;
   closeQuickReplies();
   ta.focus();
@@ -13749,7 +13751,8 @@ function renderQuickRepliesManager() {
     <div style="border-top:1px solid var(--border);padding-top:12px;">
       <label class="field-label">${ed ? 'Editar resposta' : 'Nova resposta'}</label>
       <input class="field-input" id="qr-title" maxlength="40" placeholder="Atalho, ex.: preco, endereco, horario" value="${escapeHtml(ed ? ed.title : '')}" style="margin-bottom:8px;">
-      <textarea class="field-input" id="qr-text" rows="4" maxlength="2000" placeholder="Oi {nome}! Nosso horário é..." style="width:100%;box-sizing:border-box;resize:vertical;margin-bottom:8px;">${escapeHtml(ed ? ed.text : '')}</textarea>
+      <textarea class="field-input" id="qr-text" rows="4" maxlength="2000" placeholder="Oi {nome}! Aqui é {atendente}. Nosso horário é..." style="width:100%;box-sizing:border-box;resize:vertical;margin-bottom:8px;">${escapeHtml(ed ? ed.text : '')}</textarea>
+      <div class="integ-muted" style="margin:-2px 0 8px;font-size:12px;">Use {nome} para o nome do contato e {atendente} para o nome de quem está atendendo.</div>
       <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="saveQuickReply()">${ed ? 'Salvar alteração' : 'Adicionar'}</button>
       ${ed ? '<button class="chat-pill" onclick="_qrEditing=null;renderQuickRepliesManager()">Cancelar</button>' : ''}
       <span id="qr-fb" class="integ-muted" style="margin-left:6px;"></span>
