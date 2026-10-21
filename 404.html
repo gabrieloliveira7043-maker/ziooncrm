@@ -19215,7 +19215,7 @@ function renderWhatsAppAlert() {
 // Resposta humana = mensagem enviada por alguém da equipe, pelo CRM (tem "sentBy") ou pelo celular.
 // Mensagens automáticas (1ª mensagem, automações, disparos, agendadas) têm "source" e não contam como atendimento.
 // Só entram leads que chegaram sozinhos (WhatsApp, Meta, landing page, planilha); importados e prospecção ficam de fora.
-const _an = { from: '', to: '', biz: false, bizStart: '08:00', bizEnd: '18:00', bizSat: false, data: null, running: 0, charts: [] };
+const _an = { line: 'all', from: '', to: '', biz: false, bizStart: '08:00', bizEnd: '18:00', bizSat: false, data: null, running: 0, charts: [] };
 try { Object.assign(_an, JSON.parse(localStorage.getItem('huven_analise_cfg') || '{}'), { data: null, running: 0, charts: [] }); } catch (e) {}
 
 const anIsHuman = m => !!m.fromMe && !m.source;
@@ -19273,11 +19273,15 @@ async function computeAttendance(act, fromDay, toDay, cfg, onProgress) {
     && Date.parse(l.createdAt) >= fromMs && Date.parse(l.createdAt) <= toMs);
   // Só entram as conversas dos leads que chegaram no período (nada de conversas soltas do WhatsApp).
   const leadKeys = new Set(leads.map(anLeadChatKey).filter(Boolean));
+  // Conversas de outros WhatsApps (API oficial, 2º número) têm a linha na frente da chave: "<linha>__<contato>".
+  const baseOf = id => String(id).replace(/^[a-z0-9]{1,12}__/, '');
+  const line = cfg && cfg.line && cfg.line !== 'all' ? cfg.line : '';
   const chats = (await window._fb.listInboxChatsSince(act, fromIso, 1000)).filter(c => {
-    const base = String(c.id).replace(/^[a-z0-9]{1,12}__/, '');
-    return leadKeys.has(c.id) || leadKeys.has(base);
+    if (line && (c.line || waLineOfKey(c.id)) !== line) return false;
+    return leadKeys.has(baseOf(c.id));
   });
-  const chatByKey = Object.fromEntries(chats.map(c => [c.id, c]));
+  const chatsByBase = {};
+  chats.forEach(c => { (chatsByBase[baseOf(c.id)] = chatsByBase[baseOf(c.id)] || []).push(c); });
   const msgsByChat = {};
   let done = 0;
   const queue = [...chats];
@@ -19295,14 +19299,15 @@ async function computeAttendance(act, fromDay, toDay, cfg, onProgress) {
   const leadRows = leads.map(lead => {
     const key = anLeadChatKey(lead);
     const arrival = Date.parse(lead.createdAt);
-    const msgs = key ? (msgsByChat[key] || []) : [];
+    const leadChats = key ? (chatsByBase[key] || []) : [];
+    const msgs = leadChats.flatMap(c => msgsByChat[c.id] || []).sort((a, b) => String(a.at).localeCompare(String(b.at)));
     const after = msgs.filter(m => Date.parse(m.at) >= arrival - 60000);
     const human = after.find(anIsHuman);
     const auto = after.find(m => m.fromMe && m.source);
     const stage = (getAllStages(act).find(s => s.id === lead.stage) || {}).label || '';
     return {
-      lead, name: lead.name || chatFormatPhone(lead.phone) || 'Sem nome', stage, origem: lead.origem || lead.redeSocial || '', arrival, chatKey: key,
-      hasChat: !!(key && chatByKey[key]),
+      lead, name: lead.name || chatFormatPhone(lead.phone) || 'Sem nome', stage, origem: lead.origem || lead.redeSocial || '', arrival, chatKey: leadChats.length ? leadChats[0].id : key,
+      hasChat: leadChats.length > 0,
       humanAt: human ? Date.parse(human.at) : null, who: human ? anWho(human) : '',
       dur: human ? anDuration(arrival, Date.parse(human.at), cfg) : null,
       autoDur: auto ? Date.parse(auto.at) - arrival : null,
@@ -19364,6 +19369,8 @@ function renderAnaliseView() {
   if (!box) return;
   if (!_an.from || !_an.to) [_an.from, _an.to] = anDefaultRange();
   const act = flowAct();
+  // Os WhatsApps do cliente (para o seletor) podem ainda não ter carregado.
+  if (act && !WHATSAPP_SETTINGS[normalizeActValue(act)]) ensureWaSettings(act).then(() => { if (WHATSAPP_SETTINGS[normalizeActValue(act)] && document.getElementById('analise-body') && !document.getElementById('an-line') && waLines(act).length > 1) renderAnaliseView(); }).catch(() => {});
   box.innerHTML = `
     <div class="huv-header" style="margin-bottom:14px;">
       <div style="flex:1;min-width:220px;">
@@ -19381,6 +19388,7 @@ function renderAnaliseView() {
         <label>Às<input type="time" class="field-input" id="an-biz-end" value="${_an.bizEnd}"></label>
         <label class="integ-toggle" style="margin-bottom:10px;"><input type="checkbox" id="an-biz-sat" ${_an.bizSat ? 'checked' : ''}> Sábado</label>
       </div>
+      ${act && waLines(act).length > 1 ? `<label>Qual WhatsApp<select class="field-input" id="an-line"><option value="all">Todos os WhatsApps</option>${waLines(act).map(l => `<option value="${escapeHtml(l.id)}" ${_an.line === l.id ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}</select></label>` : ''}
       <button class="btn-add-lead" style="height:40px;padding:0 18px;align-self:flex-end;" onclick="runAnalise()" ${act ? '' : 'disabled'}>Analisar</button>
     </div>
     <div id="an-result">${act ? '<div class="integ-empty">Escolha o período e clique em Analisar.</div>' : '<div class="integ-empty">Escolha o cliente no topo do menu.</div>'}</div>`;
@@ -19396,6 +19404,7 @@ async function runAnalise() {
   _an.bizStart = document.getElementById('an-biz-start').value || '08:00';
   _an.bizEnd = document.getElementById('an-biz-end').value || '18:00';
   _an.bizSat = document.getElementById('an-biz-sat').checked;
+  _an.line = (document.getElementById('an-line') || {}).value || 'all';
   if (!_an.from || !_an.to || _an.from > _an.to) return showToast('Confira o período.', 'warning');
   try { localStorage.setItem('huven_analise_cfg', JSON.stringify({ from: _an.from, to: _an.to, biz: _an.biz, bizStart: _an.bizStart, bizEnd: _an.bizEnd, bizSat: _an.bizSat })); } catch (e) {}
   const run = ++_an.running;
@@ -19480,9 +19489,15 @@ function renderAnaliseResult(d) {
     type: 'bar', data: { labels: d.buckets.map(b => b.label), datasets: [{ data: d.buckets.map(b => b.n), backgroundColor: ['#1FA855', '#5DBB63', '#C9A24A', '#E08A1E', '#E06A3A', '#D64545'], borderRadius: 6 }] },
     options: { ...common, scales: { ...common.scales, y: { ...common.scales.y, ticks: { ...common.scales.y.ticks, precision: 0 } } } }
   }));
+  // Sem nenhum dia com resposta, o gráfico vira um aviso (em vez de uma escala vazia "0 min, 1 min...").
+  if (!d.daily.some(x => x.median != null)) {
+    const cv = document.getElementById('an-ch-daily');
+    if (cv && cv.parentNode) cv.parentNode.innerHTML = '<div class="integ-empty" style="height:100%;display:flex;align-items:center;justify-content:center;">Sem respostas no período.</div>';
+    return;
+  }
   _an.charts.push(new Chart(document.getElementById('an-ch-daily'), {
     type: 'line', data: { labels: d.daily.map(x => x.day.split('-').reverse().slice(0, 2).join('/')), datasets: [{ data: d.daily.map(x => x.median == null ? null : Math.round(x.median / 60000)), borderColor: '#C9A24A', backgroundColor: 'rgba(201,162,74,.15)', fill: true, tension: .35, spanGaps: true, pointRadius: 2 }] },
-    options: { ...common, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => anFmt(c.raw * 60000) } } }, scales: { ...common.scales, y: { ...common.scales.y, ticks: { ...common.scales.y.ticks, callback: v => v >= 60 ? (v / 60).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' h' : Math.round(v) + ' min' } } } }
+    options: { ...common, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => anFmt(c.raw * 60000) } } }, scales: { ...common.scales, y: { ...common.scales.y, ticks: { ...common.scales.y.ticks, precision: 0, callback: v => v >= 60 ? (v / 60).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' h' : Math.round(v) + ' min' } } } }
   }));
 }
 
