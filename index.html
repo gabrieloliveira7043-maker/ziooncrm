@@ -2713,7 +2713,7 @@ body.card-dragging .kanban-card:hover { transform: none; }
     },
     async teamCall(path, body) { return callAdminApi(path, body); },
     async updateSubLogin(login, personName, perms) {
-      if (currentProfile && currentProfile.role !== 'admin') { await callAdminApi('/team/update', { login, name: personName, views: perms.views }); return; }
+      if (currentProfile && currentProfile.role !== 'admin') { await callAdminApi('/team/update', { login, name: personName, views: perms.views, chatLines: perms.chatLines || [] }); return; }
       const uid = await findUidByLogin(login);
       if (!uid) throw new Error('Login não encontrado.');
       await updateDoc(doc(db, 'users', uid), { personName, perms });
@@ -2738,7 +2738,7 @@ body.card-dragging .kanban-card:hover { transform: none; }
 })();
 </script>
 <link rel="stylesheet" href="tema-novo.css?v=5">
-<script src="icones.js?v=5"></script>
+<script src="icones.js?v=6"></script>
 <script src="cores.js?v=2"></script>
 </head>
 <body>
@@ -7585,8 +7585,38 @@ function subViewChecks(selected) {
     <div class="sub-views">${SUB_LOGIN_VIEWS.map(([v, label]) =>
     `<label class="sub-view"><input type="checkbox" value="${v}" ${!selected || selected.includes(v) ? 'checked' : ''}><span class="sub-box"></span>${escapeHtml(label)}</label>`).join('')}</div>`;
 }
+// Quais WhatsApps o login de equipe enxerga no Chat (só aparece com mais de um número conectado).
+function subChatLinesHtml(act, selected) {
+  if (act && !WHATSAPP_SETTINGS[normalizeActValue(act)] && !subChatLinesHtml._asked) {
+    subChatLinesHtml._asked = true;
+    ensureWaSettings(act).then(() => { document.querySelectorAll('.sublogin-box').forEach(b => refreshSubBox(b.dataset.parent)); });
+  }
+  const lines = act ? waLines(act) : [];
+  if (lines.length < 2) return '';
+  const sel = Array.isArray(selected) && selected.length ? selected : null;
+  return `<div class="sub-views-head"><span>WhatsApps no Chat</span><span style="font-weight:400;">${sel ? 'só os marcados' : 'todos'}</span></div>
+    <div class="sub-views sub-chatlines">${lines.map(l =>
+    `<label class="sub-view"><input type="checkbox" value="${escapeHtml(l.id)}" ${!sel || sel.includes(l.id) ? 'checked' : ''}><span class="sub-box"></span>${escapeHtml(l.label)}</label>`).join('')}</div>`;
+}
+// Lista vazia = todos (inclusive números conectados depois).
+function readSubChatLines(box) {
+  const all = [...box.querySelectorAll('.sub-chatlines input')];
+  const on = all.filter(i => i.checked).map(i => i.value);
+  return !all.length || on.length === all.length ? [] : on;
+}
+async function showSubLoginPass(login, btn) {
+  const out = btn.closest('.sub-row').querySelector('.sub-pass-shown');
+  if (out.style.display !== 'none') { out.style.display = 'none'; return; }
+  let pass = _subVault[login] || '';
+  if (!pass && !isAdmin) {
+    try { pass = (await window._fb.teamCall('/team/password-view', { login })).password || ''; } catch (e) { return subMsg(btn, 'Erro: ' + e.message, false); }
+    if (pass) _subVault[login] = pass;
+  }
+  out.textContent = pass || 'Senha não registrada (troque a senha abaixo para ela ficar salva)';
+  out.style.display = 'inline';
+}
 function subViewsAll(a, on) {
-  a.closest('.sub-new, .sub-item').querySelectorAll('.sub-views input').forEach(i => { i.checked = on; });
+  a.closest('.sub-new, .sub-item').querySelectorAll('.sub-views:not(.sub-chatlines) input').forEach(i => { i.checked = on; });
 }
 
 function subLoginsHtml(parentLogin, team) {
@@ -7613,9 +7643,11 @@ function subLoginsHtml(parentLogin, team) {
           <input class="field-input sub-name" value="${escapeHtml(sl.name)}" style="flex:1;min-width:140px;">
           <span class="mono sub-id">${escapeHtml(sl.login)}</span>
           ${team ? '' : `<button class="integ-btn" onclick="toggleRenameLogin(this)">Trocar login</button>`}
-          ${team ? '' : pass ? `<button class="integ-btn" onclick="copyText(_subVault['${lj}'], 'Senha copiada')">Copiar senha</button>` : ''}</div>
+          ${team ? `<button class="integ-btn" onclick="showSubLoginPass('${lj}', this)">${uiIco('lock')} Ver senha</button>` : pass ? `<button class="integ-btn" onclick="showSubLoginPass('${lj}', this)">${uiIco('lock')} Ver senha</button><button class="integ-btn" onclick="copyText(_subVault['${lj}'], 'Senha copiada')">Copiar senha</button>` : ''}
+          <span class="mono sub-pass-shown" style="display:none;"></span></div>
         ${team ? '' : renameLoginHtml(sl.login)}
         ${subViewChecks(views)}
+        ${subChatLinesHtml(sl.act, sl.perms && sl.perms.chatLines)}
         <div class="sub-actions">
           <button class="integ-btn primary" onclick="saveSubLogin('${lj}', this)">Salvar acessos</button>
           <span class="sub-sep"></span>
@@ -7647,7 +7679,7 @@ function subMsg(el, text, ok) {
   if (m) { m.textContent = text; m.style.color = ok ? 'var(--green)' : 'var(--red)'; }
   else showToast(text, ok ? 'success' : 'warning');
 }
-function readSubViews(box) { return [...box.querySelectorAll('.sub-views input:checked')].map(i => i.value); }
+function readSubViews(box) { return [...box.querySelectorAll('.sub-views:not(.sub-chatlines) input:checked')].map(i => i.value); }
 function refreshSubBox(parentLogin) {
   const box = [...document.querySelectorAll('.sublogin-box')].find(b => b.dataset.parent === parentLogin);
   if (box) box.innerHTML = subLoginsHtml(parentLogin, !isAdmin);
@@ -7741,12 +7773,14 @@ async function saveSubLogin(login, btn) {
   const item = btn.closest('.sub-item');
   const name = item.querySelector('.sub-name').value.trim();
   const views = readSubViews(item);
+  const chatLines = readSubChatLines(item);
   if (!name) return subMsg(btn, 'Informe o nome.', false);
   if (!views.length) return subMsg(btn, 'Marque pelo menos uma área.', false);
+  if (item.querySelector('.sub-chatlines') && !item.querySelector('.sub-chatlines input:checked')) return subMsg(btn, 'Marque pelo menos um WhatsApp para o Chat.', false);
   try {
-    await window._fb.updateSubLogin(login, name, { views });
+    await window._fb.updateSubLogin(login, name, { views, chatLines });
     const sl = SUB_LOGINS.find(x => x.login === login);
-    if (sl) { sl.name = name; sl.perms = { views }; }
+    if (sl) { sl.name = name; sl.perms = { views, chatLines }; }
     subMsg(btn, 'Salvo ✓ (vale no próximo acesso dessa pessoa)', true);
   } catch (e) { subMsg(btn, 'Erro: ' + e.message, false); }
 }
@@ -12978,7 +13012,7 @@ function onChatClientChange() {
     list.innerHTML = '<div class="chat-empty">Carregando conversas...</div>';
     _chatUnsub = window._fb.listenInboxChats(act, _chatLimit, (items, error) => {
       if (!items) { list.innerHTML = `<div class="chat-empty" style="color:var(--red);">Não foi possível carregar: ${escapeHtml(error && error.message || '')}</div>`; return; }
-      _chatItems = items.concat(Object.values(_chatExtra).filter(x => !items.some(i => i.id === x.id)));
+      _chatItems = items.concat(Object.values(_chatExtra).filter(x => !items.some(i => i.id === x.id))).filter(chatLineVisible);
       renderChatList();
       renderChatHeader();
       const open = items.find(c => c.id === _chatOpenKey);
@@ -13121,8 +13155,8 @@ function renderChatFilters() {
   box.innerHTML = CHAT_FILTERS.map(([k, label]) => {
     const n = _chatItems.filter(c => chatMatchesFilter(c, k, me)).length;
     return `<button class="chat-pill ${_chatFilter === k ? 'active' : ''}" onclick="setChatFilter('${k}')">${label}${k !== 'all' && n ? ` · ${n}` : ''}</button>`;
-  }).join('') + (_chatAct && waHasMultiple(_chatAct)
-    ? `<select class="field-input chat-line-select" onchange="_chatLineFilter=this.value;renderChatList()" title="Qual WhatsApp"><option value="all">Todos os WhatsApps</option>${waLines(_chatAct).map(l => `<option value="${escapeHtml(l.id)}" ${_chatLineFilter === l.id ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}</select>`
+  }).join('') + (_chatAct && chatLines(_chatAct).length > 1
+    ? `<select class="field-input chat-line-select" onchange="_chatLineFilter=this.value;renderChatList()" title="Qual WhatsApp"><option value="all">Todos os WhatsApps</option>${chatLines(_chatAct).map(l => `<option value="${escapeHtml(l.id)}" ${_chatLineFilter === l.id ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}</select>`
     : '');
 }
 
@@ -13138,7 +13172,7 @@ function renderChatList() {
   const term = (document.getElementById('chat-search').value || '').trim().toLowerCase();
   const termDigits = term.replace(/\D/g, '');
   const multiLine = waHasMultiple(_chatAct);
-  if (!multiLine) _chatLineFilter = 'all';
+  if (chatLines(_chatAct).length < 2) _chatLineFilter = 'all';
   const rows = _chatItems.filter(c => {
     if (!chatMatchesFilter(c, _chatFilter, me)) return false;
     if (_chatLineFilter !== 'all' && (c.line || waLineOfKey(c.id)) !== _chatLineFilter) return false;
@@ -14134,7 +14168,7 @@ function openNewChat(prefill) {
   document.getElementById('chat-main').innerHTML = `
     <div class="chat-head"><button class="chat-pill chat-back" onclick="closeChat()">←</button><div style="font-size:15px;font-weight:600;color:var(--text);">Nova conversa</div></div>
     <div style="padding:20px;max-width:420px;">
-      ${waHasMultiple(_chatAct) ? `<label class="field-label">Enviar pelo WhatsApp</label><select id="chat-new-line" class="field-input" style="margin-bottom:10px;">${waLines(_chatAct).map(l => `<option value="${escapeHtml(l.id)}" ${_chatLineFilter === l.id ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}</select>` : ''}
+      ${chatLines(_chatAct).length > 1 ? `<label class="field-label">Enviar pelo WhatsApp</label><select id="chat-new-line" class="field-input" style="margin-bottom:10px;">${chatLines(_chatAct).map(l => `<option value="${escapeHtml(l.id)}" ${_chatLineFilter === l.id ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}</select>` : ''}
       <label class="field-label">Número com DDD</label>
       <input id="chat-new-phone" class="field-input" placeholder="(61) 99999-9999" style="margin-bottom:10px;">
       <label class="field-label">Nome (opcional)</label>
@@ -14244,7 +14278,7 @@ async function sendNewChat() {
   const btn = document.getElementById('chat-new-btn');
   btn.disabled = true; fb.style.color = 'var(--muted2)'; fb.textContent = 'Enviando...';
   try {
-    const line = document.getElementById('chat-new-line') ? document.getElementById('chat-new-line').value : waDefaultLine(_chatAct);
+    const line = document.getElementById('chat-new-line') ? document.getElementById('chat-new-line').value : ((chatLines(_chatAct)[0] || {}).id || waDefaultLine(_chatAct));
     const r = await window._fb.whatsapp('/whatsapp/chat-send', _chatAct, { phone, name, text, line });
     if (document.getElementById('chat-new-save') && document.getElementById('chat-new-save').checked) await saveContactToBase(_chatAct, phone, name).catch(() => null);
     const me = chatMe();
@@ -14815,6 +14849,21 @@ function waLines(act) {
   return (s.mainRemoved && extra.length ? [] : [{ id: WA_MAIN, label: s.mainLabel || 'Principal' }]).concat(extra);
 }
 const waDefaultLine = act => waLines(act)[0].id;
+// Chat: WhatsApps que este login enxerga (perms.chatLines do login de equipe; vazio = todos).
+function chatAllowedLineIds() {
+  if (isAdmin) return null;
+  const p = window._fb && window._fb.getProfile && window._fb.getProfile();
+  const l = p && p.perms && Array.isArray(p.perms.chatLines) ? p.perms.chatLines : [];
+  return l.length ? l : null;
+}
+function chatLines(act) {
+  const ok = chatAllowedLineIds();
+  const all = waLines(act);
+  if (!ok) return all;
+  const mine = all.filter(l => ok.includes(l.id));
+  return mine.length ? mine : all.slice(0, 0);
+}
+const chatLineVisible = c => { const ok = chatAllowedLineIds(); return !ok || ok.includes(c.line || waLineOfKey(c.id)); };
 const waHasMultiple = act => waLines(act).length > 1;
 const waLineLabel = (act, id) => (waLines(act).find(l => l.id === (id || WA_MAIN)) || { label: 'Principal' }).label;
 const waLineOfKey = key => (String(key || '').match(/^([a-z0-9]{1,12})__/) || [])[1] || WA_MAIN;
