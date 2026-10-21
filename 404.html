@@ -18320,7 +18320,59 @@ function callWhatsApp(opts) {
   else window.location.href = `whatsapp://send?phone=${digits}`;
   if (!mobile) showToast(`Abrindo a conversa no ${target === 'web' ? 'WhatsApp Web' : 'aplicativo do WhatsApp'}: clique no ícone de telefone para ligar. (Toque aqui para trocar entre app e Web.)`, 'info', 7000,
     { onClick: () => setWaCallTarget('', null), clickLabel: 'Trocar onde abrir' });
-  if (lead) logWhatsAppCall(lead);
+  if (lead) { logWhatsAppCall(lead); askCallResultOnReturn(lead.id); }
+}
+
+// Ao voltar para o CRM depois de abrir o WhatsApp, pergunta como foi a ligação e grava no histórico.
+let _pendingCall = null;
+function askCallResultOnReturn(leadId) {
+  _pendingCall = { leadId, at: Date.now() };
+  const check = () => {
+    if (!_pendingCall || document.hidden || Date.now() - _pendingCall.at < 3000) return;
+    const id = _pendingCall.leadId;
+    _pendingCall = null;
+    window.removeEventListener('focus', check);
+    document.removeEventListener('visibilitychange', check);
+    openCallResult(id);
+  };
+  window.addEventListener('focus', check);
+  document.addEventListener('visibilitychange', check);
+}
+
+function openCallResult(leadId) {
+  const lead = getLeads().find(l => l.id === leadId);
+  if (!lead) return;
+  const id = escapeJsString(leadId);
+  openHuvenModal('Como foi a ligação?', `
+    <div style="font-size:13px;color:var(--text);margin-bottom:12px;">Ligação pelo WhatsApp com <b>${escapeHtml(lead.name || lead.phone || 'o lead')}</b>.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="saveCallResult('${id}', 'atendeu')">✅ Atendeu</button>
+      <button class="huv-btn" onclick="saveCallResult('${id}', 'nao_atendeu')">❌ Não atendeu</button>
+      <button class="huv-btn" style="margin-left:auto;" onclick="closeHuvenModal()">Pular</button>
+    </div>`, 420);
+}
+
+const CALL_RESULT_LABELS = { atendeu: '✅ atendeu', nao_atendeu: '❌ não atendeu' };
+async function saveCallResult(leadId, result, index) {
+  closeHuvenModal();
+  const lead = getLeads().find(l => l.id === leadId);
+  if (!lead) return;
+  const history = Array.isArray(lead.history) ? lead.history.slice() : [];
+  // A tentativa mais recente ainda sem resultado.
+  const idx = index != null && history[index] && history[index].call ? [history[index], index]
+    : history.map((h, i) => [h, i]).reverse().find(([h]) => h && h.call && !h.result);
+  if (!idx) return;
+  const h = { ...idx[0], result, stage: `📞 Ligação pelo WhatsApp · ${CALL_RESULT_LABELS[result]}${idx[0].by ? ' · ' + idx[0].by : ''}` };
+  history[idx[1]] = h;
+  lead.history = history;
+  const cached = (_leadsCache || []).find(l => l.id === lead.id);
+  if (cached && cached !== lead) cached.history = history;
+  try {
+    if (lead._docId) await window._fb.saveLeadsBatch([{ _docId: lead._docId, history }]);
+    else await saveLeadToDb(lead);
+    showToast(result === 'atendeu' ? 'Ligação registrada: atendeu.' : 'Ligação registrada: não atendeu.', 'success');
+    if (document.getElementById('history-modal')?.classList.contains('open')) showHistory(leadId);
+  } catch (e) { showToast('Não salvou o resultado: ' + e.message, 'error'); }
 }
 
 function setWaCallTarget(target, opts) {
@@ -18334,7 +18386,7 @@ function setWaCallTarget(target, opts) {
 async function logWhatsAppCall(lead) {
   const p = window._fb && window._fb.getProfile ? window._fb.getProfile() : null;
   const who = p ? (p.personName || p.name || p.login || '') : '';
-  const entry = { stage: '📞 Tentativa de ligação pelo WhatsApp' + (who ? ' · ' + who : ''), at: new Date().toLocaleString('pt-BR') };
+  const entry = { stage: '📞 Tentativa de ligação pelo WhatsApp' + (who ? ' · ' + who : ''), at: new Date().toLocaleString('pt-BR'), call: 'whatsapp', ...(who ? { by: who } : {}) };
   lead.history = [...(Array.isArray(lead.history) ? lead.history : []), entry];
   const cached = (_leadsCache || []).find(l => l.id === lead.id);
   if (cached && cached !== lead) cached.history = lead.history;
@@ -18362,6 +18414,10 @@ function showHistory(id) {
         <div>
           <div style="font-size:13px;font-weight:500;color:var(--text);">${h.stage}</div>
           <div style="font-size:11px;color:var(--muted);font-family:JetBrains Mono,monospace;">${h.at}</div>
+          ${h.call ? `<div style="display:flex;gap:6px;margin-top:4px;">
+            <button class="chat-pill" style="padding:2px 8px;font-size:11px;${h.result === 'atendeu' ? 'background:var(--green-dim);' : ''}" onclick="saveCallResult('${escapeJsString(lead.id)}', 'atendeu', ${i})">✅ Atendeu</button>
+            <button class="chat-pill" style="padding:2px 8px;font-size:11px;${h.result === 'nao_atendeu' ? 'background:var(--red-dim);' : ''}" onclick="saveCallResult('${escapeJsString(lead.id)}', 'nao_atendeu', ${i})">❌ Não atendeu</button>
+          </div>` : ''}
         </div>
       </div>`).join('');
   }
