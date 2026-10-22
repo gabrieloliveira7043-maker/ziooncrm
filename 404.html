@@ -2169,6 +2169,25 @@ body.card-dragging .kanban-card:hover { transform: none; }
         act: data.act ? normalizeAct(data.act) : null,
         adAccount: data.adAccount !== undefined ? (data.adAccount || '') : null
       };
+      // "Ver como" (só admin): a aba abre na visão de outro login, sem senha. O acesso continua sendo o do admin.
+      try {
+        const asked = new URLSearchParams(location.search).get('verComo');
+        if (asked) sessionStorage.setItem('crm_view_as', asked);
+        const viewAs = sessionStorage.getItem('crm_view_as');
+        if (viewAs && data.role === 'admin') {
+          const uid = await findUidByLogin(viewAs);
+          const tsnap = uid ? await getDoc(doc(db, 'users', uid)) : null;
+          if (tsnap && tsnap.exists()) {
+            const t = tsnap.data();
+            currentProfile = {
+              uid, ...t,
+              act: t.act ? normalizeAct(t.act) : null,
+              adAccount: t.adAccount !== undefined ? (t.adAccount || '') : null,
+              viewAs: { login: viewAs, adminUid: user.uid, adminLogin: data.login || 'admin' }
+            };
+          } else sessionStorage.removeItem('crm_view_as');
+        } else if (viewAs) sessionStorage.removeItem('crm_view_as');
+      } catch (e) { console.warn('Ver como falhou:', e); }
       return currentProfile;
     },
     // Resolve com o perfil de quem já estava logado neste navegador, ou null.
@@ -2183,6 +2202,7 @@ body.card-dragging .kanban-card:hover { transform: none; }
     },
     async logoutUser() {
       currentProfile = null;
+      try { sessionStorage.removeItem('crm_view_as'); } catch (e) {}
       return await signOut(auth);
     },
     async changeOwnPassword(currentPassword, newPassword) {
@@ -2283,7 +2303,9 @@ body.card-dragging .kanban-card:hover { transform: none; }
     async addAudit(act, entry) {
       const u = auth.currentUser;
       const p = currentProfile || {};
-      await addDoc(collection(db, 'historico', normalizeAct(act), 'eventos'), { ...entry, act: normalizeAct(act), at: new Date().toISOString(), uid: u ? u.uid : '', userName: p.name || p.login || (u && u.email) || '', role: p.role || '' });
+      // No "Ver como" quem fez foi o admin: fica registrado assim no Histórico.
+      const who = p.viewAs ? `Admin (vendo como ${p.personName || p.name || p.viewAs.login})` : (p.name || p.login || (u && u.email) || '');
+      await addDoc(collection(db, 'historico', normalizeAct(act), 'eventos'), { ...entry, act: normalizeAct(act), at: new Date().toISOString(), uid: u ? u.uid : '', userName: who, role: p.viewAs ? 'admin' : (p.role || '') });
     },
     async listAudit(act, max) {
       const snap = await getDocs(query(collection(db, 'historico', normalizeAct(act), 'eventos'), orderBy('at', 'desc'), limit(max || 400)));
@@ -7576,7 +7598,7 @@ function mainLoginPermsHtml(login) {
   if (_mainLoginPerms === null) return '<div class="sub-empty">Não foi possível carregar as áreas do login principal. Recarregue a página para tentar de novo.</div>';
   const views = _mainLoginPerms[login] || null;
   return `<div class="sub-item main-perms" data-mainlogin="${escapeHtml(login)}">
-    <div class="sub-head-t">Áreas do login principal <small class="main-perms-count">${mainLoginPermsLabel(views)}</small></div>
+    <div class="sub-head-t" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">Áreas do login principal <small class="main-perms-count">${mainLoginPermsLabel(views)}</small><button class="integ-btn" style="margin-left:auto;" onclick="viewAsLogin('${escapeJsString(login)}')" title="Abre em outra aba o CRM como este login vê (sem senha)">${uiIco('user')} Ver como</button></div>
     ${subViewChecks(views)}
     ${subChatLinesHtml(CREDENTIALS[login] && CREDENTIALS[login].act, _mainChatLines[login], _mainFunnelScope[login])}
     <div class="sub-actions"><button class="integ-btn primary" onclick="saveMainLoginPerms('${escapeJsString(login)}', this)">Salvar acessos</button><span class="sub-msg"></span></div>
@@ -7665,6 +7687,7 @@ function subLoginsHtml(parentLogin, team) {
         <div class="sub-row"><div class="sub-av">${escapeHtml((sl.name || '?').trim().charAt(0).toUpperCase())}</div>
           <input class="field-input sub-name" value="${escapeHtml(sl.name)}" style="flex:1;min-width:140px;">
           <span class="mono sub-id">${escapeHtml(sl.login)}</span>
+          ${team ? '' : `<button class="integ-btn" onclick="viewAsLogin('${lj}')" title="Abre em outra aba o CRM como este login vê (sem senha)">${uiIco('user')} Ver como</button>`}
           ${team ? '' : `<button class="integ-btn" onclick="toggleRenameLogin(this)">Trocar login</button>`}
           ${team ? `<button class="integ-btn" onclick="showSubLoginPass('${lj}', this)">${uiIco('lock')} Ver senha</button>` : pass ? `<button class="integ-btn" onclick="showSubLoginPass('${lj}', this)">${uiIco('lock')} Ver senha</button><button class="integ-btn" onclick="copyText(_subVault['${lj}'], 'Senha copiada')">Copiar senha</button>` : ''}
           <span class="mono sub-pass-shown" style="display:none;"></span></div>
@@ -19857,7 +19880,28 @@ window.clearUnreadLeadNotifications = clearUnreadLeadNotifications;
 // Sessão antiga (senha comparada no navegador) não é mais usada; o Firebase Auth guarda o login.
 try { localStorage.removeItem('catapulta_session_v1'); } catch(e) {}
 
+// Faixa do modo "Ver como" e o botão que abre a visão de um login em outra aba.
+function viewAsLogin(login) {
+  window.open(location.pathname + '?verComo=' + encodeURIComponent(login), '_blank');
+}
+function exitViewAs() {
+  try { sessionStorage.removeItem('crm_view_as'); } catch (e) {}
+  location.href = location.pathname;
+}
+function renderViewAsBar(profile) {
+  if (!profile || !profile.viewAs || document.getElementById('view-as-bar')) return;
+  const who = profile.personName || profile.name || profile.login;
+  const client = profile.act ? (CLIENT_NAMES[profile.act] || '') : '';
+  const bar = document.createElement('div');
+  bar.id = 'view-as-bar';
+  bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#C9A24B;color:#1a1a1a;font-size:13px;font-weight:600;padding:7px 14px;display:flex;align-items:center;gap:10px;justify-content:center;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,.25);';
+  bar.innerHTML = `<span>${uiIco('user', 14)} Vendo como <b>${escapeHtml(who)}</b>${client && client !== who ? ' (' + escapeHtml(client) + ')' : ''} · login ${escapeHtml(profile.viewAs.login)} · o que você fizer aqui fica registrado como admin</span><button onclick="exitViewAs()" style="background:#1a1a1a;color:#fff;border:0;border-radius:6px;padding:4px 10px;font-weight:600;cursor:pointer;">Voltar ao admin</button>`;
+  document.body.appendChild(bar);
+  document.body.style.paddingTop = (bar.offsetHeight || 34) + 'px';
+}
+
 function applyProfileLocally(profile) {
+  renderViewAsBar(profile);
   if (!profile || !profile.act) return;
   CREDENTIALS[profile.login] = { pass: null, act: profile.act };
   if (profile.name) CLIENT_NAMES[profile.act] = profile.name;
