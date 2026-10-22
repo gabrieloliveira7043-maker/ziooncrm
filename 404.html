@@ -3246,6 +3246,9 @@ body.card-dragging .kanban-card:hover { transform: none; }
           <select class="crm-month-select" id="crm-month-filter" onchange="onCrmMonthChange()" title="Filtrar leads por data de chegada: hoje, semana, mês ou período">
             <option value="all">Geral</option>
           </select>
+          <select class="crm-month-select" id="crm-attendant-filter" onchange="_crmAttendantFilter = this.value; renderKanban(); renderFunilChart(); renderFunilEvolucao();" title="Filtrar pelo atendente (WhatsApp que atende o lead)" style="display:none;">
+            <option value="all">Todos os atendentes</option>
+          </select>
 
           <button class="btn-manage-stages" onclick="openStagesModal()" style="margin-right:8px;"><i data-ico="gear"></i> Colunas</button>
           <button class="btn-manage-stages" id="btn-cfg-campos" onclick="openFieldsModal()" style="margin-right:8px; display:none;"><i data-ico="gear"></i> Campos</button>
@@ -17580,6 +17583,67 @@ function bindCrmBoardScrollbar() {
   }
   window.addEventListener('orientationchange', () => setTimeout(lockMobileKanbanColumnScroll, 250));
 }
+// ----- Responsável do card: o WhatsApp que atende o lead (nome do atendente do número, ou o nome do número) -----
+let _crmAttendantFilter = 'all';
+// Mesma chave das conversas do Chat (sem o 9º dígito dos celulares com DDD).
+function leadChatBase(phone) {
+  let d = onlyDigits(phone);
+  if (!d) return '';
+  if (!d.startsWith('55')) d = '55' + d;
+  if (d.length === 13 && d[4] === '9') d = d.slice(0, 4) + d.slice(5);
+  return d;
+}
+// Número de cada conversa (uma leitura das conversas mais recentes por cliente, na sessão), para os cards sem número gravado.
+let _funnelChatLines = {};
+function loadFunnelChatLines(act) {
+  if (_funnelChatLines[act] || !window._fb || !window._fb.listenInboxChats) return;
+  _funnelChatLines[act] = { loading: true, map: {} };
+  let unsub = null;
+  unsub = window._fb.listenInboxChats(act, 600, items => {
+    const map = {};
+    (items || []).forEach(c => { if (c.isGroup) return; const base = String(c.id || '').replace(/^[a-z0-9]{1,12}__/, ''); map[base] = map[base] || c.line || waLineOfKey(c.id); });
+    _funnelChatLines[act] = { map };
+    setTimeout(() => { try { unsub && unsub(); } catch (e) {} }, 0);
+    if (items && items.length) renderKanban();
+  });
+}
+function leadLineFromChats(lead) {
+  const act = normalizeActValue(lead.act);
+  const base = leadChatBase(lead.phone);
+  if (!base) return '';
+  if (typeof _chatItems !== 'undefined' && typeof _chatAct !== 'undefined' && _chatAct === act) {
+    const c = _chatItems.find(x => !x.isGroup && String(x.id || '').replace(/^[a-z0-9]{1,12}__/, '') === base);
+    if (c) return c.line || waLineOfKey(c.id);
+  }
+  return (_funnelChatLines[act] && _funnelChatLines[act].map[base]) || '';
+}
+function leadAttendantLine(lead) {
+  return lead.whatsappLine || (lead.automation && lead.automation.line) || leadLineFromChats(lead) || '';
+}
+function leadAttendant(lead) {
+  const line = leadAttendantLine(lead);
+  if (!line) return null;
+  const l = waLines(lead.act).find(x => x.id === line);
+  if (!l) return null;
+  return { id: line, name: l.attendant || l.label };
+}
+let _attFilterAsked = {};
+function renderAttendantFilter(filterAct) {
+  const sel = document.getElementById('crm-attendant-filter');
+  if (!sel) return;
+  const act = filterAct ? normalizeActValue(filterAct) : '';
+  if (act && !WHATSAPP_SETTINGS[act] && !_attFilterAsked[act]) {
+    _attFilterAsked[act] = true;
+    ensureWaSettings(act).then(() => { if (WHATSAPP_SETTINGS[act]) { renderKanban(); } });
+  }
+  const lines = act ? waLines(act) : [];
+  if (!act || lines.length < 2) { sel.style.display = 'none'; _crmAttendantFilter = 'all'; return; }
+  loadFunnelChatLines(act);
+  if (_crmAttendantFilter !== 'all' && _crmAttendantFilter !== 'none' && !lines.some(l => l.id === _crmAttendantFilter)) _crmAttendantFilter = 'all';
+  sel.innerHTML = `<option value="all">Todos os atendentes</option>${lines.map(l => `<option value="${escapeHtml(l.id)}" ${_crmAttendantFilter === l.id ? 'selected' : ''}>${escapeHtml(l.attendant || l.label)}</option>`).join('')}<option value="none" ${_crmAttendantFilter === 'none' ? 'selected' : ''}>Sem responsável</option>`;
+  sel.style.display = '';
+}
+
 function renderKanban() {
   // Com um card sendo arrastado, redesenhar tiraria o card da mão: redesenha quando ele for solto.
   if (_cardDrag && _cardDrag.active) { _kanbanRenderDeferred = true; return; }
@@ -17600,6 +17664,8 @@ function renderKanban() {
     leads = leads.filter(l => leadPipeline(l) === boardPipe);
   }
   if (filterAct && _mqlFilter && _mqlFilter.act === normalizeActValue(filterAct)) leads = leads.filter(l => mqlLeadMatches(l, _mqlFilter));
+  renderAttendantFilter(filterAct);
+  if (filterAct && _crmAttendantFilter !== 'all') leads = leads.filter(l => { const a = leadAttendant(l); return _crmAttendantFilter === 'none' ? !a : !!a && a.id === _crmAttendantFilter; });
   renderPipelineBar(filterAct);
   if (filterAct) loadColumnAutomations(filterAct);
   leads = sortCrmLeadsForKanban(leads, filterAct);
@@ -17798,6 +17864,9 @@ function renderKanban() {
       (Array.isArray(lead.tags) ? lead.tags : []).map(id => leadTagsById[id]).filter(Boolean).forEach(t => chips.push(tagChipHtml(t)));
       const autoChip = automationCardChip(lead);
       if (autoChip) chips.push(autoChip);
+      const att = waLines(lead.act).length > 1 || (waLines(lead.act)[0] || {}).attendant ? leadAttendant(lead) : null;
+      if (att) chips.push(`<span class="kc-chip" style="background:var(--blue-dim);color:var(--blue);" title="Responsável: WhatsApp que atende este lead">${uiIco('user', 11)} ${escapeHtml(limitText(att.name, 24))}</span>`);
+      if (lead.whatsappInvalid) chips.push(`<span class="kc-chip" style="background:rgba(248,113,113,.14);color:var(--red);" title="A automação tentou enviar e este número não tem WhatsApp. Corrija o telefone no card.">${uiIco('alert', 11)} Sem WhatsApp</span>`);
       if (lead.redeSocial && !String(lead.origem || '').toLowerCase().includes(String(lead.redeSocial).toLowerCase())) chips.push(`<span class="kc-chip">${escapeHtml(limitText(lead.redeSocial, 30))}</span>`);
       if (chips.length) cardHTML += `<div class="kc-chips">${chips.join('')}</div>`;
       cardHTML += `<div class="kc-top"><div class="card-name">${escapeHtml(limitText(lead.name || 'Lead sem nome', 120))}</div>${lead.valor ? `<span class="card-valor">R$ ${escapeHtml(limitText(lead.valor, 40))}</span>` : ''}</div>`;
@@ -18287,6 +18356,9 @@ async function saveLead() {
     ...((!existing || existing.stage !== newStage) ? { stageChangedAt: new Date().toISOString() } : (existing.stageChangedAt ? { stageChangedAt: existing.stageChangedAt } : {})),
     createdAt: createdAtFromDateInput(document.getElementById('lead-created-at') ? document.getElementById('lead-created-at').value : '', existing ? existing.createdAt : null),
     updatedAt: new Date().toISOString(),
+    ...(existing && existing.whatsappLine ? { whatsappLine: existing.whatsappLine } : {}),
+    // Telefone corrigido: some o aviso "Sem WhatsApp" (a próxima tentativa confere de novo).
+    ...(existing && existing.whatsappInvalid ? { whatsappInvalid: onlyDigits(existing.phone) === onlyDigits(document.getElementById('lead-phone').value) } : {}),
     _docId: existing ? (existing._docId || null) : null
   };
   if (_leadsCache) {
