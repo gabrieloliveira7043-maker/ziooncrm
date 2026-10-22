@@ -11123,7 +11123,7 @@ async function renderAutomacoesView() {
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="huv-btn" style="height:40px;padding:0 16px;" onclick="_aiPreset=null;_flowReturn=null;openAiFlowModal()">${uiIco('sparkles')} Criar com IA</button>
-        <button class="btn-add-lead" style="height:40px;padding:0 16px;" onclick="_flowReturn=null;openFlowEditor(null)">+ Nova automação</button>
+        <button class="btn-add-lead" style="height:40px;padding:0 16px;" onclick="_flowReturn=null;openFlowPresets()">+ Nova automação</button>
       </div>
     </div>
     <div class="huv-grid">
@@ -11336,6 +11336,90 @@ function flowFromSteps(f, act) {
   return { nodes, edges };
 }
 
+// ----- Modelos prontos de automação: o cliente escolhe um ao criar e ajusta os textos -----
+// Acha a coluna do funil pelo nome (ex.: "contato", "perdido"); sem achar, o bloco fica para o cliente escolher.
+function flowFindStage(stages, ...words) {
+  const norm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  for (const w of words) { const s = (stages || []).find(x => norm(x.label).includes(w)); if (s) return s; }
+  return null;
+}
+function flowChain(specs) {
+  // specs: [{ type, data, port?, from? }] em sequência; devolve { nodes, edges } com posições em linha.
+  const nodes = [], edges = [];
+  specs.forEach((sp, i) => {
+    const id = flowUid();
+    nodes.push({ id, type: sp.type, x: sp.x != null ? sp.x : 40 + i * 290, y: sp.y != null ? sp.y : 160, data: sp.data || {} });
+    sp._id = id;
+    const from = sp.from != null ? specs[sp.from] : (i ? specs[i - 1] : null);
+    if (from) edges.push({ from: from._id, port: sp.port || 'out', to: id });
+  });
+  return { nodes, edges };
+}
+const flowMove = st => ({ stage: st ? st.id : '', stageLabel: st ? st.label : '' });
+const FLOW_PRESETS = [
+  { id: 'boas-vindas', icon: 'message', title: 'Boas-vindas ao novo lead',
+    desc: 'Assim que o lead entra, recebe a 1ª mensagem. Quando responder (a qualquer momento), o card vai para "Em contato".',
+    build: st => ({ name: 'Boas-vindas · novo lead', stopOnReply: false, ...flowChain([
+      { type: 'trigger', data: { stage: (st[0] || {}).id || 'novo' } },
+      { type: 'message', data: { kind: 'text', templates: ['Oi {primeiro_nome}, tudo bem? Aqui é {atendente}! Recebi seu contato e vou te ajudar por aqui. Me conta: o que você está buscando?', 'Olá {primeiro_nome}! Sou {atendente} e vi que você se cadastrou agora. Posso te ajudar com mais informações?'] } },
+      { type: 'condition', data: { check: 'replied', anyTime: true } },
+      { type: 'move', port: 'yes', data: flowMove(flowFindStage(st, 'contato', 'atendimento', 'conversa')) }]) }) },
+  { id: 'abordagem-cobranca', icon: 'bolt', title: '1ª mensagem + cobrança',
+    desc: 'Manda a 1ª mensagem, espera 2 horas e, se o lead não respondeu, manda "conseguiu ver?". Respondeu: vai para "Em contato".',
+    build: st => ({ name: 'Abordagem com cobrança', stopOnReply: false, ...flowChain([
+      { type: 'trigger', data: { stage: (st[0] || {}).id || 'novo' } },
+      { type: 'message', data: { kind: 'text', templates: ['Oi {primeiro_nome}, tudo bem? Aqui é {atendente}. Recebi seu cadastro e quero te ajudar. Qual o melhor horário para conversarmos?'] } },
+      { type: 'condition', data: { check: 'replied', waitAmount: 2, waitUnit: 'h' } },
+      { type: 'move', port: 'yes', y: 60, data: flowMove(flowFindStage(st, 'contato', 'atendimento')) },
+      { type: 'message', port: 'no', from: 2, x: 910, y: 280, data: { kind: 'text', templates: ['{primeiro_nome}, conseguiu ver minha mensagem? 🙋‍♂️'] } }]) }) },
+  { id: 'followup-3', icon: 'clock', title: 'Follow-up em 3 toques',
+    desc: 'Para quem não respondeu: mensagens no dia 1, dia 3 e dia 7. Para sozinho quando o lead responde.',
+    build: st => ({ name: 'Follow-up 3 toques', stopOnReply: true, ...flowChain([
+      { type: 'trigger', data: { stage: (flowFindStage(st, 'contato', 'sem resposta') || st[0] || {}).id || 'novo' } },
+      { type: 'wait', data: { amount: 1, unit: 'd' } },
+      { type: 'message', data: { kind: 'text', templates: ['Oi {primeiro_nome}, tudo certo? Passando para saber se ficou alguma dúvida. Estou por aqui!'] } },
+      { type: 'wait', data: { amount: 2, unit: 'd' } },
+      { type: 'message', data: { kind: 'text', templates: ['{primeiro_nome}, separei um tempo hoje para te atender. Quer que eu te explique como funciona em 5 minutos?'] } },
+      { type: 'wait', data: { amount: 4, unit: 'd' } },
+      { type: 'message', data: { kind: 'text', templates: ['{primeiro_nome}, vou parar de te chamar por aqui para não incomodar. Se fizer sentido mais pra frente, é só me mandar um "oi" que eu te ajudo. Abraço!'] } }]) }) },
+  { id: 'reativar', icon: 'swap', title: 'Reativar lead parado',
+    desc: 'Lead que ficou sem resposta: tenta reativar em 2 mensagens e, sem resposta, move o card para "Perdido".',
+    build: st => ({ name: 'Reativar lead parado', stopOnReply: true, ...flowChain([
+      { type: 'trigger', data: { stage: (flowFindStage(st, 'sem resposta', 'parado', 'contato') || st[0] || {}).id || 'novo' } },
+      { type: 'wait', data: { amount: 1, unit: 'd' } },
+      { type: 'message', data: { kind: 'text', templates: ['Oi {primeiro_nome}! Ainda tem interesse? Tenho uma condição especial essa semana e lembrei de você.'] } },
+      { type: 'wait', data: { amount: 3, unit: 'd' } },
+      { type: 'message', data: { kind: 'text', templates: ['{primeiro_nome}, última mensagem por aqui: posso te ajudar com algo ou encerro seu atendimento?'] } },
+      { type: 'wait', data: { amount: 2, unit: 'd' } },
+      { type: 'move', data: flowMove(flowFindStage(st, 'perdid')) }]) }) },
+  { id: 'pos-venda', icon: 'checkCircle', title: 'Pós-venda e indicação',
+    desc: 'Quando o card vai para "Fechado": agradece na hora e, 7 dias depois, pede uma avaliação/indicação.',
+    build: st => ({ name: 'Pós-venda', stopOnReply: false, ...flowChain([
+      { type: 'trigger', data: { stage: (flowFindStage(st, 'fechad', 'ganho', 'venda') || st[st.length - 1] || {}).id || 'fechado' } },
+      { type: 'message', data: { kind: 'text', templates: ['{primeiro_nome}, muito obrigado pela confiança! Qualquer coisa que precisar, é só chamar aqui. 🙌'] } },
+      { type: 'wait', data: { amount: 7, unit: 'd' } },
+      { type: 'message', data: { kind: 'text', templates: ['Oi {primeiro_nome}! Como está sendo sua experiência? Se puder indicar alguém que também vá gostar, me manda o contato que eu cuido com carinho.'] } }]) }) },
+  { id: 'ia', icon: 'bot', title: 'Atendimento pela IA',
+    desc: 'Manda a 1ª mensagem e o Agente de IA assume a conversa: qualifica e marca a reunião. Precisa do Agente de IA ligado.',
+    build: st => ({ name: 'Atendimento com IA', stopOnReply: true, ...flowChain([
+      { type: 'trigger', data: { stage: (st[0] || {}).id || 'novo' } },
+      { type: 'message', data: { kind: 'text', templates: ['Oi {primeiro_nome}, tudo bem? Recebi seu cadastro! Posso te fazer umas perguntas rápidas para te ajudar melhor?'] } },
+      { type: 'ai', data: {} }]) }) }
+];
+function openFlowPresets() {
+  const act = flowAct();
+  if (!act) return showToast('Escolha o cliente no topo do menu.', 'warning');
+  const card = (id, icon, title, desc) => `<button type="button" onclick="closeHuvenModal(); openFlowEditor(null, ${id ? `{ preset: '${id}' }` : '{}'})" style="text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px;cursor:pointer;color:var(--text);display:flex;flex-direction:column;gap:6px;">
+      <span style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;">${uiIco(icon, 16)} ${escapeHtml(title)}</span>
+      <span style="font-size:12.5px;color:var(--muted2);line-height:1.4;">${escapeHtml(desc)}</span></button>`;
+  openHuvenModal('Nova automação · escolha um modelo', `
+    <div class="integ-muted" style="margin-bottom:10px;">O modelo já vem montado com textos de exemplo. Ajuste as mensagens e as colunas, e ligue quando estiver pronto (ele abre desligado).</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;">
+      ${FLOW_PRESETS.map(p => card(p.id, p.icon, p.title, p.desc)).join('')}
+      ${card('', 'edit', 'Começar do zero', 'Abre o editor com um fluxo simples para você montar do seu jeito.')}
+    </div>`, 760);
+}
+
 function openFlowEditor(id, opts) {
   const act = (opts && opts.act) || flowAct();
   if (!act) return showToast('Escolha o cliente no topo do menu.', 'warning');
@@ -11346,6 +11430,10 @@ function openFlowEditor(id, opts) {
     _flow = JSON.parse(JSON.stringify(src));
     if (!Array.isArray(_flow.nodes)) Object.assign(_flow, flowFromSteps(src, act));
   } else {
+    const preset = opts && opts.preset ? FLOW_PRESETS.find(p => p.id === opts.preset) : null;
+    if (preset) {
+      _flow = { act, active: false, onReply: { moveTo: '' }, hours: { enabled: true, start: 8, end: 20 }, ...preset.build(stages) };
+    } else {
     const t = flowUid(), w1 = flowUid(), m1 = flowUid(), w2 = flowUid(), m2 = flowUid();
     _flow = {
       act, name: 'Nova automação', active: true, stopOnReply: true, onReply: { moveTo: '' }, hours: { enabled: true, start: 8, end: 20 },
@@ -11358,6 +11446,7 @@ function openFlowEditor(id, opts) {
       ],
       edges: [{ from: t, port: 'out', to: w1 }, { from: w1, port: 'out', to: m1 }, { from: m1, port: 'out', to: w2 }, { from: w2, port: 'out', to: m2 }]
     };
+    }
   }
   _flow.act = act;
   _flowSel = null;
