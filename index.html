@@ -2663,16 +2663,18 @@ body.card-dragging .kanban-card:hover { transform: none; }
         if (x.login && !x.parentLogin) {
           out[x.login] = x.perms && Array.isArray(x.perms.views) ? x.perms.views : null;
           _mainChatLines[x.login] = x.perms && Array.isArray(x.perms.chatLines) ? x.perms.chatLines : [];
+          _mainFunnelScope[x.login] = x.perms && x.perms.funnelScope === 'mine' ? 'mine' : 'all';
         }
       });
       return out;
     },
     // chatLines: WhatsApps que o login enxerga no Chat (vazio = todos).
-    async setClientLoginPerms(login, views, chatLines) {
+    async setClientLoginPerms(login, views, chatLines, funnelScope) {
       const uid = await findUidByLogin(login);
       if (!uid) throw new Error('Login não encontrado.');
       const lines = Array.isArray(chatLines) ? chatLines : [];
-      await updateDoc(doc(db, 'users', uid), { perms: views || lines.length ? { views: views || null, chatLines: lines } : null });
+      const scope = funnelScope === 'mine' ? 'mine' : 'all';
+      await updateDoc(doc(db, 'users', uid), { perms: views || lines.length || scope === 'mine' ? { views: views || null, chatLines: lines, funnelScope: scope } : null });
     },
     // Só admin. Troca o login de acesso (o nome usado para entrar): cria o novo no Firebase Auth com a senha dada,
     // copia o perfil, leva junto os logins extras (se for o principal) e a senha do cofre, e apaga o antigo.
@@ -2718,7 +2720,7 @@ body.card-dragging .kanban-card:hover { transform: none; }
     },
     async teamCall(path, body) { return callAdminApi(path, body); },
     async updateSubLogin(login, personName, perms) {
-      if (currentProfile && currentProfile.role !== 'admin') { await callAdminApi('/team/update', { login, name: personName, views: perms.views, chatLines: perms.chatLines || [] }); return; }
+      if (currentProfile && currentProfile.role !== 'admin') { await callAdminApi('/team/update', { login, name: personName, views: perms.views, chatLines: perms.chatLines || [], funnelScope: perms.funnelScope || 'all' }); return; }
       const uid = await findUidByLogin(login);
       if (!uid) throw new Error('Login não encontrado.');
       await updateDoc(doc(db, 'users', uid), { personName, perms });
@@ -3350,6 +3352,10 @@ body.card-dragging .kanban-card:hover { transform: none; }
         <div class="modal-field">
           <label class="modal-label">Data de criação do lead</label>
           <input type="date" class="modal-input" id="lead-created-at">
+        </div>
+        <div class="modal-field" id="field-responsavel" style="display:none;">
+          <label class="modal-label">Responsável (WhatsApp)</label>
+          <select class="modal-select" id="lead-responsavel"></select>
         </div>
         <div class="modal-field">
           <label class="modal-label">Etapa</label>
@@ -5180,7 +5186,7 @@ function renderFunilChart() {
   // Idêntico ao renderKanban
   const selC = document.getElementById('crm-client-select');
   const filterAct = isAdmin ? (selC ? (selC.value === 'all' ? null : selC.value) : null) : crmClientFilter;
-  let leads = getLeads();
+  let leads = getLeads().filter(leadVisibleToMe);
   if (filterAct) leads = leads.filter(l => leadMatchesClient(l, filterAct));
   try { leads = filterLeadsByCrmMonth(leads); } catch(e) { console.warn('Filtro mensal do CRM ignorado:', e); }
 
@@ -5261,7 +5267,7 @@ function renderFunilEvolucao() {
   const selE = document.getElementById('crm-client-select');
   const fromSelE = selE && selE.value !== 'all' ? selE.value : null;
   const filterActE = isAdmin ? (fromSelE || crmClientFilter) : crmClientFilter;
-  let leads = getLeads();
+  let leads = getLeads().filter(leadVisibleToMe);
   if (filterActE) leads = leads.filter(l => leadMatchesClient(l, filterActE));
   try { leads = filterLeadsByCrmMonth(leads); } catch(e) { console.warn('Filtro mensal do CRM ignorado:', e); }
 
@@ -5318,7 +5324,7 @@ function currentCrmFilteredLeads() {
   const sel = document.getElementById('crm-client-select');
   const fromSel = sel && sel.value !== 'all' ? sel.value : null;
   const filterAct = isAdmin ? (fromSel || crmClientFilter) : crmClientFilter;
-  let leads = getLeads();
+  let leads = getLeads().filter(leadVisibleToMe);
   if (filterAct) leads = leads.filter(l => leadMatchesClient(l, filterAct));
   try { leads = filterLeadsByCrmMonth(leads); } catch(e) {}
   return { leads, filterAct };
@@ -7330,7 +7336,7 @@ function renderAtendimento() {
   const empty = document.getElementById('atendimento-empty');
   if (!list) return;
 
-  let leads = getLeads();
+  let leads = getLeads().filter(leadVisibleToMe);
 
   // Filtrar por cliente logado (igual ao CRM)
   if (!isAdmin && activeClient && activeClient.account) {
@@ -7562,6 +7568,7 @@ async function renderAdminLogins() {
 // ----- Áreas que o login principal do cliente pode abrir (o admin libera ou tira, como nos logins extras) -----
 let _mainLoginPerms = {};
 let _mainChatLines = {};
+let _mainFunnelScope = {};
 function mainLoginPermsLabel(views) {
   return views ? `${views.length} de ${SUB_LOGIN_VIEWS.length} áreas liberadas` : 'acesso a todas as áreas';
 }
@@ -7571,7 +7578,7 @@ function mainLoginPermsHtml(login) {
   return `<div class="sub-item main-perms" data-mainlogin="${escapeHtml(login)}">
     <div class="sub-head-t">Áreas do login principal <small class="main-perms-count">${mainLoginPermsLabel(views)}</small></div>
     ${subViewChecks(views)}
-    ${subChatLinesHtml(CREDENTIALS[login] && CREDENTIALS[login].act, _mainChatLines[login])}
+    ${subChatLinesHtml(CREDENTIALS[login] && CREDENTIALS[login].act, _mainChatLines[login], _mainFunnelScope[login])}
     <div class="sub-actions"><button class="integ-btn primary" onclick="saveMainLoginPerms('${escapeJsString(login)}', this)">Salvar acessos</button><span class="sub-msg"></span></div>
   </div>`;
 }
@@ -7581,12 +7588,14 @@ async function saveMainLoginPerms(login, btn) {
   if (!picked.length) return subMsg(btn, 'Marque pelo menos uma área.', false);
   if (item.querySelector('.sub-chatlines') && !item.querySelector('.sub-chatlines input:checked')) return subMsg(btn, 'Marque pelo menos um WhatsApp para o Chat.', false);
   const chatLines = readSubChatLines(item);
+  const funnelScope = readSubFunnelScope(item);
   // Tudo marcado = sem restrição (áreas novas que surgirem também ficam liberadas).
   const views = picked.length === SUB_LOGIN_VIEWS.length ? null : picked;
-  const ok = await withSaveFeedback(btn, () => window._fb.setClientLoginPerms(login, views, chatLines));
+  const ok = await withSaveFeedback(btn, () => window._fb.setClientLoginPerms(login, views, chatLines, funnelScope));
   if (!ok) return;
   _mainLoginPerms[login] = views;
   _mainChatLines[login] = chatLines;
+  _mainFunnelScope[login] = funnelScope;
   const count = item.querySelector('.main-perms-count');
   if (count) count.textContent = mainLoginPermsLabel(views);
   subMsg(btn, 'Salvo ✓ (vale quando o cliente recarregar a página ou entrar de novo)', true);
@@ -7598,7 +7607,7 @@ function subViewChecks(selected) {
     `<label class="sub-view"><input type="checkbox" value="${v}" ${!selected || selected.includes(v) ? 'checked' : ''}><span class="sub-box"></span>${escapeHtml(label)}</label>`).join('')}</div>`;
 }
 // Quais WhatsApps o login de equipe enxerga no Chat (só aparece com mais de um número conectado).
-function subChatLinesHtml(act, selected) {
+function subChatLinesHtml(act, selected, funnelScope) {
   if (act && !WHATSAPP_SETTINGS[normalizeActValue(act)] && !subChatLinesHtml._asked) {
     subChatLinesHtml._asked = true;
     ensureWaSettings(act).then(() => { document.querySelectorAll('.sublogin-box').forEach(b => refreshSubBox(b.dataset.parent)); });
@@ -7608,8 +7617,10 @@ function subChatLinesHtml(act, selected) {
   const sel = Array.isArray(selected) && selected.length ? selected : null;
   return `<div class="sub-views-head"><span>WhatsApps no Chat</span><span style="font-weight:400;">${sel ? 'só os marcados' : 'todos'}</span></div>
     <div class="sub-views sub-chatlines">${lines.map(l =>
-    `<label class="sub-view"><input type="checkbox" value="${escapeHtml(l.id)}" ${!sel || sel.includes(l.id) ? 'checked' : ''}><span class="sub-box"></span>${escapeHtml(l.label)}</label>`).join('')}</div>`;
+    `<label class="sub-view"><input type="checkbox" value="${escapeHtml(l.id)}" ${!sel || sel.includes(l.id) ? 'checked' : ''}><span class="sub-box"></span>${escapeHtml(l.label)}</label>`).join('')}</div>
+    <label class="sub-view" style="margin-top:6px;"><input type="checkbox" class="sub-funnel-mine" ${funnelScope === 'mine' ? 'checked' : ''}><span class="sub-box"></span>Funil: ver só os leads destes WhatsApps (os cards em que o responsável é um deles)</label>`;
 }
+function readSubFunnelScope(box) { const i = box.querySelector('.sub-funnel-mine'); return i && i.checked ? 'mine' : 'all'; }
 // Lista vazia = todos (inclusive números conectados depois).
 function readSubChatLines(box) {
   const all = [...box.querySelectorAll('.sub-chatlines input')];
@@ -7659,7 +7670,7 @@ function subLoginsHtml(parentLogin, team) {
           <span class="mono sub-pass-shown" style="display:none;"></span></div>
         ${team ? '' : renameLoginHtml(sl.login)}
         ${subViewChecks(views)}
-        ${subChatLinesHtml(sl.act, sl.perms && sl.perms.chatLines)}
+        ${subChatLinesHtml(sl.act, sl.perms && sl.perms.chatLines, sl.perms && sl.perms.funnelScope)}
         <div class="sub-actions">
           <button class="integ-btn primary" onclick="saveSubLogin('${lj}', this)">Salvar acessos</button>
           <span class="sub-sep"></span>
@@ -7805,13 +7816,14 @@ async function saveSubLogin(login, btn) {
   const name = item.querySelector('.sub-name').value.trim();
   const views = readSubViews(item);
   const chatLines = readSubChatLines(item);
+  const funnelScope = readSubFunnelScope(item);
   if (!name) return subMsg(btn, 'Informe o nome.', false);
   if (!views.length) return subMsg(btn, 'Marque pelo menos uma área.', false);
   if (item.querySelector('.sub-chatlines') && !item.querySelector('.sub-chatlines input:checked')) return subMsg(btn, 'Marque pelo menos um WhatsApp para o Chat.', false);
-  const ok = await withSaveFeedback(btn, () => window._fb.updateSubLogin(login, name, { views, chatLines }));
+  const ok = await withSaveFeedback(btn, () => window._fb.updateSubLogin(login, name, { views, chatLines, funnelScope }));
   if (!ok) return;
   const sl = SUB_LOGINS.find(x => x.login === login);
-  if (sl) { sl.name = name; sl.perms = { views, chatLines }; }
+  if (sl) { sl.name = name; sl.perms = { views, chatLines, funnelScope }; }
   subMsg(btn, 'Salvo ✓ (vale no próximo acesso dessa pessoa)', true);
 }
 
@@ -17354,7 +17366,7 @@ function createdAtFromDateInput(value, fallbackIso) {
 }
 
 function getCrmBaseLeads(filterAct) {
-  let leads = getLeads();
+  let leads = getLeads().filter(leadVisibleToMe);
   if (filterAct) leads = leads.filter(l => leadMatchesClient(l, filterAct));
   return leads;
 }
@@ -17652,7 +17664,36 @@ function leadLineFromChats(lead) {
 function leadAttendantLine(lead) {
   const a = lead.automation || {};
   const autoLine = a.line && Array.isArray(a.sent) && a.sent.length ? a.line : '';
-  return lead.whatsappLine || autoLine || leadLineFromChats(lead) || '';
+  return lead.assignedLine || lead.whatsappLine || autoLine || leadLineFromChats(lead) || '';
+}
+// Login com "Funil: só os leads dos meus WhatsApps": números cujos leads ele vê (null = vê todos).
+function funnelScopeLines() {
+  if (isAdmin) return null;
+  const p = window._fb && window._fb.getProfile && window._fb.getProfile();
+  if (!p || !p.perms || p.perms.funnelScope !== 'mine') return null;
+  return chatAllowedLineIds() || waLines(p.act).map(l => l.id);
+}
+function leadVisibleToMe(lead) {
+  const lines = funnelScopeLines();
+  if (!lines) return true;
+  const line = leadAttendantLine(lead);
+  return !!line && lines.includes(line);
+}
+// Campo "Responsável" do formulário do card: automático (pelo WhatsApp da conversa) ou um número escolhido.
+function fillLeadResponsavel(act, lead) {
+  const box = document.getElementById('field-responsavel');
+  const sel = document.getElementById('lead-responsavel');
+  if (!box || !sel) return;
+  const scope = funnelScopeLines();
+  const lines = act ? waLines(act).filter(l => !scope || scope.includes(l.id)) : [];
+  if (!act || !lines.length || (waLines(act).length < 2 && !lines[0].attendant)) { box.style.display = 'none'; sel.innerHTML = ''; return; }
+  const auto = lead ? leadAttendant({ ...lead, assignedLine: '' }) : null;
+  const cur = lead && lead.assignedLine ? lead.assignedLine : '';
+  sel.innerHTML = (scope ? '' : `<option value="">Automático${auto ? ' (' + escapeHtml(auto.name) + ')' : ' (pelo WhatsApp da conversa)'}</option>`)
+    + lines.map(l => `<option value="${escapeHtml(l.id)}" ${cur === l.id ? 'selected' : ''}>${escapeHtml(l.attendant || l.label)}</option>`).join('');
+  // Login restrito: o card fica sempre com um responsável dele (senão o lead some da tela dele).
+  if (scope && !cur) sel.value = (lead && scope.includes(leadAttendantLine(lead)) && leadAttendantLine(lead)) || lines[0].id;
+  box.style.display = 'block';
 }
 // Sem WhatsApp: marcado pelo servidor, ou a automação registrou a falha e nada foi enviado (leads de antes da marcação).
 function leadNoWhatsApp(lead) {
@@ -17677,8 +17718,9 @@ function renderAttendantFilter(filterAct) {
     _attFilterAsked[act] = true;
     ensureWaSettings(act).then(() => { if (WHATSAPP_SETTINGS[act]) { renderKanban(); } });
   }
-  const lines = act ? waLines(act) : [];
-  if (!act || lines.length < 2) { sel.style.display = 'none'; _crmAttendantFilter = 'all'; return; }
+  const scope = funnelScopeLines();
+  const lines = act ? waLines(act).filter(l => !scope || scope.includes(l.id)) : [];
+  if (!act || lines.length < 2) { sel.style.display = 'none'; _crmAttendantFilter = 'all'; if (act && waLines(act).length > 1) loadFunnelChatLines(act); return; }
   loadFunnelChatLines(act);
   if (_crmAttendantFilter !== 'all' && _crmAttendantFilter !== 'none' && !lines.some(l => l.id === _crmAttendantFilter)) _crmAttendantFilter = 'all';
   sel.innerHTML = `<option value="all">Todos os atendentes</option>${lines.map(l => `<option value="${escapeHtml(l.id)}" ${_crmAttendantFilter === l.id ? 'selected' : ''}>${escapeHtml(l.attendant || l.label)}</option>`).join('')}<option value="none" ${_crmAttendantFilter === 'none' ? 'selected' : ''}>Sem responsável</option>`;
@@ -17691,7 +17733,7 @@ function renderKanban() {
   const sel = document.getElementById('crm-client-select');
   const fromSel = sel && sel.value !== 'all' ? sel.value : null;
   const filterAct = isAdmin ? (fromSel || crmClientFilter) : crmClientFilter;
-  let leads = getLeads();
+  let leads = getLeads().filter(leadVisibleToMe);
   if (filterAct) leads = leads.filter(l => leadMatchesClient(l, filterAct));
   try {
     populateCrmMonthFilter(leads);
@@ -18254,6 +18296,7 @@ function openLeadModal() {
   const stages = act ? getStages(act, currentPipeline(act)) : (clinica ? STAGES_CLINICA : STAGES_DEFAULT);
   stageSelect.innerHTML = stages.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
   if (act) applyFieldConfig(act);
+  fillLeadResponsavel(normalizeActValue(act), null);
   document.getElementById('lead-modal').classList.add('open');
 }
 
@@ -18272,6 +18315,7 @@ function editLead(id) {
   document.getElementById('lead-origem').value = lead.origem || '';
   document.getElementById('lead-rede-social').value = lead.redeSocial || '';
   document.getElementById('lead-obs').value = lead.obs || '';
+  fillLeadResponsavel(normalizeActValue(lead.act), lead);
   // Reset campos configuráveis para visível antes de aplicar config
   ['field-valor','field-origem','field-rede-social','field-obs','field-proxima-acao','field-proxima-data'].forEach(id => {
     const el = document.getElementById(id);
@@ -18398,6 +18442,9 @@ async function saveLead() {
     createdAt: createdAtFromDateInput(document.getElementById('lead-created-at') ? document.getElementById('lead-created-at').value : '', existing ? existing.createdAt : null),
     updatedAt: new Date().toISOString(),
     ...(existing && existing.whatsappLine ? { whatsappLine: existing.whatsappLine } : {}),
+    ...(document.getElementById('field-responsavel') && document.getElementById('field-responsavel').style.display !== 'none'
+      ? { assignedLine: document.getElementById('lead-responsavel').value || '' }
+      : (existing && existing.assignedLine ? { assignedLine: existing.assignedLine } : {})),
     // Telefone corrigido: some o aviso "Sem WhatsApp" (a próxima tentativa confere de novo).
     ...(existing && leadNoWhatsApp(existing) ? { whatsappInvalid: onlyDigits(existing.phone) === onlyDigits(document.getElementById('lead-phone').value) } : {}),
     _docId: existing ? (existing._docId || null) : null
