@@ -9830,11 +9830,18 @@ function huvTogglePin(act, ev) {
 }
 
 // Estado do WhatsApp do cliente pelo aviso de conexão: 'ok' | 'bad' | 'none'.
+// Estado do cliente olhando todos os WhatsApps dele (o principal e os outros números), sem contar os excluídos.
 function huvWaState(act) {
-  const s = (typeof _waStatusList !== 'undefined' ? _waStatusList : []).find(x => x.id === act);
-  if (!s) return 'none';
-  if (s.ok) return 'ok';
-  return (s.paired || s.lastOpenAt) ? 'bad' : 'none';
+  const list = (typeof _waStatusList !== 'undefined' ? _waStatusList : []).filter(x => x.id !== '__server' && (x.act || String(x.id).split('__')[0]) === act);
+  const cfg = WHATSAPP_SETTINGS[act];
+  const active = list.filter(x => {
+    const line = x.line || (String(x.id).includes('__') ? String(x.id).split('__')[1] : 'main');
+    if (!cfg) return true;
+    if (line === 'main') return !cfg.mainRemoved;
+    return (cfg.lines || []).some(l => l.id === line);
+  });
+  if (active.some(x => x.ok)) return 'ok';
+  return active.some(x => (x.paired || x.lastOpenAt) && !x.manual) ? 'bad' : 'none';
 }
 
 function renderClientSwitch() {
