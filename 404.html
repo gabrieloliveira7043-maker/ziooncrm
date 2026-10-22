@@ -12938,8 +12938,11 @@ const CHAT_FILTERS = [
   ['mine', 'Minhas'],
   ['unassigned', 'Sem responsável'],
   ['replied', 'Responderam ao disparo'],
-  ['waiting', 'Sem resposta ao disparo']
+  ['waiting', 'Sem resposta ao disparo'],
+  ['closed', 'Encerradas']
 ];
+// Conversa encerrada: some da lista até chegar mensagem nova (do contato ou nossa) depois do encerramento.
+function isChatClosed(c) { return !!(c && c.closedAt && !(String(c.lastAt || '') > String(c.closedAt))); }
 
 function chatAct() {
   if (!isAdmin) return window._fb && window._fb.getProfile() ? window._fb.getProfile().act : null;
@@ -13198,6 +13201,8 @@ async function saveChatTags() {
 }
 
 function chatMatchesFilter(c, f, me) {
+  if (f === 'closed') return isChatClosed(c);
+  if (isChatClosed(c)) return false;
   if (f === 'unread') return c.unread > 0;
   if (f === 'mine') return c.assignedTo === me.uid;
   if (f === 'unassigned') return !c.assignedTo;
@@ -13240,7 +13245,7 @@ function renderChatList() {
     if (!term) return true;
     return chatName(c, lead).toLowerCase().includes(term) || (termDigits.length >= 3 && String(c.phone || '').includes(termDigits));
   });
-  const totalUnread = _chatItems.reduce((s, c) => s + (c.unread > 0 ? 1 : 0), 0);
+  const totalUnread = _chatItems.reduce((s, c) => s + (c.unread > 0 && !isChatClosed(c) ? 1 : 0), 0);
   const badge = document.getElementById('chat-nav-badge');
   if (badge) { badge.textContent = totalUnread; badge.style.display = totalUnread ? 'inline-block' : 'none'; }
   const groupsBar = _chatFilter === 'groups' ? chatGroupsBarHtml() : '';
@@ -13474,7 +13479,22 @@ function renderChatHeader() {
     <button class="chat-pill" onclick="openChatTags()">${uiIco('tag')} Etiquetas</button>
     ${lead ? `<button class="chat-pill" onclick="openMoveModal('${escapeJsString(lead.id)}')">Mover no funil</button>` : ''}
     ${c.isGroup ? '' : lead && aiLeadState(lead) === 'active' ? aiLeadBtnHtml(lead, 'chat') : `<button class="chat-pill" onclick="chatAiTakeover()" title="A IA passa a atender esta conversa e responde a última mensagem do contato">${uiIco('bot')} IA assumir</button>`}
-    ${assignBtn}`;
+    ${assignBtn}
+    ${c.isGroup ? '' : isChatClosed(c)
+      ? `<button class="chat-pill" onclick="toggleChatClosed(false)" title="Volta a conversa para a lista">Reabrir</button>`
+      : `<button class="chat-pill" onclick="toggleChatClosed(true)" title="Tira a conversa da lista. Ela volta sozinha quando o contato mandar mensagem ou quando você escrever de novo.">${uiIco('checkCircle', 14)} Encerrar</button>`}`;
+}
+
+async function toggleChatClosed(close) {
+  const c = _chatItems.find(x => x.id === _chatOpenKey);
+  if (!c || !_chatAct) return;
+  try {
+    const r = await window._fb.whatsapp('/whatsapp/chat-close', _chatAct, { chatKey: c.id, close });
+    c.closedAt = r.closedAt || '';
+    showToast(close ? 'Conversa encerrada. Ela volta para a lista quando chegar mensagem nova.' : 'Conversa reaberta.', 'success');
+    if (close) closeChat(); else renderChatHeader();
+    renderChatList();
+  } catch (e) { showToast('Erro: ' + e.message, 'error'); }
 }
 
 async function toggleChatAssign() {
