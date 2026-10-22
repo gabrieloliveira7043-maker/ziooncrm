@@ -17624,8 +17624,18 @@ function leadLineFromChats(lead) {
   }
   return (_funnelChatLines[act] && _funnelChatLines[act].map[base]) || '';
 }
+// O número reservado pela automação (modo alternar) só conta depois que alguma mensagem saiu por ele.
 function leadAttendantLine(lead) {
-  return lead.whatsappLine || (lead.automation && lead.automation.line) || leadLineFromChats(lead) || '';
+  const a = lead.automation || {};
+  const autoLine = a.line && Array.isArray(a.sent) && a.sent.length ? a.line : '';
+  return lead.whatsappLine || autoLine || leadLineFromChats(lead) || '';
+}
+// Sem WhatsApp: marcado pelo servidor, ou a automação registrou a falha e nada foi enviado (leads de antes da marcação).
+function leadNoWhatsApp(lead) {
+  if (lead.whatsappInvalid === false) return false;
+  if (lead.whatsappInvalid) return true;
+  const a = lead.automation || {};
+  return !(Array.isArray(a.sent) && a.sent.length) && (a.log || []).some(x => /sem WhatsApp/i.test(String(x && x.text || '')));
 }
 function leadAttendant(lead) {
   const line = leadAttendantLine(lead);
@@ -17873,7 +17883,7 @@ function renderKanban() {
       if (autoChip) chips.push(autoChip);
       const att = waLines(lead.act).length > 1 || (waLines(lead.act)[0] || {}).attendant ? leadAttendant(lead) : null;
       if (att) chips.push(`<span class="kc-chip" style="background:var(--blue-dim);color:var(--blue);" title="Responsável: WhatsApp que atende este lead">${uiIco('user', 11)} ${escapeHtml(limitText(att.name, 24))}</span>`);
-      if (lead.whatsappInvalid) chips.push(`<span class="kc-chip" style="background:rgba(248,113,113,.14);color:var(--red);" title="A automação tentou enviar e este número não tem WhatsApp. Corrija o telefone no card.">${uiIco('alert', 11)} Sem WhatsApp</span>`);
+      if (leadNoWhatsApp(lead)) chips.push(`<span class="kc-chip" style="background:rgba(248,113,113,.14);color:var(--red);" title="A automação tentou enviar e este número não tem WhatsApp. Corrija o telefone no card.">${uiIco('alert', 11)} Sem WhatsApp</span>`);
       if (lead.redeSocial && !String(lead.origem || '').toLowerCase().includes(String(lead.redeSocial).toLowerCase())) chips.push(`<span class="kc-chip">${escapeHtml(limitText(lead.redeSocial, 30))}</span>`);
       if (chips.length) cardHTML += `<div class="kc-chips">${chips.join('')}</div>`;
       cardHTML += `<div class="kc-top"><div class="card-name">${escapeHtml(limitText(lead.name || 'Lead sem nome', 120))}</div>${lead.valor ? `<span class="card-valor">R$ ${escapeHtml(limitText(lead.valor, 40))}</span>` : ''}</div>`;
@@ -18365,7 +18375,7 @@ async function saveLead() {
     updatedAt: new Date().toISOString(),
     ...(existing && existing.whatsappLine ? { whatsappLine: existing.whatsappLine } : {}),
     // Telefone corrigido: some o aviso "Sem WhatsApp" (a próxima tentativa confere de novo).
-    ...(existing && existing.whatsappInvalid ? { whatsappInvalid: onlyDigits(existing.phone) === onlyDigits(document.getElementById('lead-phone').value) } : {}),
+    ...(existing && leadNoWhatsApp(existing) ? { whatsappInvalid: onlyDigits(existing.phone) === onlyDigits(document.getElementById('lead-phone').value) } : {}),
     _docId: existing ? (existing._docId || null) : null
   };
   if (_leadsCache) {
