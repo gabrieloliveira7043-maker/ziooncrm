@@ -7580,16 +7580,13 @@ async function saveMainLoginPerms(login, btn) {
   const chatLines = readSubChatLines(item);
   // Tudo marcado = sem restrição (áreas novas que surgirem também ficam liberadas).
   const views = picked.length === SUB_LOGIN_VIEWS.length ? null : picked;
-  btn.disabled = true; subMsg(btn, 'Salvando...', true);
-  try {
-    await window._fb.setClientLoginPerms(login, views, chatLines);
-    _mainLoginPerms[login] = views;
-    _mainChatLines[login] = chatLines;
-    const count = item.querySelector('.main-perms-count');
-    if (count) count.textContent = mainLoginPermsLabel(views);
-    subMsg(btn, 'Salvo ✓ (vale quando o cliente recarregar a página ou entrar de novo)', true);
-  } catch (e) { subMsg(btn, 'Erro: ' + e.message, false); }
-  btn.disabled = false;
+  const ok = await withSaveFeedback(btn, () => window._fb.setClientLoginPerms(login, views, chatLines));
+  if (!ok) return;
+  _mainLoginPerms[login] = views;
+  _mainChatLines[login] = chatLines;
+  const count = item.querySelector('.main-perms-count');
+  if (count) count.textContent = mainLoginPermsLabel(views);
+  subMsg(btn, 'Salvo ✓ (vale quando o cliente recarregar a página ou entrar de novo)', true);
 }
 
 function subViewChecks(selected) {
@@ -7686,10 +7683,29 @@ function renderContaTeam() {
 }
 window.renderContaTeam = renderContaTeam;
 
+// Retorno visível ao salvar: o botão mostra "Salvando..." e depois "Salvo ✓" (ou volta, com erro), mais o aviso na tela.
+async function withSaveFeedback(btn, fn) {
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  try {
+    await Promise.race([fn(), new Promise((_, rej) => setTimeout(() => rej(new Error('o servidor demorou para responder; confira a internet e tente de novo')), 20000))]);
+    btn.textContent = 'Salvo ✓';
+    showToast('Acessos salvos. Valem quando a pessoa recarregar a página ou entrar de novo.', 'success');
+    setTimeout(() => { btn.textContent = label; btn.disabled = false; }, 2500);
+    return true;
+  } catch (e) {
+    btn.textContent = label; btn.disabled = false;
+    subMsg(btn, 'Não salvou: ' + e.message, false);
+    return false;
+  }
+}
 function subMsg(el, text, ok) {
-  const m = el && el.closest('.sub-item, .sub-new') && el.closest('.sub-item, .sub-new').querySelector('.sub-msg');
+  // Primeiro o aviso ao lado do próprio botão (o card também tem o formulário escondido de "Trocar login").
+  const row = el && el.closest && el.closest('.sub-actions');
+  const m = (row && row.querySelector('.sub-msg')) || (el && el.closest('.sub-item, .sub-new') && el.closest('.sub-item, .sub-new').querySelector('.sub-msg'));
   if (m) { m.textContent = text; m.style.color = ok ? 'var(--green)' : 'var(--red)'; }
-  else showToast(text, ok ? 'success' : 'warning');
+  // Erro também aparece como aviso na tela (o texto ao lado dos botões é pequeno e fácil de não ver).
+  if (!m || !ok) showToast(text, ok ? 'success' : 'warning');
 }
 function readSubViews(box) { return [...box.querySelectorAll('.sub-views:not(.sub-chatlines) input:checked')].map(i => i.value); }
 function refreshSubBox(parentLogin) {
@@ -7789,12 +7805,11 @@ async function saveSubLogin(login, btn) {
   if (!name) return subMsg(btn, 'Informe o nome.', false);
   if (!views.length) return subMsg(btn, 'Marque pelo menos uma área.', false);
   if (item.querySelector('.sub-chatlines') && !item.querySelector('.sub-chatlines input:checked')) return subMsg(btn, 'Marque pelo menos um WhatsApp para o Chat.', false);
-  try {
-    await window._fb.updateSubLogin(login, name, { views, chatLines });
-    const sl = SUB_LOGINS.find(x => x.login === login);
-    if (sl) { sl.name = name; sl.perms = { views, chatLines }; }
-    subMsg(btn, 'Salvo ✓ (vale no próximo acesso dessa pessoa)', true);
-  } catch (e) { subMsg(btn, 'Erro: ' + e.message, false); }
+  const ok = await withSaveFeedback(btn, () => window._fb.updateSubLogin(login, name, { views, chatLines }));
+  if (!ok) return;
+  const sl = SUB_LOGINS.find(x => x.login === login);
+  if (sl) { sl.name = name; sl.perms = { views, chatLines }; }
+  subMsg(btn, 'Salvo ✓ (vale no próximo acesso dessa pessoa)', true);
 }
 
 async function resetSubLoginPass(login, btn) {
