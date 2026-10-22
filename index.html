@@ -14265,9 +14265,13 @@ async function openChatWith({ act, phone, jid, name, line }) {
   const lidKey = jid && String(jid).endsWith('@lid') ? 'lid_' + String(jid).split('@')[0].replace(/[^\w.-]/g, '') : '';
   const baseKey = phone ? chatPhoneKey(phone) : lidKey;
   const key = line && line !== WA_MAIN && baseKey ? line + '__' + baseKey : baseKey;
-  let chat = _chatItems.find(c => c.id === key || (jid && (c.lid === jid || c.jid === jid)));
+  // A conversa pode estar em qualquer número do cliente ("<linha>__<contato>"): procura em todos, começando pelo indicado.
+  const stripLine = id => String(id || '').replace(/^[a-z0-9]{1,12}__/, '');
+  let chat = _chatItems.find(c => c.id === key || (jid && (c.lid === jid || c.jid === jid)))
+    || (baseKey ? _chatItems.find(c => !c.isGroup && stripLine(c.id) === baseKey) : null);
   if (!chat) {
-    for (const k of [...new Set([key, baseKey, lidKey])].filter(Boolean)) {
+    const lineKeys = baseKey ? chatLines(act).map(l => l.id === WA_MAIN ? baseKey : l.id + '__' + baseKey) : [];
+    for (const k of [...new Set([key, baseKey, ...lineKeys, lidKey])].filter(Boolean)) {
       try { chat = await window._fb.getInboxChat(act, k); } catch (e) { chat = null; }
       if (chat) break;
     }
@@ -14281,7 +14285,7 @@ async function openChatWith({ act, phone, jid, name, line }) {
 function openLeadChat(id) {
   const lead = getLeads().find(l => l.id === id);
   if (!lead) return;
-  openChatWith({ act: lead.act, phone: lead.phone, jid: lead.whatsappJid, name: lead.name, line: lead.whatsappLine });
+  openChatWith({ act: lead.act, phone: lead.phone, jid: lead.whatsappJid, name: lead.name, line: leadAttendantLine(lead) });
 }
 
 // Guarda um número na base de contatos do CRM (tela Contatos). Sem duplicar; preenche o nome se estava vazio.
