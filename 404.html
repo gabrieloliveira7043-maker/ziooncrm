@@ -3270,6 +3270,7 @@ body.card-dragging .kanban-card:hover { transform: none; }
           <select class="crm-month-select" id="crm-month-filter" onchange="onCrmMonthChange()" title="Filtrar leads por data de chegada: hoje, semana, mês ou período">
             <option value="all">Geral</option>
           </select>
+          <button class="btn-manage-stages" id="btn-bulk-assign" onclick="openBulkAssign()" style="margin-right:8px;display:none;" title="Passar vários cards de um responsável para outro"><i data-ico="swap"></i> Transferir responsável</button>
           <select class="crm-month-select" id="crm-attendant-filter" onchange="_crmAttendantFilter = this.value; renderKanban(); renderFunilChart(); renderFunilEvolucao();" title="Filtrar pelo atendente (WhatsApp que atende o lead)" style="display:none;">
             <option value="all">Todos os atendentes</option>
           </select>
@@ -17743,6 +17744,8 @@ function renderAttendantFilter(filterAct) {
   }
   const scope = funnelScopeLines();
   const lines = act ? waLines(act).filter(l => !scope || scope.includes(l.id)) : [];
+  const bulkBtn = document.getElementById('btn-bulk-assign');
+  if (bulkBtn) bulkBtn.style.display = act && !scope && waLines(act).length > 1 ? '' : 'none';
   if (!act || lines.length < 2) { sel.style.display = 'none'; _crmAttendantFilter = 'all'; if (act && waLines(act).length > 1) loadFunnelChatLines(act); return; }
   loadFunnelChatLines(act);
   if (_crmAttendantFilter !== 'all' && _crmAttendantFilter !== 'none' && !lines.some(l => l.id === _crmAttendantFilter)) _crmAttendantFilter = 'all';
@@ -18887,6 +18890,88 @@ async function runBulkMove() {
   } catch (e) {
     showToast('Erro ao mover: ' + e.message, 'error', 7000);
     if (btn) { btn.disabled = false; bulkMoveCount(); }
+  }
+  renderKanban(); renderFunilChart(); renderFunilEvolucao();
+}
+
+// ----- Transferir responsável em massa: todos os cards de um responsável (ou sem responsável) passam para outro -----
+let _bulkAssign = null;
+function bulkAssignLeads() {
+  const ctx = _bulkAssign;
+  if (!ctx) return [];
+  const from = document.getElementById('ba-from').value;
+  const allPipes = document.getElementById('ba-allpipes').checked;
+  const pid = currentPipeline(ctx.act);
+  return getLeads().filter(l => leadMatchesClient(l, ctx.act) && (allPipes || leadPipeline(l) === pid)).filter(l => {
+    const a = leadAttendant(l);
+    return from === 'none' ? !a : !!a && a.id === from;
+  });
+}
+function renderBulkAssignList() {
+  const leads = sortCrmLeadsForKanban(bulkAssignLeads(), _bulkAssign.act);
+  const stages = getAllStages(_bulkAssign.act);
+  document.getElementById('ba-list').innerHTML = leads.length ? leads.map(l => `
+      <label class="integ-toggle" data-ba="${escapeHtml(((l.name || '') + ' ' + (l.phone || '')).toLowerCase())}" style="display:flex;padding:4px 2px;">
+        <input type="checkbox" value="${escapeHtml(l.id)}" checked onchange="bulkAssignCount()"> ${escapeHtml(l.name || 'Sem nome')} <span class="integ-muted" style="margin-left:auto;font-size:11.5px;">${escapeHtml(((stages.find(s => s.id === l.stage) || {}).label) || '')}</span>
+      </label>`).join('') : '<div class="integ-muted" style="padding:8px;">Nenhum card com esse responsável.</div>';
+  document.getElementById('ba-all').checked = true;
+  bulkAssignCount();
+}
+function bulkAssignCount() {
+  const n = document.querySelectorAll('#ba-list input:checked').length;
+  const el = document.getElementById('ba-count');
+  if (el) el.textContent = n + ' selecionado(s)';
+}
+function openBulkAssign() {
+  const act = normalizeActValue(getActForStages());
+  const lines = act ? waLines(act) : [];
+  if (lines.length < 2) return showToast('Este cliente precisa ter mais de um WhatsApp para transferir responsável.', 'warning');
+  _bulkAssign = { act };
+  const opt = l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.attendant || l.label)}</option>`;
+  openHuvenModal('Transferir responsável', `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+      <label style="flex:1;min-width:150px;"><span class="field-label">De</span><select class="field-input" id="ba-from" onchange="renderBulkAssignList()"><option value="none">Sem responsável</option>${lines.map(opt).join('')}</select></label>
+      <label style="flex:1;min-width:150px;"><span class="field-label">Para</span><select class="field-input" id="ba-to">${lines.map(opt).join('')}</select></label>
+    </div>
+    <label class="integ-toggle" style="margin:0 0 8px;"><input type="checkbox" id="ba-allpipes" onchange="renderBulkAssignList()"> Incluir os outros pipelines deste cliente</label>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+      <label class="integ-toggle" style="margin:0;"><input type="checkbox" id="ba-all" checked onchange="document.querySelectorAll('#ba-list input').forEach(i => { if (i.closest('label').style.display !== 'none') i.checked = this.checked; }); bulkAssignCount()"> Selecionar todos</label>
+      <span style="flex:1;"></span><span id="ba-count" class="integ-muted" style="font-size:12px;"></span>
+    </div>
+    <input class="field-input" placeholder="Buscar por nome ou telefone" style="margin-bottom:6px;" oninput="const t = this.value.trim().toLowerCase(); document.querySelectorAll('#ba-list [data-ba]').forEach(r => { r.style.display = !t || r.dataset.ba.includes(t) ? 'flex' : 'none'; })">
+    <div id="ba-list" style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:6px;"></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap;">
+      <button class="btn-save" id="ba-btn" style="width:auto;padding:9px 16px;" onclick="runBulkAssign()">Transferir</button>
+      <span class="integ-muted" style="font-size:12px;">Muda o responsável do card. As conversas continuam no WhatsApp em que já estão.</span>
+    </div>`, 540);
+  renderBulkAssignList();
+}
+async function runBulkAssign() {
+  const ctx = _bulkAssign;
+  if (!ctx) return;
+  const ids = new Set([...document.querySelectorAll('#ba-list input:checked')].map(i => i.value));
+  if (!ids.size) return showToast('Marque pelo menos um card.', 'warning');
+  const fromSel = document.getElementById('ba-from'), toSel = document.getElementById('ba-to');
+  if (fromSel.value === toSel.value) return showToast('Escolha um responsável diferente em "Para".', 'warning');
+  const fromLabel = fromSel.options[fromSel.selectedIndex].textContent, toLabel = toSel.options[toSel.selectedIndex].textContent;
+  if (!await showConfirm(`Passar ${ids.size} card(s) de "${fromLabel}" para "${toLabel}"?`, 'Transferir responsável', 'Transferir', false)) return;
+  const btn = document.getElementById('ba-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Transferindo...'; }
+  const nowIso = new Date().toISOString();
+  const items = [];
+  (_leadsCache || []).forEach(l => {
+    if (!ids.has(l.id)) return;
+    l.assignedLine = toSel.value; l.updatedAt = nowIso;
+    if (l._docId) items.push({ _docId: l._docId, assignedLine: toSel.value, updatedAt: nowIso });
+  });
+  try {
+    await window._fb.saveLeadsBatch(items);
+    closeHuvenModal();
+    showToast(`${ids.size} card(s) passaram para ${toLabel}.`, 'success');
+    auditLog(ctx.act, 'editar', `Transferiu ${ids.size} card(s) de ${fromLabel} para ${toLabel} (responsável)`);
+  } catch (e) {
+    showToast('Erro ao transferir: ' + e.message, 'error', 7000);
+    if (btn) { btn.disabled = false; btn.textContent = 'Transferir'; }
   }
   renderKanban(); renderFunilChart(); renderFunilEvolucao();
 }
