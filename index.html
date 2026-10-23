@@ -20078,7 +20078,8 @@ function renderTempReport() {
   const rows = tempReportRows();
   const lines = waLines(act);
   const chip = (k, label) => `<button class="chat-pill ${_tempRep.filter === k ? 'active' : ''}" onclick="_tempRep.filter='${k}';renderTempReport()">${label}</button>`;
-  const stageLabel = l => l ? ((getAllStages(normalizeActValue(l.act)).find(s => s.id === l.stage) || {}).label || '') : '';
+  const multiPipe = pipelineList(normalizeActValue(act)).length > 1;
+  const stageLabel = l => { if (!l) return ''; const x = getAllStages(normalizeActValue(l.act)).find(s => s.id === l.stage); return x ? x.label + (multiPipe ? ' · ' + pipelineName(normalizeActValue(l.act), leadPipeline(l)) : '') : ''; };
   const fmt = iso => iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
   out.innerHTML = `
     <div class="an-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
@@ -20091,17 +20092,24 @@ function renderTempReport() {
       ${chip('all', 'Todos')}${chip('quente', '🔥 Quentes')}${chip('morno', '🌤️ Mornos')}${chip('frio', '❄️ Frios')}
       ${lines.length > 1 ? `<select class="field-input" style="width:auto;padding:6px 10px;font-size:12.5px;" onchange="_tempRep.line=this.value;renderTempReport()"><option value="all">Todos os atendentes</option>${lines.map(l => `<option value="${escapeHtml(l.id)}" ${_tempRep.line === l.id ? 'selected' : ''}>${escapeHtml(l.attendant || l.label)}</option>`).join('')}</select>` : ''}
       ${(() => {
-        const st = getAllStages(normalizeActValue(act)) || [];
+        // Colunas agrupadas por pipeline (cada pipeline tem as suas, muitas vezes com os mesmos nomes).
+        const nact = normalizeActValue(act);
+        const index2 = chatLeadIndex(act);
+        const used = new Set((_tempRep.chats || []).map(c => chatLeadFor(c, index2)).filter(Boolean).map(l => leadPipeline(l)));
+        const pipes = pipelineList(nact).filter(p => !used.size || used.has(p.id));
+        const groups = pipes.map(p => ({ p, st: (getStages(nact, p.id) || []).map(x => ({ ...x, pipe: p.name })) }));
+        const st = groups.flatMap(g => g.st);
         _tempRep.hide = _tempRep.hide.filter(id => st.some(x => x.id === id));
         const shown = st.filter(x => !_tempRep.hide.includes(x.id));
+        const nm = x => x.label + (pipes.length > 1 ? ' (' + x.pipe + ')' : '');
         const label = !_tempRep.hide.length ? 'Todas as etapas'
-          : _tempRep.hide.length <= 2 && shown.length ? 'Todas menos ' + st.filter(x => _tempRep.hide.includes(x.id)).map(x => x.label).join(', ')
-          : shown.length === 1 ? 'Só ' + shown[0].label : `${shown.length} de ${st.length} etapas`;
+          : _tempRep.hide.length <= 2 && shown.length ? 'Todas menos ' + st.filter(x => _tempRep.hide.includes(x.id)).map(nm).join(', ')
+          : shown.length === 1 ? 'Só ' + nm(shown[0]) : `${shown.length} de ${st.length} etapas`;
         return `<details class="stage-pick" style="position:relative;" ${_tempRep.pickOpen ? 'open' : ''} ontoggle="_tempRep.pickOpen = this.open">
-          <summary class="field-input" style="list-style:none;cursor:pointer;padding:6px 10px;font-size:12.5px;white-space:nowrap;">${escapeHtml(limitText(label, 40))} ▾</summary>
-          <div style="position:absolute;z-index:30;top:calc(100% + 4px);left:0;min-width:220px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,.25);">
+          <summary class="field-input" style="list-style:none;cursor:pointer;padding:6px 10px;font-size:12.5px;white-space:nowrap;">${escapeHtml(limitText(label, 48))} ▾</summary>
+          <div style="position:absolute;z-index:30;top:calc(100% + 4px);left:0;min-width:240px;max-height:420px;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px 10px;box-shadow:0 8px 24px rgba(0,0,0,.25);">
             <div style="display:flex;gap:10px;font-size:12px;margin-bottom:6px;"><a style="cursor:pointer;color:var(--accent);" onclick="tempStagesAll(true, '')">Marcar todas</a><a style="cursor:pointer;color:var(--accent);" onclick="tempStagesAll(false, '${escapeJsString(st.map(x => x.id).join(','))}')">Limpar</a></div>
-            ${st.map(x => `<label class="integ-toggle" style="margin:0;padding:3px 0;display:flex;"><input type="checkbox" ${_tempRep.hide.includes(x.id) ? '' : 'checked'} onchange="tempToggleStage('${escapeJsString(x.id)}', this.checked)"> ${escapeHtml(x.label)}</label>`).join('')}
+            ${groups.map(g => `${pipes.length > 1 ? `<div class="ci-label" style="margin:8px 0 4px;">${escapeHtml(g.p.name)}</div>` : ''}${g.st.map(x => `<label class="integ-toggle" style="margin:0;padding:3px 0;display:flex;"><input type="checkbox" ${_tempRep.hide.includes(x.id) ? '' : 'checked'} onchange="tempToggleStage('${escapeJsString(x.id)}', this.checked)"> ${escapeHtml(x.label)}</label>`).join('')}`).join('')}
           </div></details>`;
       })()}
       <input class="field-input" style="width:200px;padding:6px 10px;font-size:12.5px;" placeholder="Buscar nome ou número" value="${escapeHtml(_tempRep.q)}" oninput="_tempRep.q=this.value;clearTimeout(window._tempQ);window._tempQ=setTimeout(renderTempReport,250)">
