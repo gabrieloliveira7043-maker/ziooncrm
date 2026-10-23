@@ -3419,6 +3419,7 @@ body.card-dragging .kanban-card:hover { transform: none; }
             <option value="Outro">Outro</option>
           </select>
         </div>
+        <div class="modal-field" id="field-ai-summary" style="display:none;"></div>
         <div class="modal-field" id="field-obs">
           <label class="modal-label">Observações</label>
           <textarea class="modal-input" id="lead-obs" rows="2" placeholder="Anotações sobre o lead..." style="resize:vertical;"></textarea>
@@ -7582,6 +7583,7 @@ async function renderAdminLogins() {
         <button onclick="saveClientCredential('${jsLogin}')" style="${buttonStyle}">Trocar senha</button>
         <span id="login-feedback-${id}" style="font-size:11px;display:none;"></span>
       </div>
+      ${leadSummaryToggleHtml(c.act)}
       ${mainLoginPermsHtml(c.login)}
       <div class="sublogin-box" data-parent="${id}">${subLoginsHtml(c.login)}</div>
     </div>`;
@@ -13396,6 +13398,90 @@ function chatMatchesFilter(c, f, me) {
   return true;
 }
 
+// ----- Resumo do lead pela IA (ficha com temperatura, intenção, objeções...) -----
+// Ligado por cliente no admin (whatsapp_settings.leadSummary). O servidor atualiza às 12h e 19h; o botão atualiza na hora.
+let _chatSumOpen = null; // painel "Resumo do lead" aberto/fechado (mantém ao redesenhar o topo do Chat)
+function leadSummaryOn(act) { const s = WHATSAPP_SETTINGS[normalizeActValue(act)]; return !!(s && s.leadSummary && s.leadSummary.enabled); }
+const AI_TEMP = { quente: ['🔥', 'Quente', '#E0503F'], morno: ['🌤️', 'Morno', '#D99A1E'], frio: ['❄️', 'Frio', '#3B82F6'] };
+function aiSummaryChip(sum) {
+  if (!sum || !sum.temperatura) return '';
+  const t = AI_TEMP[sum.temperatura] || AI_TEMP.morno;
+  const tip = [sum.intencao && 'Intenção: ' + sum.intencao, sum.proximoPasso && 'Próximo passo: ' + sum.proximoPasso].filter(Boolean).join(' · ');
+  return `<span class="kc-chip" style="background:color-mix(in srgb, ${t[2]} 15%, transparent);color:${t[2]};" title="${escapeHtml(tip)}">${t[0]} ${t[1]}${sum.resumoCurto ? ' · ' + escapeHtml(limitText(sum.resumoCurto, 40)) : ''}</span>`;
+}
+function aiSummaryHtml(sum, btn) {
+  if (!sum || !sum.temperatura) return `<div class="integ-muted" style="font-size:12.5px;">Ainda sem resumo. Ele é feito às 12h e às 19h para as conversas com mensagem nova, ou agora pelo botão.</div>${btn || ''}`;
+  const t = AI_TEMP[sum.temperatura] || AI_TEMP.morno;
+  const row = (label, v) => v ? `<div style="margin-top:6px;"><b style="color:var(--text);">${label}:</b> ${escapeHtml(v)}</div>` : '';
+  const when = sum.at ? new Date(sum.at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="font-weight:700;color:${t[2]};">${t[0]} ${t[1]}</span><span class="integ-muted" style="font-size:11.5px;">resumo da IA · ${escapeHtml(when)}</span>${btn || ''}</div>
+    <div style="font-size:12.5px;color:var(--muted2);line-height:1.5;">${row('Intenção', sum.intencao)}${row('O que já falou', sum.falou)}${row('Objeções', sum.objecoes)}${row('Como respondeu', sum.comoRespondeu)}${row('Próximo passo', sum.proximoPasso)}</div>`;
+}
+function leadSummaryToggleHtml(act) {
+  if (!act) return '';
+  const cfg = (WHATSAPP_SETTINGS[normalizeActValue(act)] || {}).leadSummary || {};
+  const a = escapeJsString(act);
+  return `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 0;">
+    <label class="integ-toggle" style="margin:0;"><input type="checkbox" ${cfg.enabled ? 'checked' : ''} onchange="setLeadSummaryCfg('${a}', 'enabled', this.checked)"> <b>Resumo do lead com IA</b></label>
+    <label class="integ-toggle" style="margin:0;"><input type="checkbox" ${cfg.audios !== false ? 'checked' : ''} onchange="setLeadSummaryCfg('${a}', 'audios', this.checked)"> Ouvir os áudios</label>
+    <span class="integ-muted" style="font-size:11.5px;">Atualiza às 12h e às 19h as conversas com mensagem nova.</span></div>`;
+}
+async function setLeadSummaryCfg(act, key, val) {
+  act = normalizeActValue(act);
+  const cur = { enabled: false, audios: true, ...((WHATSAPP_SETTINGS[act] || {}).leadSummary || {}) };
+  cur[key] = !!val;
+  try {
+    await window._fb.saveWhatsAppSettings(act, { leadSummary: cur });
+    WHATSAPP_SETTINGS[act] = { ...(WHATSAPP_SETTINGS[act] || {}), leadSummary: cur };
+    showToast(key === 'enabled' ? (val ? 'Resumo com IA ligado para este cliente.' : 'Resumo com IA desligado para este cliente.') : (val ? 'Os áudios entram no resumo.' : 'Os áudios ficam fora do resumo.'), 'success');
+  } catch (e) { showToast('Erro: ' + e.message, 'error'); }
+}
+async function refreshLeadSummary(act, chatKey, btn) {
+  if (!chatKey) return showToast('Este lead ainda não tem conversa no Chat.', 'warning');
+  if (btn) { btn.disabled = true; btn.textContent = 'Gerando...'; }
+  try {
+    const r = await window._fb.whatsapp('/whatsapp/lead-summary', act, { chatKey });
+    const c = (typeof _chatItems !== 'undefined' ? _chatItems : []).find(x => x.id === chatKey);
+    if (c) c.aiSummary = r.summary;
+    showToast('Resumo atualizado.', 'success');
+    return r.summary;
+  } catch (e) { showToast('Não gerou o resumo: ' + e.message, 'error', 6000); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'Atualizar resumo'; } }
+}
+// Conversa do lead em qualquer número do cliente (mesma busca do botão de WhatsApp do card).
+async function findLeadChatKey(lead) {
+  const act = normalizeActValue(lead.act);
+  const base = chatPhoneKey(lead.phone);
+  if (!base) return '';
+  const first = leadAttendantLine(lead);
+  const lines = [...new Set([first, ...waLines(act).map(l => l.id)].filter(Boolean))];
+  for (const l of lines) {
+    const k = l === WA_MAIN ? base : l + '__' + base;
+    try { if (await window._fb.getInboxChat(act, k)) return k; } catch (e) {}
+  }
+  return '';
+}
+async function renderLeadAiSummary(lead) {
+  const box = document.getElementById('field-ai-summary');
+  if (!box) return;
+  if (!lead || !leadSummaryOn(lead.act)) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const id = escapeJsString(lead.id);
+  box.style.display = 'block';
+  box.innerHTML = `<label class="modal-label">Resumo do lead (IA)</label><div style="border:1px solid var(--border);border-radius:10px;padding:10px;">${aiSummaryHtml(lead.aiSummary, `<button type="button" class="chat-pill" style="margin-left:auto;" onclick="leadModalRefreshSummary('${id}', this)">Atualizar resumo</button>`)}</div>`;
+}
+async function leadModalRefreshSummary(id, btn) {
+  const lead = getLeads().find(l => l.id === id);
+  if (!lead) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Procurando conversa...'; }
+  const key = await findLeadChatKey(lead);
+  const sum = await refreshLeadSummary(normalizeActValue(lead.act), key, btn);
+  if (sum) { lead.aiSummary = sum; renderLeadAiSummary(lead); renderKanban(); }
+}
+async function chatRefreshSummary(btn) {
+  const sum = await refreshLeadSummary(_chatAct, _chatOpenKey, btn);
+  if (sum) renderChatHeader();
+}
+
 function renderChatFilters() {
   const box = document.getElementById('chat-filters');
   if (!box) return;
@@ -13666,7 +13752,10 @@ function renderChatHeader() {
     ${assignBtn}
     ${c.isGroup ? '' : isChatClosed(c)
       ? `<button class="chat-pill" onclick="toggleChatClosed(false)" title="Volta a conversa para a lista">Reabrir</button>`
-      : `<button class="chat-pill" onclick="toggleChatClosed(true)" title="Tira a conversa da lista. Ela volta sozinha quando o contato mandar mensagem ou quando você escrever de novo.">${uiIco('checkCircle', 14)} Encerrar</button>`}`;
+      : `<button class="chat-pill" onclick="toggleChatClosed(true)" title="Tira a conversa da lista. Ela volta sozinha quando o contato mandar mensagem ou quando você escrever de novo.">${uiIco('checkCircle', 14)} Encerrar</button>`}
+    ${!c.isGroup && leadSummaryOn(_chatAct) ? `<details class="chat-ai-sum" style="flex-basis:100%;margin-top:8px;border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:var(--surface2);" ontoggle="_chatSumOpen = this.open" ${(_chatSumOpen === null ? !c.aiSummary : _chatSumOpen) ? 'open' : ''}>
+      <summary style="cursor:pointer;font-size:12.5px;font-weight:600;color:var(--text);list-style:none;">${uiIco('sparkles', 13)} Resumo do lead ${c.aiSummary && c.aiSummary.temperatura ? '· ' + (AI_TEMP[c.aiSummary.temperatura] || AI_TEMP.morno)[0] + ' ' + (AI_TEMP[c.aiSummary.temperatura] || AI_TEMP.morno)[1] + (c.aiSummary.resumoCurto ? ' · ' + escapeHtml(limitText(c.aiSummary.resumoCurto, 50)) : '') : ''}</summary>
+      <div style="margin-top:8px;">${aiSummaryHtml(c.aiSummary, `<button class="chat-pill" style="margin-left:auto;" onclick="chatRefreshSummary(this)">Atualizar resumo</button>`)}</div></details>` : ''}`;
 }
 
 async function toggleChatClosed(close) {
@@ -18123,6 +18212,7 @@ function renderKanban() {
       if (autoChip) chips.push(autoChip);
       const att = waLines(lead.act).length > 1 || (waLines(lead.act)[0] || {}).attendant ? leadAttendant(lead) : null;
       if (att) chips.push(`<span class="kc-chip" style="background:var(--blue-dim);color:var(--blue);" title="Responsável: WhatsApp que atende este lead">${uiIco('user', 11)} ${escapeHtml(limitText(att.name, 24))}</span>`);
+      if (lead.aiSummary && leadSummaryOn(lead.act)) chips.push(aiSummaryChip(lead.aiSummary));
       if (leadNoWhatsApp(lead)) chips.push(`<span class="kc-chip" style="background:rgba(248,113,113,.14);color:var(--red);" title="A automação tentou enviar e este número não tem WhatsApp. Corrija o telefone no card.">${uiIco('alert', 11)} Sem WhatsApp</span>`);
       if (lead.redeSocial && !String(lead.origem || '').toLowerCase().includes(String(lead.redeSocial).toLowerCase())) chips.push(`<span class="kc-chip">${escapeHtml(limitText(lead.redeSocial, 30))}</span>`);
       if (chips.length) cardHTML += `<div class="kc-chips">${chips.join('')}</div>`;
@@ -18471,6 +18561,7 @@ function openLeadModal() {
   stageSelect.innerHTML = stages.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
   if (act) applyFieldConfig(act);
   fillLeadResponsavel(normalizeActValue(act), null);
+  renderLeadAiSummary(null);
   document.getElementById('lead-modal').classList.add('open');
 }
 
@@ -18490,6 +18581,7 @@ function editLead(id) {
   document.getElementById('lead-rede-social').value = lead.redeSocial || '';
   document.getElementById('lead-obs').value = lead.obs || '';
   fillLeadResponsavel(normalizeActValue(lead.act), lead);
+  renderLeadAiSummary(lead);
   // Reset campos configuráveis para visível antes de aplicar config
   ['field-valor','field-origem','field-rede-social','field-obs','field-proxima-acao','field-proxima-data'].forEach(id => {
     const el = document.getElementById(id);
