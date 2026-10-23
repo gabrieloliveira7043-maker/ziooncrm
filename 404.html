@@ -20027,7 +20027,7 @@ function anDefaultRange() {
 
 // ----- Atendimento › Temperatura dos leads (IA): todos os resumos da IA num relatório com filtro -----
 let _anTab = 'tempo';
-let _tempRep = { act: '', chats: null, filter: 'all', line: 'all', q: '', loading: false };
+let _tempRep = { act: '', chats: null, filter: 'all', line: 'all', stage: 'all', q: '', loading: false };
 function setAnTab(t) { _anTab = t; renderAnaliseView(); }
 function anTabsHtml(act) {
   if (!act || !leadSummaryOn(act)) { _anTab = 'tempo'; return ''; }
@@ -20054,6 +20054,7 @@ function tempReportRows() {
     .filter(r => r.lead && r.s && r.s.temperatura) // só leads do funil
     .filter(r => _tempRep.filter === 'all' || r.s.temperatura === _tempRep.filter)
     .filter(r => _tempRep.line === 'all' || (r.c.line || waLineOfKey(r.c.id)) === _tempRep.line)
+    .filter(r => _tempRep.stage === 'all' || r.lead.stage === _tempRep.stage)
     .filter(r => !q || chatName(r.c, r.lead).toLowerCase().includes(q) || String(r.c.phone || '').includes(q.replace(/\D/g, '') || '§'))
     .sort((a, b) => ({ quente: 0, morno: 1, frio: 2 }[a.s.temperatura] - { quente: 0, morno: 1, frio: 2 }[b.s.temperatura]) || String(b.c.lastAt || '').localeCompare(String(a.c.lastAt || '')));
 }
@@ -20063,7 +20064,8 @@ function renderTempReport() {
   const act = _tempRep.act;
   if (!_tempRep.chats) { out.innerHTML = '<div class="integ-muted">Lendo os resumos...</div>'; return; }
   const index = chatLeadIndex(act);
-  const all = _tempRep.chats.filter(c => chatLeadFor(c, index)); // só conversas de leads do funil
+  // Só conversas de leads do funil (e da etapa escolhida, se houver).
+  const all = _tempRep.chats.filter(c => { const l = chatLeadFor(c, index); return l && (_tempRep.stage === 'all' || l.stage === _tempRep.stage); });
   const withSum = all.filter(c => c.aiSummary && c.aiSummary.temperatura);
   const n = t => withSum.filter(c => c.aiSummary.temperatura === t).length;
   const rows = tempReportRows();
@@ -20081,6 +20083,8 @@ function renderTempReport() {
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
       ${chip('all', 'Todos')}${chip('quente', '🔥 Quentes')}${chip('morno', '🌤️ Mornos')}${chip('frio', '❄️ Frios')}
       ${lines.length > 1 ? `<select class="field-input" style="width:auto;padding:6px 10px;font-size:12.5px;" onchange="_tempRep.line=this.value;renderTempReport()"><option value="all">Todos os atendentes</option>${lines.map(l => `<option value="${escapeHtml(l.id)}" ${_tempRep.line === l.id ? 'selected' : ''}>${escapeHtml(l.attendant || l.label)}</option>`).join('')}</select>` : ''}
+      ${(() => { const st = getAllStages(normalizeActValue(act)) || []; if (_tempRep.stage !== 'all' && !st.some(x => x.id === _tempRep.stage)) _tempRep.stage = 'all';
+        return `<select class="field-input" style="width:auto;padding:6px 10px;font-size:12.5px;" onchange="_tempRep.stage=this.value;renderTempReport()"><option value="all">Todas as etapas</option>${st.map(x => `<option value="${escapeHtml(x.id)}" ${_tempRep.stage === x.id ? 'selected' : ''}>${escapeHtml(x.label)}</option>`).join('')}</select>`; })()}
       <input class="field-input" style="width:200px;padding:6px 10px;font-size:12.5px;" placeholder="Buscar nome ou número" value="${escapeHtml(_tempRep.q)}" oninput="_tempRep.q=this.value;clearTimeout(window._tempQ);window._tempQ=setTimeout(renderTempReport,250)">
       <span style="flex:1;"></span>
       <button class="chat-pill" onclick="switchView('crm'); setTimeout(openSummaryPipeline, 400)" title="Gerar o resumo de todos os cards da pipeline">${uiIco('sparkles', 13)} Resumir pipeline</button>
