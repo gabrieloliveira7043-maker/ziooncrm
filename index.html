@@ -3077,6 +3077,10 @@ html:root .chat-pill.chat-sum-pill { display: none; }
               <label class="metric-option"><input type="checkbox" value="landingViews" onchange="onDashboardMetricToggle(this)"> Visualizações da página</label>
               <label class="metric-option"><input type="checkbox" value="costLanding" onchange="onDashboardMetricToggle(this)"> Custo/página</label>
               <label class="metric-option"><input type="checkbox" value="engagement" onchange="onDashboardMetricToggle(this)"> Engajamentos</label>
+              <label class="metric-option"><input type="checkbox" value="purchases" onchange="onDashboardMetricToggle(this)"> Compras</label>
+              <label class="metric-option"><input type="checkbox" value="cpp" onchange="onDashboardMetricToggle(this)"> Custo por compra</label>
+              <label class="metric-option"><input type="checkbox" value="purchaseValue" onchange="onDashboardMetricToggle(this)"> Valor em compras</label>
+              <label class="metric-option"><input type="checkbox" value="roas" onchange="onDashboardMetricToggle(this)"> ROAS</label>
             </div>
           </div>
         </div>
@@ -3184,6 +3188,22 @@ html:root .chat-pill.chat-sum-pill { display: none; }
           <div class="metric-card" id="card-engagement" data-dashboard-metric="engagement">
             <div class="metric-icon" style="background:rgba(167,139,250,0.1)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent2)" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg></div>
             <div class="metric-label">Engajamentos</div><div class="metric-value" id="m-engagement">—</div><div class="metric-sub">post engagement</div>
+          </div>
+          <div class="metric-card" id="card-purchases" data-dashboard-metric="purchases">
+            <div class="metric-icon" style="background:rgba(52,211,153,0.12)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div>
+            <div class="metric-label">Compras</div><div class="metric-value" id="m-purchases">—</div><div class="metric-sub">compras registradas pelo pixel</div>
+          </div>
+          <div class="metric-card" id="card-cpp" data-dashboard-metric="cpp">
+            <div class="metric-icon" style="background:rgba(52,211,153,0.12)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div>
+            <div class="metric-label">Custo por compra</div><div class="metric-value" id="m-cpp">—</div><div class="metric-sub">valor gasto ÷ compras</div>
+          </div>
+          <div class="metric-card" id="card-purchase-value" data-dashboard-metric="purchaseValue">
+            <div class="metric-icon" style="background:rgba(52,211,153,0.12)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+            <div class="metric-label">Valor em compras</div><div class="metric-value" id="m-purchase-value">—</div><div class="metric-sub">faturamento informado pelo pixel</div>
+          </div>
+          <div class="metric-card" id="card-roas" data-dashboard-metric="roas">
+            <div class="metric-icon" style="background:rgba(52,211,153,0.12)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M3 17l6-6 4 4 8-8M14 7h7v7"/></svg></div>
+            <div class="metric-label">ROAS</div><div class="metric-value" id="m-roas">—</div><div class="metric-sub">valor em compras ÷ valor gasto</div>
           </div>
         </div>
 
@@ -4384,7 +4404,7 @@ async function loadData() {
   document.getElementById('data-area').style.display = 'none';
   document.getElementById('page-meta').textContent = `${from} → ${to}`;
 
-  const insightsUrl = `${WORKER_URL}?account=${account}&from=${from}&to=${to}&fields=spend,reach,impressions,cpm,ctr,frequency,clicks,inline_link_clicks,actions,campaign_name,campaign_id`;
+  const insightsUrl = `${WORKER_URL}?account=${account}&from=${from}&to=${to}&fields=spend,reach,impressions,cpm,ctr,frequency,clicks,inline_link_clicks,actions,action_values,campaign_name,campaign_id`;
     const adsUrl = `${WORKER_URL}?account=${account}&from=${from}&to=${to}&fields=spend,reach,impressions,cpm,ctr,frequency,clicks,inline_link_clicks,actions,ad_name,ad_id,campaign_name,campaign_id&level=ad`;
   const campaignsUrl = `${WORKER_URL}?account=${account}&from=${from}&to=${to}&fields=id,effective_status`;
 
@@ -4400,7 +4420,7 @@ async function loadData() {
     const statusMap = {};
     (campJson.data || []).forEach(c => { statusMap[c.id] = c.effective_status; });
 
-    let totalSpend = 0, totalLeadSpend = 0, totalReach = 0, totalImpr = 0, totalLeads = 0, totalConv = 0, totalClicks = 0, totalLinkClicks = 0, totalLandingViews = 0, totalEngagement = 0;
+    let totalSpend = 0, totalLeadSpend = 0, totalReach = 0, totalImpr = 0, totalLeads = 0, totalConv = 0, totalClicks = 0, totalLinkClicks = 0, totalLandingViews = 0, totalEngagement = 0, totalPurchases = 0, totalPurchaseValue = 0;
     let wtCtr = 0, wtCpm = 0, wtFreq = 0;
 
     data.forEach(d => {
@@ -4418,6 +4438,8 @@ async function loadData() {
       totalConv += acts.filter(a => a.action_type === 'onsite_conversion.messaging_conversation_started_7d').reduce((s, a) => s + parseInt(a.value || 0), 0);
       totalLandingViews += acts.filter(a => ['landing_page_view','omni_landing_page_view'].includes(a.action_type)).reduce((s, a) => s + parseInt(a.value || 0), 0);
       totalEngagement += acts.filter(a => ['post_engagement','page_engagement'].includes(a.action_type)).reduce((s, a) => s + parseInt(a.value || 0), 0);
+      totalPurchases += purchaseActionValue(acts);
+      totalPurchaseValue += purchaseActionValue(d.action_values || [], true);
     });
 
     const avgCtr = totalImpr ? wtCtr / totalImpr : 0;
@@ -4428,6 +4450,8 @@ async function loadData() {
     const cpc = totalClicks ? totalSpend / totalClicks : 0;
     const cpcLink = totalLinkClicks ? totalSpend / totalLinkClicks : 0;
     const costLanding = totalLandingViews ? totalSpend / totalLandingViews : 0;
+    const cpp = totalPurchases ? totalSpend / totalPurchases : 0;
+    const roas = totalSpend && totalPurchaseValue ? totalPurchaseValue / totalSpend : 0;
 
     document.getElementById('data-area').style.display = 'block';
     dailyData = await loadDailyData(account, from, to);
@@ -4450,6 +4474,10 @@ async function loadData() {
     animVal('m-landing', totalLandingViews ? fmtNum(totalLandingViews) : '—');
     animVal('m-cost-landing', totalLandingViews ? fmtBRL(costLanding) : '—');
     animVal('m-engagement', totalEngagement ? fmtNum(totalEngagement) : '—');
+    animVal('m-purchases', totalPurchases ? fmtNum(totalPurchases) : '—');
+    animVal('m-cpp', totalPurchases ? fmtBRL(cpp) : '—');
+    animVal('m-purchase-value', totalPurchaseValue ? fmtBRL(totalPurchaseValue) : '—');
+    animVal('m-roas', roas ? fmt(roas, 2).replace('.', ',') + 'x' : '—');
 
     // Lógica de ocultação por cliente
     const act = activeClient ? activeClient.account : '';
@@ -4509,7 +4537,8 @@ async function loadData() {
         cpl: totalLeads ? fmtBRL(cpl) : '—', conv: totalConv ? fmtNum(totalConv) : '—', cpconv: totalConv ? fmtBRL(cpConv) : '—', leads: totalLeads ? fmtNum(totalLeads) : '—',
         impressions: totalImpr ? fmtNum(totalImpr) : '—', clicks: totalClicks ? fmtNum(totalClicks) : '—', linkClicks: totalLinkClicks ? fmtNum(totalLinkClicks) : '—',
         cpc: totalClicks ? fmtBRL(cpc) : '—', cpcLink: totalLinkClicks ? fmtBRL(cpcLink) : '—', landingViews: totalLandingViews ? fmtNum(totalLandingViews) : '—',
-        costLanding: totalLandingViews ? fmtBRL(costLanding) : '—', engagement: totalEngagement ? fmtNum(totalEngagement) : '—'
+        costLanding: totalLandingViews ? fmtBRL(costLanding) : '—', engagement: totalEngagement ? fmtNum(totalEngagement) : '—',
+        purchases: totalPurchases ? fmtNum(totalPurchases) : '—', cpp: totalPurchases ? fmtBRL(cpp) : '—', purchaseValue: totalPurchaseValue ? fmtBRL(totalPurchaseValue) : '—', roas: roas ? fmt(roas, 2).replace('.', ',') + 'x' : '—'
       },
       raw: { totalSpend, totalLeads, totalConv, cpl, cpConv },
       visible: [...document.querySelectorAll('[data-dashboard-metric]')].filter(el => el.style.display !== 'none' && !(el.closest('[style*="display: none"]'))).map(el => el.getAttribute('data-dashboard-metric')),
@@ -4555,7 +4584,7 @@ async function loadData() {
 
 // ===== RELATÓRIO EM PDF DO DASHBOARD =====
 // Monta uma página A4 fora da tela (visual claro, com gráficos refeitos em alta resolução) e gera o PDF com html2pdf.
-const RP_LABELS = { spend: 'Investimento', reach: 'Alcance', cpm: 'CPM', ctr: 'CTR', freq: 'Frequência', cpl: 'Custo por lead', conv: 'Conversas iniciadas', cpconv: 'Custo por conversa', leads: 'Leads', impressions: 'Impressões', clicks: 'Cliques', linkClicks: 'Cliques no link', cpc: 'CPC', cpcLink: 'CPC no link', landingViews: 'Visitas à página', costLanding: 'Custo por visita', engagement: 'Engajamento' };
+const RP_LABELS = { spend: 'Investimento', reach: 'Alcance', cpm: 'CPM', ctr: 'CTR', freq: 'Frequência', cpl: 'Custo por lead', conv: 'Conversas iniciadas', cpconv: 'Custo por conversa', leads: 'Leads', impressions: 'Impressões', clicks: 'Cliques', linkClicks: 'Cliques no link', cpc: 'CPC', cpcLink: 'CPC no link', landingViews: 'Visitas à página', costLanding: 'Custo por visita', engagement: 'Engajamento', purchases: 'Compras', cpp: 'Custo por compra', purchaseValue: 'Valor em compras', roas: 'ROAS' };
 const RP_CONV_TYPES = ['onsite_conversion.messaging_conversation_started_7d', 'onsite_conversion.messaging_first_reply', 'messaging_conversation_started_7d'];
 
 async function ensureHtml2Pdf() {
@@ -4845,9 +4874,26 @@ let _dashSnap = null; // números do Dashboard na tela, usados no relatório em 
 let lastAdsData = [];
 let adThumbnailCache = {};
 const DASHBOARD_METRICS_KEY = 'huven_dashboard_visible_metrics_v1';
-const DEFAULT_DASHBOARD_METRICS = ['spend','reach','cpm','ctr','freq','cpl','conv','cpconv','leads'];
+const DEFAULT_DASHBOARD_METRICS = ['spend','reach','cpm','ctr','freq','cpl','conv','cpconv','leads','purchases','cpp','purchaseValue','roas'];
 
+// Compras: a Meta repete a mesma compra em vários tipos (omni_purchase, purchase, pixel...). Usa um só, na ordem de preferência.
+const PURCHASE_TYPES = ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase', 'onsite_web_purchase', 'onsite_conversion.purchase'];
+function purchaseActionValue(list, money) {
+  for (const t of PURCHASE_TYPES) {
+    const hit = (list || []).filter(a => a.action_type === t);
+    if (hit.length) return hit.reduce((s, a) => s + (money ? parseFloat(a.value || 0) : parseInt(a.value || 0)), 0);
+  }
+  return 0;
+}
 function getVisibleDashboardMetrics() {
+  // Métricas de compra (novas): aparecem uma vez para quem já tinha escolhido as métricas; depois vale a escolha da pessoa.
+  try {
+    if (!localStorage.getItem('huven_metrics_purchases_v1')) {
+      localStorage.setItem('huven_metrics_purchases_v1', '1');
+      const saved = JSON.parse(localStorage.getItem(DASHBOARD_METRICS_KEY) || 'null');
+      if (Array.isArray(saved) && saved.length) localStorage.setItem(DASHBOARD_METRICS_KEY, JSON.stringify([...new Set([...saved, 'purchases', 'cpp', 'purchaseValue', 'roas'])]));
+    }
+  } catch (e) {}
   try {
     const saved = JSON.parse(localStorage.getItem(DASHBOARD_METRICS_KEY) || 'null');
     if (Array.isArray(saved) && saved.length) return saved;
