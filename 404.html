@@ -20022,6 +20022,98 @@ function anDefaultRange() {
   return [f(from), f(to)];
 }
 
+// ----- Atendimento › Temperatura dos leads (IA): todos os resumos da IA num relatório com filtro -----
+let _anTab = 'tempo';
+let _tempRep = { act: '', chats: null, filter: 'all', line: 'all', q: '', loading: false };
+function setAnTab(t) { _anTab = t; renderAnaliseView(); }
+function anTabsHtml(act) {
+  if (!act || !leadSummaryOn(act)) { _anTab = 'tempo'; return ''; }
+  const b = (k, l) => `<button class="pl-tab ${_anTab === k ? 'active' : ''}" onclick="setAnTab('${k}')">${l}</button>`;
+  return `<div class="pl-bar" style="margin:0 0 14px;display:flex;gap:8px;flex-wrap:wrap;">${b('tempo', uiIco('clock', 14) + ' Tempo de resposta')}${b('temp', uiIco('sparkles', 14) + ' Temperatura dos leads (IA)')}</div>`;
+}
+function loadTempReport(act, force) {
+  act = normalizeActValue(act);
+  if (!force && _tempRep.act === act && (_tempRep.chats || _tempRep.loading)) return;
+  _tempRep = { ..._tempRep, act, chats: null, loading: true };
+  let unsub = null;
+  unsub = window._fb.listenInboxChats(act, 800, items => {
+    _tempRep.chats = (items || []).filter(c => !c.isGroup);
+    _tempRep.loading = false;
+    setTimeout(() => { try { unsub && unsub(); } catch (e) {} }, 0);
+    if (_anTab === 'temp') renderTempReport();
+  });
+}
+function tempReportRows() {
+  const act = _tempRep.act;
+  const index = chatLeadIndex(act);
+  const q = _tempRep.q.trim().toLowerCase();
+  return (_tempRep.chats || []).map(c => ({ c, lead: chatLeadFor(c, index), s: c.aiSummary || null }))
+    .filter(r => r.s && r.s.temperatura)
+    .filter(r => _tempRep.filter === 'all' || r.s.temperatura === _tempRep.filter)
+    .filter(r => _tempRep.line === 'all' || (r.c.line || waLineOfKey(r.c.id)) === _tempRep.line)
+    .filter(r => !q || chatName(r.c, r.lead).toLowerCase().includes(q) || String(r.c.phone || '').includes(q.replace(/\D/g, '') || '§'))
+    .sort((a, b) => ({ quente: 0, morno: 1, frio: 2 }[a.s.temperatura] - { quente: 0, morno: 1, frio: 2 }[b.s.temperatura]) || String(b.c.lastAt || '').localeCompare(String(a.c.lastAt || '')));
+}
+function renderTempReport() {
+  const out = document.getElementById('an-result');
+  if (!out) return;
+  const act = _tempRep.act;
+  if (!_tempRep.chats) { out.innerHTML = '<div class="integ-muted">Lendo os resumos...</div>'; return; }
+  const all = _tempRep.chats;
+  const withSum = all.filter(c => c.aiSummary && c.aiSummary.temperatura);
+  const n = t => withSum.filter(c => c.aiSummary.temperatura === t).length;
+  const rows = tempReportRows();
+  const lines = waLines(act);
+  const chip = (k, label) => `<button class="chat-pill ${_tempRep.filter === k ? 'active' : ''}" onclick="_tempRep.filter='${k}';renderTempReport()">${label}</button>`;
+  const stageLabel = l => l ? ((getAllStages(normalizeActValue(l.act)).find(s => s.id === l.stage) || {}).label || '') : '';
+  const fmt = iso => iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  out.innerHTML = `
+    <div class="an-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
+      ${anKpi('Com resumo', withSum.length, `de ${all.length} conversas`)}
+      ${anKpi('🔥 Quentes', n('quente'), withSum.length ? Math.round(n('quente') * 100 / withSum.length) + '%' : '')}
+      ${anKpi('🌤️ Mornos', n('morno'), withSum.length ? Math.round(n('morno') * 100 / withSum.length) + '%' : '')}
+      ${anKpi('❄️ Frios', n('frio'), withSum.length ? Math.round(n('frio') * 100 / withSum.length) + '%' : '')}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+      ${chip('all', 'Todos')}${chip('quente', '🔥 Quentes')}${chip('morno', '🌤️ Mornos')}${chip('frio', '❄️ Frios')}
+      ${lines.length > 1 ? `<select class="field-input" style="width:auto;padding:6px 10px;font-size:12.5px;" onchange="_tempRep.line=this.value;renderTempReport()"><option value="all">Todos os atendentes</option>${lines.map(l => `<option value="${escapeHtml(l.id)}" ${_tempRep.line === l.id ? 'selected' : ''}>${escapeHtml(l.attendant || l.label)}</option>`).join('')}</select>` : ''}
+      <input class="field-input" style="width:200px;padding:6px 10px;font-size:12.5px;" placeholder="Buscar nome ou número" value="${escapeHtml(_tempRep.q)}" oninput="_tempRep.q=this.value;clearTimeout(window._tempQ);window._tempQ=setTimeout(renderTempReport,250)">
+      <span style="flex:1;"></span>
+      <button class="chat-pill" onclick="loadTempReport('${escapeJsString(act)}', true)">${uiIco('swap', 13)} Recarregar</button>
+      <button class="chat-pill" onclick="exportTempReport()">${uiIco('download', 13)} Exportar planilha</button>
+    </div>
+    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:12px;">
+      <table class="an-table" style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        <thead><tr style="text-align:left;color:var(--muted);">${['Lead', 'Temperatura', 'Intenção', 'Próximo passo', 'Atendente', 'Etapa', 'Atualizado'].map(h => `<th style="padding:10px;border-bottom:1px solid var(--border);white-space:nowrap;">${h}</th>`).join('')}</tr></thead>
+        <tbody>${rows.length ? rows.map(r => {
+          const t = AI_TEMP[r.s.temperatura] || AI_TEMP.morno;
+          return `<tr style="cursor:pointer;border-bottom:1px solid var(--border);" onclick="openChatWith({ act: '${escapeJsString(act)}', phone: '${escapeJsString(r.c.phone || '')}', jid: '${escapeJsString(r.c.jid || r.c.lid || '')}', name: '${escapeJsString(chatName(r.c, r.lead))}', line: '${escapeJsString(r.c.line || waLineOfKey(r.c.id))}' })" title="Abrir a conversa">
+            <td style="padding:10px;font-weight:600;color:var(--text);white-space:nowrap;">${escapeHtml(limitText(chatName(r.c, r.lead), 32))}</td>
+            <td style="padding:10px;white-space:nowrap;color:${t[2]};font-weight:700;">${t[0]} ${t[1]}</td>
+            <td style="padding:10px;color:var(--muted2);min-width:200px;">${escapeHtml(r.s.intencao || '')}</td>
+            <td style="padding:10px;color:var(--muted2);min-width:200px;">${escapeHtml(r.s.proximoPasso || '')}</td>
+            <td style="padding:10px;white-space:nowrap;">${escapeHtml(waLineLabel(act, r.c.line || waLineOfKey(r.c.id)) && ((lines.find(l => l.id === (r.c.line || waLineOfKey(r.c.id))) || {}).attendant || waLineLabel(act, r.c.line || waLineOfKey(r.c.id))))}</td>
+            <td style="padding:10px;white-space:nowrap;">${escapeHtml(stageLabel(r.lead) || '—')}</td>
+            <td style="padding:10px;white-space:nowrap;color:var(--muted);">${escapeHtml(fmt(r.s.at))}</td></tr>`;
+        }).join('') : `<tr><td colspan="7" style="padding:16px;" class="integ-muted">Nenhum resumo com esse filtro. Os resumos são feitos às 12h e às 19h para as conversas com mensagem nova, e à noite as conversas antigas vão sendo resumidas aos poucos.</td></tr>`}</tbody>
+      </table>
+    </div>`;
+}
+function exportTempReport() {
+  const rows = tempReportRows();
+  const act = _tempRep.act;
+  const esc = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const head = ['Lead', 'Telefone', 'Temperatura', 'Intenção', 'O que já falou', 'Objeções', 'Como respondeu', 'Próximo passo', 'Atendente', 'Etapa', 'Atualizado'];
+  const lines = rows.map(r => [chatName(r.c, r.lead), r.c.phone || '', (AI_TEMP[r.s.temperatura] || [])[1] || '', r.s.intencao, r.s.falou, r.s.objecoes, r.s.comoRespondeu, r.s.proximoPasso,
+    waLineLabel(act, r.c.line || waLineOfKey(r.c.id)), r.lead ? ((getAllStages(normalizeActValue(r.lead.act)).find(s => s.id === r.lead.stage) || {}).label || '') : '', r.s.at ? new Date(r.s.at).toLocaleString('pt-BR') : ''].map(esc).join(';'));
+  const blob = new Blob(['\ufeff' + [head.map(esc).join(';'), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `temperatura-leads-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
 function renderAnaliseView() {
   const box = document.getElementById('analise-body');
   if (!box) return;
@@ -20037,7 +20129,8 @@ function renderAnaliseView() {
         <div class="integ-muted" style="margin-top:4px;">Quanto tempo a equipe leva para responder os leads que chegam (formulário, landing page, planilha ou mensagem no WhatsApp), olhando só as conversas desses leads. Conversas de contatos que não viraram card ficam de fora.</div>
       </div>
     </div>
-    <div class="an-filters">
+    ${anTabsHtml(act)}
+    ${_anTab === 'temp' ? '<div id="an-result"></div>' : `<div class="an-filters">
       <label>De<input type="date" class="field-input" id="an-from" value="${_an.from}"></label>
       <label>Até<input type="date" class="field-input" id="an-to" value="${_an.to}"></label>
       <label class="integ-toggle" style="align-self:flex-end;margin-bottom:10px;"><input type="checkbox" id="an-biz" ${_an.biz ? 'checked' : ''} onchange="document.getElementById('an-biz-box').style.display=this.checked?'flex':'none'"> Contar só o horário de expediente</label>
@@ -20049,7 +20142,8 @@ function renderAnaliseView() {
       ${act && waLines(act).length > 1 ? `<label>Qual WhatsApp<select class="field-input" id="an-line"><option value="all">Todos os WhatsApps</option>${waLines(act).map(l => `<option value="${escapeHtml(l.id)}" ${_an.line === l.id ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}</select></label>` : ''}
       <button class="btn-add-lead" style="height:40px;padding:0 18px;align-self:flex-end;" onclick="runAnalise()" ${act ? '' : 'disabled'}>Analisar</button>
     </div>
-    <div id="an-result">${act ? '<div class="integ-empty">Escolha o período e clique em Analisar.</div>' : '<div class="integ-empty">Escolha o cliente no topo do menu.</div>'}</div>`;
+    <div id="an-result">${act ? '<div class="integ-empty">Escolha o período e clique em Analisar.</div>' : '<div class="integ-empty">Escolha o cliente no topo do menu.</div>'}</div>`}`;
+  if (_anTab === 'temp' && act) { loadTempReport(act); renderTempReport(); return; }
   if (act && _an.data && _an.data.act === normalizeActValue(act)) renderAnaliseResult(_an.data);
 }
 
