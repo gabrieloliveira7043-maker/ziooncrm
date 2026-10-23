@@ -190,6 +190,11 @@ input[type="date"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px va
 .metric-picker.open .metric-picker-menu { display:block; }
 .metric-picker-title { font-size:10px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin:3px 4px 8px; }
 .metric-option { display:flex; align-items:center; gap:8px; padding:8px 6px; border-radius:6px; color:var(--text); font-size:12px; cursor:pointer; }
+.dash-head-tools { display:flex; align-items:center; gap:8px; }
+@media (min-width: 769px) {
+  .campaigns-table-card.cols-scroll { overflow-x:auto; }
+  .campaigns-table.dyn-cols { min-width: var(--cols-minw, 100%); }
+}
 .metric-option:hover { background:rgba(255,255,255,.04); }
 .metric-option input { accent-color:var(--gold); }
 .ad-name-main { font-weight:700; color:var(--text); margin-bottom:4px; }
@@ -847,6 +852,11 @@ tr:hover td { background: var(--surface2); }
 .metric-picker.open .metric-picker-menu { display:block; }
 .metric-picker-title { font-size:10px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin:3px 4px 8px; }
 .metric-option { display:flex; align-items:center; gap:8px; padding:8px 6px; border-radius:6px; color:var(--text); font-size:12px; cursor:pointer; }
+.dash-head-tools { display:flex; align-items:center; gap:8px; }
+@media (min-width: 769px) {
+  .campaigns-table-card.cols-scroll { overflow-x:auto; }
+  .campaigns-table.dyn-cols { min-width: var(--cols-minw, 100%); }
+}
 .metric-option:hover { background:rgba(255,255,255,.04); }
 .metric-option input { accent-color:var(--gold); }
 .ad-name-main { font-weight:700; color:var(--text); margin-bottom:4px; }
@@ -3230,8 +3240,14 @@ html:root .chat-pill.chat-sum-pill { display: none; }
           </div>
         </div>
 
-        <div class="section-label">Campanhas no período</div>
-        <div class="table-card campaigns-table-card">
+        <div class="dashboard-section-head">
+          <div class="section-label">Campanhas no período</div>
+          <div class="metric-picker dash-cols-picker" id="cols-picker-campaigns">
+            <button class="metric-picker-btn" type="button" onclick="toggleDashColsPicker(event, 'campaigns')">Colunas ▾</button>
+            <div class="metric-picker-menu" onclick="event.stopPropagation()"></div>
+          </div>
+        </div>
+        <div class="table-card campaigns-table-card" id="campaigns-table-card">
           <table class="campaigns-table">
             <thead>
               <tr id="table-header-row">
@@ -3254,17 +3270,24 @@ html:root .chat-pill.chat-sum-pill { display: none; }
         </div>
         <div class="dashboard-section-head" style="margin-top:28px;">
           <div class="section-label">Desempenho por anúncio</div>
+          <div class="dash-head-tools">
+          <div class="metric-picker dash-cols-picker" id="cols-picker-ads">
+            <button class="metric-picker-btn" type="button" onclick="toggleDashColsPicker(event, 'ads')">Colunas ▾</button>
+            <div class="metric-picker-menu" onclick="event.stopPropagation()"></div>
+          </div>
           <select class="modal-select" id="ads-sort-select" onchange="renderAdsTable(lastAdsData || [])" style="width:180px; height:36px; padding:0 10px; font-size:12px;">
             <option value="leads">Ordenar por leads</option>
             <option value="spend">Ordenar por gasto</option>
             <option value="cpl">Ordenar por CPL</option>
             <option value="conv">Ordenar por conversas</option>
+            <option value="purchases">Ordenar por compras</option>
           </select>
+          </div>
         </div>
-        <div class="table-card campaigns-table-card">
+        <div class="table-card campaigns-table-card" id="ads-table-card">
           <table class="campaigns-table ads-table">
             <thead>
-              <tr>
+              <tr id="ads-header-row">
                 <th style="width:34%">Anúncio</th>
                 <th style="width:10%">Leads</th>
                 <th style="width:12%">Gasto</th>
@@ -4405,7 +4428,7 @@ async function loadData() {
   document.getElementById('page-meta').textContent = `${from} → ${to}`;
 
   const insightsUrl = `${WORKER_URL}?account=${account}&from=${from}&to=${to}&fields=spend,reach,impressions,cpm,ctr,frequency,clicks,inline_link_clicks,actions,action_values,campaign_name,campaign_id`;
-    const adsUrl = `${WORKER_URL}?account=${account}&from=${from}&to=${to}&fields=spend,reach,impressions,cpm,ctr,frequency,clicks,inline_link_clicks,actions,ad_name,ad_id,campaign_name,campaign_id&level=ad`;
+    const adsUrl = `${WORKER_URL}?account=${account}&from=${from}&to=${to}&fields=spend,reach,impressions,cpm,ctr,frequency,clicks,inline_link_clicks,actions,action_values,ad_name,ad_id,campaign_name,campaign_id&level=ad`;
   const campaignsUrl = `${WORKER_URL}?account=${account}&from=${from}&to=${to}&fields=id,effective_status`;
 
   try {
@@ -4545,27 +4568,8 @@ async function loadData() {
       hideConv: isTravi, hideLeads: isContabiliza
     };
 
-    document.getElementById('campaigns-body').innerHTML = data.map(d => {
-      const spend = parseFloat(d.spend || 0);
-      const acts = d.actions || [];
-      const leads = acts.filter(a => a.action_type === 'lead').reduce((s, a) => s + parseInt(a.value || 0), 0);
-      const convRow = acts.filter(a => a.action_type === 'onsite_conversion.messaging_conversation_started_7d').reduce((s, a) => s + parseInt(a.value || 0), 0);
-      const cplRow = leads ? spend / leads : 0;
-      const cpConvRow = convRow ? spend / convRow : 0;
-      const isActive = (statusMap[d.campaign_id] || '').toUpperCase() === 'ACTIVE';
-      return `<tr>
-        <td class="name-cell" data-label="Campanha" title="${d.campaign_name}">${d.campaign_name}</td>
-        <td data-label="Status"><span class="status-pill ${isActive ? 'active' : 'paused'}"><span class="status-dot"></span>${isActive ? 'Ativa' : 'Pausada'}</span></td>
-        <td data-label="Gasto">${fmtBRL(spend)}</td>
-        <td data-label="CTR">${fmt(d.ctr || 0)}%</td>
-        <td data-label="CPM">${fmtBRL(d.cpm || 0)}</td>
-        <td data-label="Freq.">${fmt(d.frequency || 0)}</td>
-        <td data-label="CPL" class="col-cpl">${leads ? fmtBRL(cplRow) : '—'}</td>
-        <td data-label="Leads" class="col-leads">${leads || '—'}</td>
-        <td data-label="Conv. inic." class="col-conv">${convRow || '—'}</td>
-        <td data-label="Custo/conv." class="col-cpconv">${convRow ? fmtBRL(cpConvRow) : '—'}</td>
-      </tr>`;
-    }).join('');
+    lastCampaignsData = { data, statusMap };
+    renderCampaignsTable();
 
     lastAdsData = Array.isArray(adsJson && adsJson.data) ? adsJson.data : [];
     const adThumbs = await loadAdThumbnails(account, lastAdsData);
@@ -4656,7 +4660,7 @@ async function buildDashboardPdf() {
     if (includeAds && !(snap.ads || []).length && snap.account) {
       say('Buscando os anúncios...');
       try {
-        const r = await metaFetch(`${WORKER_URL}?account=${snap.account}&from=${snap.from}&to=${snap.to}&fields=spend,reach,impressions,cpm,ctr,frequency,clicks,inline_link_clicks,actions,ad_name,ad_id,campaign_name,campaign_id&level=ad`);
+        const r = await metaFetch(`${WORKER_URL}?account=${snap.account}&from=${snap.from}&to=${snap.to}&fields=spend,reach,impressions,cpm,ctr,frequency,clicks,inline_link_clicks,actions,action_values,ad_name,ad_id,campaign_name,campaign_id&level=ad`);
         const j = await r.json();
         const rows = Array.isArray(j && j.data) ? j.data : [];
         const th = await loadAdThumbnails(snap.account, rows);
@@ -5120,7 +5124,8 @@ function mergeAdInsightRows(rows) {
       reach: 0,
       clicks: 0,
       inline_link_clicks: 0,
-      actions: []
+      actions: [],
+      action_values: []
     };
     const rowThumb = getAdThumbnail(row) || (row.ad_id ? adThumbnailCache[row.ad_id] : '');
     if (rowThumb && !current.thumbnail_url) current.thumbnail_url = rowThumb;
@@ -5134,6 +5139,12 @@ function mergeAdInsightRows(rows) {
       const value = parseInt(action.value || 0);
       if (existing) existing.value = String(Math.max(parseInt(existing.value || 0), value));
       else current.actions.push({ action_type: action.action_type, value: String(value) });
+    });
+    (row.action_values || []).forEach(action => {
+      const existing = current.action_values.find(a => a.action_type === action.action_type);
+      const value = parseFloat(action.value || 0);
+      if (existing) existing.value = String(Math.max(parseFloat(existing.value || 0), value));
+      else current.action_values.push({ action_type: action.action_type, value: String(value) });
     });
     map.set(key, current);
   });
@@ -5170,6 +5181,8 @@ function renderAdsTable(rows) {
     ]);
     const cpl = leads ? spend / leads : 0;
     return {
+      stats: dashRowStats(row, true),
+      purchases: purchaseActionValue(row.actions),
       name: row.ad_name || row.ad_id || 'Anúncio sem nome',
       campaign: row.campaign_name || '',
       thumbnail: getAdThumbnail(row) || (row.ad_id ? adThumbnailCache[row.ad_id] : ''),
@@ -5187,8 +5200,10 @@ function renderAdsTable(rows) {
     return (b[sortBy] || 0) - (a[sortBy] || 0);
   });
 
+  const cols = dashColsFor('ads');
+  dashColsHeader('ads', cols, '<th style="width:30%">Anúncio</th>');
   if (!normalized.length) {
-    body.innerHTML = '<tr><td colspan="7" class="empty-state"><strong>Nenhum anúncio encontrado</strong>Não há dados por anúncio para esse período.</td></tr>';
+    body.innerHTML = `<tr><td colspan="${cols.length + 1}" class="empty-state"><strong>Nenhum anúncio encontrado</strong>Não há dados por anúncio para esse período.</td></tr>`;
     return;
   }
 
@@ -5203,13 +5218,138 @@ function renderAdsTable(rows) {
           </div>
         </div>
       </td>
-      <td data-label="Leads">${ad.leads || '—'}</td>
-      <td data-label="Gasto">${fmtBRL(ad.spend)}</td>
-      <td data-label="CPL">${ad.leads ? fmtBRL(ad.cpl) : '—'}</td>
-      <td data-label="Conv. inic.">${ad.conv || '—'}</td>
-      <td data-label="CTR">${fmt(ad.ctr, 2)}%</td>
-      <td data-label="CPM">${fmtBRL(ad.cpm)}</td>
+      ${dashColsCells(cols, ad.stats)}
     </tr>`).join('');
+}
+
+// ===== COLUNAS DAS TABELAS DO DASHBOARD (campanhas e anúncios) =====
+// Cada pessoa escolhe as colunas de cada tabela; fica salvo neste navegador.
+const DASH_CONV_TYPES = ['onsite_conversion.messaging_conversation_started_7d', 'onsite_conversion.messaging_first_reply', 'messaging_conversation_started_7d'];
+function dashRowStats(row, isAd) {
+  const acts = row.actions || [];
+  const sumOf = types => acts.filter(a => types.includes(a.action_type)).reduce((s, a) => s + parseInt(a.value || 0), 0);
+  const spend = parseFloat(row.spend || 0);
+  const r = {
+    spend, impressions: parseInt(row.impressions || 0), reach: parseInt(row.reach || 0),
+    clicks: parseInt(row.clicks || 0), linkClicks: parseInt(row.inline_link_clicks || 0),
+    ctr: parseFloat(row.ctr || 0), cpm: parseFloat(row.cpm || 0), freq: parseFloat(row.frequency || 0),
+    leads: isAd ? getActionValue(acts, ['lead']) : sumOf(['lead']),
+    conv: isAd ? getActionValue(acts, DASH_CONV_TYPES) : sumOf(['onsite_conversion.messaging_conversation_started_7d']),
+    landing: sumOf(['landing_page_view', 'omni_landing_page_view']),
+    engagement: sumOf(['post_engagement', 'page_engagement']),
+    purchases: purchaseActionValue(acts),
+    purchaseValue: purchaseActionValue(row.action_values || [], true)
+  };
+  return r;
+}
+const dashMoney = (n, d) => d ? fmtBRL(n / d) : '—';
+const dashCount = n => n ? fmtNum(n) : '—';
+const DASH_COLS = [
+  { key: 'spend', label: 'Gasto', cell: r => fmtBRL(r.spend) },
+  { key: 'ctr', label: 'CTR', cell: r => fmt(r.ctr, 2) + '%' },
+  { key: 'cpm', label: 'CPM', cell: r => fmtBRL(r.cpm) },
+  { key: 'freq', label: 'Freq.', cell: r => fmt(r.freq) },
+  { key: 'cpl', label: 'CPL', cls: 'col-cpl', cell: r => dashMoney(r.spend, r.leads) },
+  { key: 'leads', label: 'Leads', cls: 'col-leads', cell: r => r.leads || '—' },
+  { key: 'conv', label: 'Conv. inic.', cls: 'col-conv', cell: r => r.conv || '—' },
+  { key: 'cpconv', label: 'Custo/conv.', cls: 'col-cpconv', cell: r => dashMoney(r.spend, r.conv) },
+  { key: 'impressions', label: 'Impressões', cell: r => dashCount(r.impressions) },
+  { key: 'reach', label: 'Alcance', cell: r => dashCount(r.reach) },
+  { key: 'clicks', label: 'Cliques', cell: r => dashCount(r.clicks) },
+  { key: 'linkClicks', label: 'Cliques no link', cell: r => dashCount(r.linkClicks) },
+  { key: 'cpc', label: 'CPC', cell: r => dashMoney(r.spend, r.clicks) },
+  { key: 'cpcLink', label: 'CPC link', cell: r => dashMoney(r.spend, r.linkClicks) },
+  { key: 'landing', label: 'Visitas à página', cell: r => dashCount(r.landing) },
+  { key: 'costLanding', label: 'Custo/visita', cell: r => dashMoney(r.spend, r.landing) },
+  { key: 'engagement', label: 'Engajamentos', cell: r => dashCount(r.engagement) },
+  { key: 'purchases', label: 'Compras', cell: r => dashCount(r.purchases) },
+  { key: 'cpp', label: 'Custo/compra', cell: r => dashMoney(r.spend, r.purchases) },
+  { key: 'purchaseValue', label: 'Valor em compras', cell: r => r.purchaseValue ? fmtBRL(r.purchaseValue) : '—' },
+  { key: 'roas', label: 'ROAS', cell: r => r.spend && r.purchaseValue ? fmt(r.purchaseValue / r.spend, 2).replace('.', ',') + 'x' : '—' }
+];
+const DASH_COLS_DEFAULT = {
+  campaigns: ['spend', 'ctr', 'cpm', 'freq', 'cpl', 'leads', 'conv', 'cpconv'],
+  ads: ['leads', 'spend', 'cpl', 'conv', 'ctr', 'cpm']
+};
+let lastCampaignsData = null;
+function dashColsKeys(table) {
+  try {
+    const saved = JSON.parse(localStorage.getItem('huven_table_cols_' + table) || 'null');
+    if (Array.isArray(saved)) {
+      const ok = saved.filter(k => DASH_COLS.some(c => c.key === k));
+      if (ok.length) return ok;
+    }
+  } catch (e) {}
+  return DASH_COLS_DEFAULT[table].slice();
+}
+function dashColsFor(table) {
+  return dashColsKeys(table).map(k => DASH_COLS.find(c => c.key === k));
+}
+function dashColsHeader(table, cols, fixedHtml) {
+  const row = document.getElementById(table === 'ads' ? 'ads-header-row' : 'table-header-row');
+  if (row) row.innerHTML = fixedHtml + cols.map(c => `<th${c.cls ? ` class="${c.cls}"` : ''}>${c.label}</th>`).join('');
+  const tbl = row && row.closest('table');
+  const card = document.getElementById(table + '-table-card');
+  const wide = cols.length > 8;
+  if (tbl) { tbl.classList.toggle('dyn-cols', wide); tbl.style.setProperty('--cols-minw', (table === 'ads' ? 340 : 400) + cols.length * 125 + 'px'); }
+  if (card) card.classList.toggle('cols-scroll', wide);
+  renderDashColsPicker(table);
+}
+function dashColsCells(cols, stats) {
+  return cols.map(c => `<td data-label="${c.label}"${c.cls ? ` class="${c.cls}"` : ''}>${c.cell(stats)}</td>`).join('');
+}
+function renderDashColsPicker(table) {
+  const menu = document.querySelector('#cols-picker-' + table + ' .metric-picker-menu');
+  if (!menu) return;
+  const on = new Set(dashColsKeys(table));
+  menu.innerHTML = '<div class="metric-picker-title">Colunas exibidas</div>' + DASH_COLS.map(c =>
+    `<label class="metric-option"><input type="checkbox" value="${c.key}" ${on.has(c.key) ? 'checked' : ''} onchange="onDashColToggle('${table}', this)"> ${c.label}</label>`).join('') +
+    `<button type="button" class="metric-picker-btn" style="width:100%; justify-content:center; margin-top:8px;" onclick="resetDashCols('${table}')">Voltar ao padrão</button>`;
+}
+function toggleDashColsPicker(event, table) {
+  if (event) event.stopPropagation();
+  const picker = document.getElementById('cols-picker-' + table);
+  if (!picker) return;
+  const willOpen = !picker.classList.contains('open');
+  document.querySelectorAll('.metric-picker.open').forEach(p => p.classList.remove('open'));
+  if (willOpen) { renderDashColsPicker(table); picker.classList.add('open'); }
+}
+function rerenderDashTable(table) {
+  if (table === 'ads') renderAdsTable(lastAdsData || []);
+  else renderCampaignsTable();
+}
+function onDashColToggle(table, input) {
+  let keys = dashColsKeys(table);
+  if (input.checked) { if (!keys.includes(input.value)) keys.push(input.value); }
+  else keys = keys.filter(k => k !== input.value);
+  if (!keys.length) { input.checked = true; return; }
+  try { localStorage.setItem('huven_table_cols_' + table, JSON.stringify(keys)); } catch (e) {}
+  rerenderDashTable(table);
+}
+function resetDashCols(table) {
+  try { localStorage.removeItem('huven_table_cols_' + table); } catch (e) {}
+  rerenderDashTable(table);
+}
+document.addEventListener('click', () => document.querySelectorAll('.dash-cols-picker.open').forEach(p => p.classList.remove('open')));
+function renderCampaignsTable() {
+  const body = document.getElementById('campaigns-body');
+  if (!body) return;
+  const cols = dashColsFor('campaigns');
+  dashColsHeader('campaigns', cols, '<th style="width:22%">Campanha</th><th style="width:9%">Status</th>');
+  if (!lastCampaignsData) return;
+  const { data, statusMap } = lastCampaignsData;
+  if (!data.length) {
+    body.innerHTML = `<tr><td colspan="${cols.length + 2}" class="empty-state"><strong>Nenhuma campanha encontrada</strong>Não há dados para esse período.</td></tr>`;
+    return;
+  }
+  body.innerHTML = data.map(d => {
+    const isActive = (statusMap[d.campaign_id] || '').toUpperCase() === 'ACTIVE';
+    return `<tr>
+        <td class="name-cell" data-label="Campanha" title="${escapeHtml(d.campaign_name || '')}">${escapeHtml(d.campaign_name || '')}</td>
+        <td data-label="Status"><span class="status-pill ${isActive ? 'active' : 'paused'}"><span class="status-dot"></span>${isActive ? 'Ativa' : 'Pausada'}</span></td>
+        ${dashColsCells(cols, dashRowStats(d, false))}
+      </tr>`;
+  }).join('');
 }
 async function loadDailyData(account, from, to) {
   const url = `${WORKER_URL}?account=${account}&from=${from}&to=${to}&fields=spend,reach,actions&time_increment=1`;
