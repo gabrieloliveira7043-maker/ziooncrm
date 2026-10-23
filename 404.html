@@ -1742,6 +1742,12 @@ body.card-dragging .kanban-card:hover { transform: none; }
 /* Chat: painel do lead */
 .chat-info { display: none; width: 290px; flex-shrink: 0; border-left: 1px solid var(--border); padding: 16px; overflow-y: auto; background: var(--surface); }
 .chat-info.open { display: block; }
+.ci-ai { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--surface2); }
+.ci-ai-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.ci-ai-row { font-size: 12.5px; color: var(--muted2); line-height: 1.5; margin-top: 8px; }
+.ci-ai-row b { display: block; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 1px; }
+html:root .chat-pill.chat-sum-pill { display: none; }
+@media (max-width: 1200px) { html:root .chat-pill.chat-sum-pill { display: inline-flex; } }
 .ci-block { margin-bottom: 18px; }
 .ci-label { font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
 .ci-field-label { display: block; font-size: 12px; font-weight: 700; color: var(--muted2); margin-bottom: 5px; }
@@ -3360,6 +3366,7 @@ body.card-dragging .kanban-card:hover { transform: none; }
     <div class="modal-overlay" id="lead-modal">
       <div class="modal-box">
         <div class="modal-title" id="modal-title">Novo lead</div>
+        <div class="modal-field" id="field-ai-summary" style="display:none;"></div>
         <div class="modal-field">
           <label class="modal-label">Nome</label>
           <input type="text" class="modal-input" id="lead-name" placeholder="Nome completo">
@@ -3419,7 +3426,6 @@ body.card-dragging .kanban-card:hover { transform: none; }
             <option value="Outro">Outro</option>
           </select>
         </div>
-        <div class="modal-field" id="field-ai-summary" style="display:none;"></div>
         <div class="modal-field" id="field-obs">
           <label class="modal-label">Observações</label>
           <textarea class="modal-input" id="lead-obs" rows="2" placeholder="Anotações sobre o lead..." style="resize:vertical;"></textarea>
@@ -13400,7 +13406,6 @@ function chatMatchesFilter(c, f, me) {
 
 // ----- Resumo do lead pela IA (ficha com temperatura, intenção, objeções...) -----
 // Ligado por cliente no admin (whatsapp_settings.leadSummary). O servidor atualiza às 12h e 19h; o botão atualiza na hora.
-let _chatSumOpen = null; // painel "Resumo do lead" aberto/fechado (mantém ao redesenhar o topo do Chat)
 function leadSummaryOn(act) { const s = WHATSAPP_SETTINGS[normalizeActValue(act)]; return !!(s && s.leadSummary && s.leadSummary.enabled); }
 const AI_TEMP = { quente: ['🔥', 'Quente', '#E0503F'], morno: ['🌤️', 'Morno', '#D99A1E'], frio: ['❄️', 'Frio', '#3B82F6'] };
 function aiSummaryChip(sum) {
@@ -13467,7 +13472,7 @@ async function renderLeadAiSummary(lead) {
   if (!lead || !leadSummaryOn(lead.act)) { box.style.display = 'none'; box.innerHTML = ''; return; }
   const id = escapeJsString(lead.id);
   box.style.display = 'block';
-  box.innerHTML = `<label class="modal-label">Resumo do lead (IA)</label><div style="border:1px solid var(--border);border-radius:10px;padding:10px;">${aiSummaryHtml(lead.aiSummary, `<button type="button" class="chat-pill" style="margin-left:auto;" onclick="leadModalRefreshSummary('${id}', this)">Atualizar resumo</button>`)}</div>`;
+  box.innerHTML = `<label class="modal-label">${uiIco('sparkles', 12)} Resumo do lead (IA)</label><div style="border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--surface2);">${aiSummaryHtml(lead.aiSummary, `<button type="button" class="chat-pill" style="margin-left:auto;" onclick="leadModalRefreshSummary('${id}', this)">${lead.aiSummary ? 'Atualizar resumo' : 'Gerar resumo'}</button>`)}</div>`;
 }
 async function leadModalRefreshSummary(id, btn) {
   const lead = getLeads().find(l => l.id === id);
@@ -13479,7 +13484,13 @@ async function leadModalRefreshSummary(id, btn) {
 }
 async function chatRefreshSummary(btn) {
   const sum = await refreshLeadSummary(_chatAct, _chatOpenKey, btn);
-  if (sum) renderChatHeader();
+  if (!sum) return;
+  const c = _chatItems.find(x => x.id === _chatOpenKey);
+  const lead = c ? chatLeadFor(c, chatLeadIndex(_chatAct)) : null;
+  if (lead) lead.aiSummary = sum;
+  renderChatHeader(); renderChatInfo();
+  const m = document.getElementById('chat-sum-modal');
+  if (m && c) m.innerHTML = chatAiSideHtml(c);
 }
 
 function renderChatFilters() {
@@ -13643,6 +13654,28 @@ function openChat(key) {
 }
 
 // Painel da direita: etapa, valor, etiquetas, anotação e histórico do lead desta conversa.
+// Ficha da IA na coluna lateral do Chat (e na janela do botão "Resumo" em telas menores).
+function chatAiSideHtml(c) {
+  if (!c || c.isGroup || !leadSummaryOn(_chatAct)) return '';
+  const sum = c.aiSummary;
+  const btn = `<button class="ci-add" onclick="chatRefreshSummary(this)">${sum ? 'Atualizar' : 'Gerar resumo'}</button>`;
+  if (!sum || !sum.temperatura) return `<div class="ci-block"><div class="ci-label">${uiIco('sparkles', 12)} Resumo da IA</div><div class="ci-ai"><div class="ci-muted" style="margin-bottom:8px;">Ainda sem resumo. Ele é feito às 12h e às 19h, ou agora:</div>${btn}</div></div>`;
+  const t = AI_TEMP[sum.temperatura] || AI_TEMP.morno;
+  const when = sum.at ? new Date(sum.at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  const row = (k, v) => v ? `<div class="ci-ai-row"><b>${k}</b>${escapeHtml(v)}</div>` : '';
+  return `<div class="ci-block"><div class="ci-label">${uiIco('sparkles', 12)} Resumo da IA</div>
+    <div class="ci-ai">
+      <div class="ci-ai-top"><span style="font-weight:700;color:${t[2]};font-size:14px;">${t[0]} ${t[1]}</span><span style="flex:1;"></span>${btn}</div>
+      <div class="ci-muted" style="font-size:11px;">atualizado ${escapeHtml(when)}</div>
+      ${row('Intenção', sum.intencao)}${row('O que já falou', sum.falou)}${row('Objeções', sum.objecoes)}${row('Como respondeu', sum.comoRespondeu)}${row('Próximo passo', sum.proximoPasso)}
+    </div></div>`;
+}
+function openChatSummaryModal() {
+  const c = _chatItems.find(x => x.id === _chatOpenKey);
+  if (!c) return;
+  openHuvenModal('Resumo do lead', `<div id="chat-sum-modal">${chatAiSideHtml(c)}</div>`, 420);
+}
+
 function renderChatInfo() {
   const box = document.getElementById('chat-info');
   if (!box) return;
@@ -13659,7 +13692,7 @@ function renderChatInfo() {
     return;
   }
   if (!lead) {
-    box.innerHTML = `<div class="ci-block">${label('Lead')}<div class="ci-muted">Esta conversa ainda não está no funil.</div><button class="huv-btn primary" style="margin-top:10px;" onclick="createLeadFromChat()">Criar lead no funil</button></div>${tagsHtml}`;
+    box.innerHTML = `${chatAiSideHtml(c)}<div class="ci-block">${label('Lead')}<div class="ci-muted">Esta conversa ainda não está no funil.</div><button class="huv-btn primary" style="margin-top:10px;" onclick="createLeadFromChat()">Criar lead no funil</button></div>${tagsHtml}`;
     return;
   }
   const stages = getStages(normalizeActValue(lead.act), leadPipeline(lead)) || [];
@@ -13667,6 +13700,7 @@ function renderChatInfo() {
   const fmt = iso => { const d = new Date(iso); return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR'); };
   const hist = (Array.isArray(lead.history) ? lead.history : []).slice(-6).reverse();
   box.innerHTML = `
+    ${chatAiSideHtml(c)}
     <div class="ci-block">${label('Lead')}
       <label class="ci-field-label" for="ci-stage">Etapa</label>
       <select id="ci-stage" class="field-input" onchange="moveLeadTo('${lid}', this.value); setTimeout(renderChatInfo, 50)">${stages.map(st => `<option value="${escapeHtml(st.id)}" ${st.id === lead.stage ? 'selected' : ''}>${escapeHtml(st.label)}</option>`).join('')}</select>
@@ -13753,9 +13787,7 @@ function renderChatHeader() {
     ${c.isGroup ? '' : isChatClosed(c)
       ? `<button class="chat-pill" onclick="toggleChatClosed(false)" title="Volta a conversa para a lista">Reabrir</button>`
       : `<button class="chat-pill" onclick="toggleChatClosed(true)" title="Tira a conversa da lista. Ela volta sozinha quando o contato mandar mensagem ou quando você escrever de novo.">${uiIco('checkCircle', 14)} Encerrar</button>`}
-    ${!c.isGroup && leadSummaryOn(_chatAct) ? `<details class="chat-ai-sum" style="flex-basis:100%;margin-top:8px;border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:var(--surface2);" ontoggle="_chatSumOpen = this.open" ${(_chatSumOpen === null ? !c.aiSummary : _chatSumOpen) ? 'open' : ''}>
-      <summary style="cursor:pointer;font-size:12.5px;font-weight:600;color:var(--text);list-style:none;">${uiIco('sparkles', 13)} Resumo do lead ${c.aiSummary && c.aiSummary.temperatura ? '· ' + (AI_TEMP[c.aiSummary.temperatura] || AI_TEMP.morno)[0] + ' ' + (AI_TEMP[c.aiSummary.temperatura] || AI_TEMP.morno)[1] + (c.aiSummary.resumoCurto ? ' · ' + escapeHtml(limitText(c.aiSummary.resumoCurto, 50)) : '') : ''}</summary>
-      <div style="margin-top:8px;">${aiSummaryHtml(c.aiSummary, `<button class="chat-pill" style="margin-left:auto;" onclick="chatRefreshSummary(this)">Atualizar resumo</button>`)}</div></details>` : ''}`;
+    ${!c.isGroup && leadSummaryOn(_chatAct) ? `<button class="chat-pill chat-sum-pill" onclick="openChatSummaryModal()" title="Resumo do lead feito pela IA">${uiIco('sparkles', 14)} Resumo${c.aiSummary && c.aiSummary.temperatura ? ' ' + (AI_TEMP[c.aiSummary.temperatura] || AI_TEMP.morno)[0] : ''}</button>` : ''}`;
 }
 
 async function toggleChatClosed(close) {
