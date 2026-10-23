@@ -11775,7 +11775,33 @@ function openColumnAutomation(stageId) {
 
 // Proteção contra bloqueio do número, igual à das campanhas. O horário de envio é o de "Enviar só em horário comercial".
 // Automação nova já vem alternando; as que existiam antes continuam como estavam (número fixo por contato).
-function flowLineMode() { return _flow.lineMode === 'contato' || _flow.lineMode === 'alternar' ? _flow.lineMode : (_flow.id ? 'contato' : 'alternar'); }
+function flowLineMode() { return ['contato', 'alternar', 'proporcao'].includes(_flow.lineMode) ? _flow.lineMode : (_flow.id ? 'contato' : 'alternar'); }
+// Proporção personalizada: mesma conta do servidor (weightedLineCycle). "misturado" = G G V G G, "bloco" = G G G G V.
+function flowWeightedCycle(lines, weights, order) {
+  const w = lines.map(l => Math.max(1, Math.min(20, Math.round(Number((weights || {})[l]) || 1))));
+  if (order === 'bloco') return lines.flatMap((l, i) => Array(w[i]).fill(l));
+  const total = w.reduce((a, b) => a + b, 0), cur = w.map(() => 0), out = [];
+  for (let k = 0; k < total; k++) {
+    let best = 0;
+    for (let i = 0; i < lines.length; i++) { cur[i] += w[i]; if (cur[i] > cur[best]) best = i; }
+    cur[best] -= total;
+    out.push(lines[best]);
+  }
+  return out;
+}
+function setFlowWeight(line, v) {
+  _flow.lineWeights = { ...(_flow.lineWeights || {}), [line]: Math.max(1, Math.min(20, Math.round(Number(v) || 1))) };
+  _flow._dirty = true;
+  const prev = document.getElementById('flow-weight-preview');
+  if (prev) prev.innerHTML = flowWeightPreview();
+}
+function flowWeightPreview() {
+  const act = _flow.act;
+  const chosen = (Array.isArray(_flow.lines) ? _flow.lines : []).filter(id => waLines(act).some(l => l.id === id));
+  const cycle = flowWeightedCycle(chosen, _flow.lineWeights, _flow.lineOrder);
+  const short = id => (waLines(act).find(l => l.id === id) || {}).label || id;
+  return `A cada <b>${cycle.length}</b> leads: ${chosen.map(id => `<b>${(_flow.lineWeights || {})[id] || 1}</b> para ${escapeHtml(short(id))}`).join(', ')}.<br>Ordem: ${cycle.map(id => `<span class="chat-tag" style="background:var(--surface3);color:var(--text);margin:2px 2px 0 0;display:inline-block;">${escapeHtml(short(id))}</span>`).join('')} e depois repete.`;
+}
 
 function flowLinesHtml() {
   const act = _flow.act;
@@ -11790,9 +11816,19 @@ function flowLinesHtml() {
   return title + `<div style="margin-top:2px;" onchange="setFlowLines()">${lines.map(l => `<label class="integ-toggle"><input type="checkbox" name="flow-lines" value="${escapeHtml(l.id)}" ${chosen.includes(l.id) ? 'checked' : ''}> ${escapeHtml(l.label)}${waIsCloud(l.id) ? ' <span class="integ-muted">(API oficial)</span>' : ''}</label>`).join('')}</div>
     ${chosen.length > 1 ? `<label class="auto-label" style="display:block;margin-top:6px;">Como usar os números<select class="field-input" style="margin-top:4px;" onchange="_flow.lineMode = this.value; _flow._dirty = true; renderFlowEditor()">
         <option value="alternar" ${mode === 'alternar' ? 'selected' : ''}>Alternar (um lead em cada número)</option>
+        <option value="proporcao" ${mode === 'proporcao' ? 'selected' : ''}>Proporção personalizada (ex.: 4 para 1)</option>
         <option value="contato" ${mode === 'contato' ? 'selected' : ''}>Sortear (número fixo por contato)</option>
       </select></label>
-      <div class="integ-muted" style="margin-top:6px;line-height:1.5;">${mode === 'alternar' ? escapeHtml(example) : 'O número de cada contato é sorteado e fica sempre o mesmo para ele.'} Todas as mensagens desta automação para o mesmo lead saem do mesmo número. Se um número cair ou chegar no limite, a mensagem sai pelo próximo. Lead que já conversa por um número continua nele.</div>` : '<div class="integ-muted" style="margin-top:4px;">Marque mais de um número para alternar entre eles.</div>'}`;
+      ${mode === 'proporcao' ? `<div style="margin-top:8px;border:1px solid var(--border);border-radius:10px;padding:10px;">
+        <div class="integ-muted" style="margin-bottom:6px;">Quantos leads cada número recebe a cada rodada:</div>
+        ${chosen.map(id => `<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="flex:1;">${escapeHtml(waLineLabel(act, id))}</span><input type="number" min="1" max="20" class="field-input" style="width:70px;" value="${(_flow.lineWeights || {})[id] || 1}" oninput="setFlowWeight('${escapeJsString(id)}', this.value)"></label>`).join('')}
+        <label class="auto-label" style="display:block;margin-top:4px;">Ordem dos envios<select class="field-input" style="margin-top:4px;" onchange="_flow.lineOrder = this.value; _flow._dirty = true; document.getElementById('flow-weight-preview').innerHTML = flowWeightPreview()">
+          <option value="misturado" ${_flow.lineOrder !== 'bloco' ? 'selected' : ''}>Misturada (ex.: G G V G G)</option>
+          <option value="bloco" ${_flow.lineOrder === 'bloco' ? 'selected' : ''}>Em bloco (ex.: G G G G V)</option>
+        </select></label>
+        <div id="flow-weight-preview" class="integ-muted" style="margin-top:8px;line-height:1.6;">${flowWeightPreview()}</div>
+      </div>` : ''}
+      <div class="integ-muted" style="margin-top:6px;line-height:1.5;">${mode === 'alternar' ? escapeHtml(example) : mode === 'proporcao' ? 'Cada lead novo vai para o próximo número da ordem acima.' : 'O número de cada contato é sorteado e fica sempre o mesmo para ele.'} Todas as mensagens desta automação para o mesmo lead saem do mesmo número. Se um número cair ou chegar no limite, a mensagem sai pelo próximo. Lead que já conversa por um número continua nele.</div>` : '<div class="integ-muted" style="margin-top:4px;">Marque mais de um número para alternar entre eles.</div>'}`;
 }
 
 function setFlowLines() {
@@ -12258,6 +12294,8 @@ async function saveFlow() {
     hours: { enabled: !!(f.hours && f.hours.enabled), start: Number((f.hours || {}).start ?? 8), end: Number((f.hours || {}).end ?? 20) },
     lines: Array.isArray(f.lines) && f.lines.length ? f.lines : [waDefaultLine(act)],
     lineMode: flowLineMode(),
+    lineWeights: Object.fromEntries((Array.isArray(f.lines) ? f.lines : []).map(id => [id, Math.max(1, Math.min(20, Math.round(Number((f.lineWeights || {})[id]) || 1)))])),
+    lineOrder: f.lineOrder === 'bloco' ? 'bloco' : 'misturado',
     dispatch: f.dispatch ? { dailyLimit: Number(f.dispatch.dailyLimit), hourlyLimit: Number(f.dispatch.hourlyLimit), minIntervalSec: Number(f.dispatch.minIntervalSec), maxIntervalSec: Number(f.dispatch.maxIntervalSec), typingMinSec: Number(f.dispatch.typingMinSec), typingMaxSec: Number(f.dispatch.typingMaxSec), checkNumber: f.dispatch.checkNumber !== false } : null,
     nodes: f.nodes.map(n => ({ id: n.id, type: n.type, x: n.x, y: n.y, data: JSON.parse(JSON.stringify(n.data || {})) })),
     edges: f.edges.map(e => ({ from: e.from, port: e.port || 'out', to: e.to })),
