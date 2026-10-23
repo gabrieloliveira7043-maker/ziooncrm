@@ -11774,8 +11774,9 @@ function openColumnAutomation(stageId) {
 }
 
 // Proteção contra bloqueio do número, igual à das campanhas. O horário de envio é o de "Enviar só em horário comercial".
-// Automação nova já vem alternando; as que existiam antes continuam como estavam (número fixo por contato).
-function flowLineMode() { return ['contato', 'alternar', 'proporcao'].includes(_flow.lineMode) ? _flow.lineMode : (_flow.id ? 'contato' : 'alternar'); }
+// Com mais de um número a automação alterna (um lead em cada) ou segue a proporção personalizada.
+// "Sortear" (número fixo por contato) saiu: automações antigas nesse modo passam a alternar.
+function flowLineMode() { return _flow.lineMode === 'proporcao' ? 'proporcao' : 'alternar'; }
 // Proporção personalizada: mesma conta do servidor (weightedLineCycle). "misturado" = G G V G G, "bloco" = G G G G V.
 function flowWeightedCycle(lines, weights, order) {
   const w = lines.map(l => Math.max(1, Math.min(20, Math.round(Number((weights || {})[l]) || 1))));
@@ -11817,7 +11818,6 @@ function flowLinesHtml() {
     ${chosen.length > 1 ? `<label class="auto-label" style="display:block;margin-top:6px;">Como usar os números<select class="field-input" style="margin-top:4px;" onchange="_flow.lineMode = this.value; _flow._dirty = true; renderFlowEditor()">
         <option value="alternar" ${mode === 'alternar' ? 'selected' : ''}>Alternar (um lead em cada número)</option>
         <option value="proporcao" ${mode === 'proporcao' ? 'selected' : ''}>Proporção personalizada (ex.: 4 para 1)</option>
-        <option value="contato" ${mode === 'contato' ? 'selected' : ''}>Sortear (número fixo por contato)</option>
       </select></label>
       ${mode === 'proporcao' ? `<div style="margin-top:8px;border:1px solid var(--border);border-radius:10px;padding:10px;">
         <div class="integ-muted" style="margin-bottom:6px;">Quantos leads cada número recebe a cada rodada:</div>
@@ -11828,7 +11828,7 @@ function flowLinesHtml() {
         </select></label>
         <div id="flow-weight-preview" class="integ-muted" style="margin-top:8px;line-height:1.6;">${flowWeightPreview()}</div>
       </div>` : ''}
-      <div class="integ-muted" style="margin-top:6px;line-height:1.5;">${mode === 'alternar' ? escapeHtml(example) : mode === 'proporcao' ? 'Cada lead novo vai para o próximo número da ordem acima.' : 'O número de cada contato é sorteado e fica sempre o mesmo para ele.'} Todas as mensagens desta automação para o mesmo lead saem do mesmo número. Se um número cair ou chegar no limite, a mensagem sai pelo próximo. Lead que já conversa por um número continua nele.</div>` : '<div class="integ-muted" style="margin-top:4px;">Marque mais de um número para alternar entre eles.</div>'}`;
+      <div class="integ-muted" style="margin-top:6px;line-height:1.5;">${mode === 'alternar' ? escapeHtml(example) : 'Cada lead novo vai para o próximo número da ordem acima.'} Todas as mensagens desta automação para o mesmo lead saem do mesmo número. Se um número cair ou chegar no limite, a mensagem sai pelo próximo. Lead que já conversa por um número continua nele.</div>` : '<div class="integ-muted" style="margin-top:4px;">Marque mais de um número para alternar entre eles.</div>'}`;
 }
 
 function setFlowLines() {
