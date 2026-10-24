@@ -3320,6 +3320,7 @@ html:root .chat-pill.chat-sum-pill { display: none; }
             <option value="all">Geral</option>
           </select>
  <button class="btn-manage-stages" id="btn-sum-pipe" onclick="openSummaryPipeline()" style="margin-right:8px;display:none;" title="Gerar o resumo da IA de todos os cards da pipeline"><i data-ico="sparkles"></i> Resumir pipeline</button>
+          <button class="btn-manage-stages" id="btn-sale-notify" onclick="openSaleNotify()" style="margin-right:8px;display:none;" title="Notificação de venda: avisa quando um card entra na etapa de venda">🎉 Notificação de venda</button>
           <button class="btn-manage-stages" id="btn-bulk-assign" onclick="openBulkAssign()" style="margin-right:8px;display:none;" title="Passar vários cards de um responsável para outro"><i data-ico="swap"></i> Transferir responsável</button>
           <select class="crm-month-select" id="crm-attendant-filter" onchange="_crmAttendantFilter = this.value; renderKanban(); renderFunilChart(); renderFunilEvolucao();" title="Filtrar pelo atendente (WhatsApp que atende o lead)" style="display:none;">
             <option value="all">Todos os atendentes</option>
@@ -18202,6 +18203,8 @@ function renderAttendantFilter(filterAct) {
   const lines = act ? waLines(act).filter(l => !scope || scope.includes(l.id)) : [];
   const sumBtn = document.getElementById('btn-sum-pipe');
   if (sumBtn) sumBtn.style.display = act && !scope && leadSummaryOn(act) ? '' : 'none';
+  const saleBtn = document.getElementById('btn-sale-notify');
+  if (saleBtn) saleBtn.style.display = act && !scope ? '' : 'none';
   const bulkBtn = document.getElementById('btn-bulk-assign');
   if (bulkBtn) bulkBtn.style.display = act && !scope && waLines(act).length > 1 ? '' : 'none';
   if (!act || lines.length < 2) { sel.style.display = 'none'; _crmAttendantFilter = 'all'; if (act && waLines(act).length > 1) loadFunnelChatLines(act); return; }
@@ -18743,7 +18746,7 @@ async function commitCardOrder(stageId, orderedIds, movedId) {
   // Mudou de coluna: contagem, valores e gráficos mudam. Só a ordem: a tela já está certa.
   if (!isSameStage || _kanbanRenderDeferred) flushDeferredKanbanRender();
   try {
-    if (!isSameStage) await saveLeadToDb(movedLead);
+    if (!isSameStage) { await saveLeadToDb(movedLead); afterSaleMove(movedLead); }
     const batch = [...changed].filter(l => l._docId).map(l => ({ _docId: l._docId, _crmOrder: l._crmOrder }));
     if (batch.length) await window._fb.saveLeadsBatch(batch);
     for (const l of [...changed].filter(l => !l._docId)) await saveLeadToDb(l);
@@ -18947,7 +18950,7 @@ async function saveLead() {
     if (existing.stage !== newStage) auditMove(existing, existing.stage, stageLabel, 'pelo formulário');
     if (changed.length) auditLog(act, 'editar', `Editou o lead "${name}": ${changed.join(', ')}${existing.valor !== newLead.valor && newLead.valor ? ' (valor: ' + newLead.valor + ')' : ''}`, { leadId: id });
   }
-  saveLeadToDb(newLead);
+  saveLeadToDb(newLead).then(() => { if (!existing || existing.stage !== newStage) afterSaleMove(newLead); }).catch(() => null);
   closeLeadModal();
   renderKanban(); renderFunilChart(); renderFunilEvolucao();
 }
@@ -19347,6 +19350,7 @@ async function runBulkMove() {
     await window._fb.saveLeadsBatch(items);
     closeHuvenModal();
     showToast(`${ids.size} lead(s) movido(s) para "${label}".`, 'success');
+    leads.filter(l => ids.has(l.id)).slice(0, 20).forEach(l => afterSaleMove(l, { noAsk: true }));
     auditLog(ctx.act, 'mover', `Moveu em massa ${ids.size} lead(s) de ${auditStageLabel(ctx.act, ctx.stageId)} para ${label}`);
   } catch (e) {
     showToast('Erro ao mover: ' + e.message, 'error', 7000);
@@ -19437,6 +19441,114 @@ async function runBulkAssign() {
   renderKanban(); renderFunilChart(); renderFunilEvolucao();
 }
 
+// ===== NOTIFICAÇÃO DE VENDA =====
+// Cada cliente liga e escolhe as etapas que são venda (whatsapp_settings/{act}.saleNotify). O card que entra numa delas
+// pede o valor (se estiver vazio) e avisa os aparelhos do cliente com o valor da venda (o servidor manda uma vez por etapa).
+function saleNotifyCfg(act) { return (WHATSAPP_SETTINGS[normalizeActValue(act)] || {}).saleNotify || {}; }
+function saleKeyFor(lead) { return leadPipeline(lead) + '|' + (lead.stage || ''); }
+function isSaleNotifyStage(lead) {
+  const c = lead && saleNotifyCfg(lead.act);
+  return !!(c && c.enabled && Array.isArray(c.stages) && c.stages.includes(saleKeyFor(lead)));
+}
+function saleValorNorm(v) {
+  let t = String(v == null ? '' : v).replace(/[R$\s]/g, '');
+  if (!t) return '';
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+  const n = parseFloat(t);
+  return n > 0 ? n.toFixed(2).replace('.', ',') : '';
+}
+let _saleAskDone = null;
+function askSaleValue(lead) {
+  return new Promise(resolve => {
+    _saleAskDone = v => { _saleAskDone = null; closeHuvenModal(); resolve(v); };
+    openHuvenModal('🎉 Venda fechada!', `<div style="font-size:13px;color:var(--muted2);margin-bottom:10px;">Qual foi o valor da venda de <b style="color:var(--text);">${escapeHtml(lead.name || 'lead')}</b>? Ele vai no aviso de venda e no card.</div>
+      <input type="text" class="modal-input" id="sale-ask-valor" placeholder="Ex: 3500,00" inputmode="decimal" style="width:100%;box-sizing:border-box;" onkeydown="if(event.key==='Enter') saleAskSave()">
+      <div id="sale-ask-msg" style="font-size:12px;color:#f87171;min-height:16px;margin-top:6px;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
+        <button class="btn-update" style="background:var(--surface2);color:var(--text);" onclick="_saleAskDone && _saleAskDone('')">Sem valor</button>
+        <button class="btn-update" onclick="saleAskSave()">Salvar valor</button>
+      </div>`, 400);
+    const modal = document.getElementById('huven-modal');
+    if (modal) {
+      const x = modal.querySelector('.btn-close-panel');
+      if (x) x.onclick = () => _saleAskDone && _saleAskDone('');
+      modal.addEventListener('click', ev => { if (ev.target === modal && _saleAskDone) _saleAskDone(''); });
+    }
+    setTimeout(() => { const i = document.getElementById('sale-ask-valor'); if (i) i.focus(); }, 50);
+  });
+}
+function saleAskSave() {
+  const raw = (document.getElementById('sale-ask-valor') || {}).value || '';
+  const v = saleValorNorm(raw);
+  if (raw.trim() && !v) { document.getElementById('sale-ask-msg').textContent = 'Valor inválido. Ex: 3500,00'; return; }
+  if (_saleAskDone) _saleAskDone(v);
+}
+async function afterSaleMove(lead, opts) {
+  try {
+    if (!lead || !isSaleNotifyStage(lead)) return;
+    const key = saleKeyFor(lead);
+    if ((lead.saleNotified || []).includes(key)) return;
+    if (!(opts && opts.noAsk) && !saleValorNorm(lead.valor)) {
+      const v = await askSaleValue(lead);
+      if (lead.stage !== key.split('|')[1]) return; // mudou de etapa enquanto respondia
+      if (v) {
+        lead.valor = v;
+        lead.updatedAt = new Date().toISOString();
+        await saveLeadToDb(lead);
+        try { auditLog(lead.act, 'editar', `Valor da venda de "${lead.name || 'lead'}": ${v}`, { leadId: lead.id || '' }); renderKanban(); renderFunilChart(); renderFunilEvolucao(); } catch (e) {}
+      }
+    }
+    if (!lead._docId) await saveLeadToDb(lead);
+    if (!lead._docId) return;
+    const prof = (window._fb && window._fb.getProfile && window._fb.getProfile()) || {};
+    await window._fb.whatsapp('/push/sale', lead.act, { docId: lead._docId, by: prof.personName || prof.name || '' });
+    lead.saleNotified = [...(lead.saleNotified || []), key];
+    const v = saleValorNorm(lead.valor);
+    showToast(`🎉 Venda fechada${v ? ': ' + Number(v.replace(',', '.')).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : ''}! Aviso enviado para a equipe.`, 'success', 5000);
+  } catch (e) { console.warn('Aviso de venda não enviado:', e && e.message); }
+}
+function openSaleNotify() {
+  const act = normalizeActValue(getActForStages ? getActForStages() : '');
+  if (!act) return showToast('Escolha um cliente primeiro.', 'warning');
+  const cfg = saleNotifyCfg(act);
+  const hasCfg = Array.isArray(cfg.stages);
+  const groups = pipelineList(act).map(p => {
+    const stages = getStages(act, p.id) || [];
+    if (!stages.length) return '';
+    return `<div style="margin-top:10px;"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px;">${escapeHtml(p.name)}</div>
+      ${stages.map(st => {
+        const k = p.id + '|' + st.id;
+        const on = hasCfg ? cfg.stages.includes(k) : isWonStage(st.id, stages);
+        return `<label class="integ-toggle" style="display:flex;padding:4px 2px;"><input type="checkbox" class="sale-stage" value="${escapeHtml(k)}" ${on ? 'checked' : ''}> ${escapeHtml(st.label || st.id)}</label>`;
+      }).join('')}</div>`;
+  }).join('');
+  openHuvenModal('🎉 Notificação de venda', `<div style="font-size:12.5px;color:var(--muted2);line-height:1.5;">Quando um card entra numa etapa de venda, a equipe recebe no celular e no computador: <b style="color:var(--text);">"Venda fechada! R$ 3.500,00 · Nome do lead"</b>. Se o card estiver sem valor, o CRM pergunta o valor na hora.</div>
+    <label class="integ-toggle" style="display:flex;margin:14px 0 4px;font-weight:600;"><input type="checkbox" id="sale-enabled" ${cfg.enabled ? 'checked' : ''}> Ligar a notificação de venda</label>
+    <div style="font-size:12.5px;color:var(--text);font-weight:600;margin-top:12px;">Quais etapas são venda?</div>
+    <div style="max-height:300px;overflow:auto;">${groups}</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.5;">Para receber, cada pessoa ativa as notificações no próprio aparelho (no iPhone, com o CRM adicionado à tela de início). <a href="#" onclick="event.preventDefault(); enablePushNotifications();" style="color:var(--gold);">Ativar neste aparelho</a></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:14px;"><button class="btn-update" id="sale-save" onclick="saveSaleNotify('${escapeJsString(act)}')">Salvar</button></div>`, 480);
+}
+async function saveSaleNotify(act) {
+  const enabled = document.getElementById('sale-enabled').checked;
+  const stages = [...document.querySelectorAll('#huven-modal .sale-stage:checked')].map(i => i.value);
+  if (enabled && !stages.length) return showToast('Marque pelo menos uma etapa de venda.', 'warning');
+  const btn = document.getElementById('sale-save');
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+  try {
+    const saleNotify = { enabled, stages };
+    await window._fb.saveWhatsAppSettings(act, { saleNotify });
+    WHATSAPP_SETTINGS[act] = { ...(WHATSAPP_SETTINGS[act] || {}), saleNotify };
+    auditLog(act, 'pipeline', enabled ? `Ligou a notificação de venda (${stages.length} etapa(s))` : 'Desligou a notificação de venda');
+    closeHuvenModal();
+    showToast(enabled ? 'Notificação de venda ligada.' : 'Notificação de venda desligada.', 'success');
+  } catch (e) {
+    showToast('Não salvou: ' + e.message, 'error', 6000);
+    if (btn) { btn.disabled = false; btn.textContent = 'Salvar'; }
+  }
+}
+
 function moveLeadTo(id, stageId, pipelineId) {
   const leads = getLeads();
   const idx = leads.findIndex(l => l.id === id);
@@ -19460,7 +19572,8 @@ function moveLeadTo(id, stageId, pipelineId) {
     leads[idx].history.push({ stage: stageLabel, at: new Date().toLocaleString('pt-BR') });
     _leadsCache = leads;
     if (typeof syncLeadNotifierKnownKeys === 'function') syncLeadNotifierKnownKeys(leads);
-    targetStageLeads.forEach(lead => saveLeadToDb(lead));
+    const movedOne = leads[idx];
+    Promise.all(targetStageLeads.map(lead => saveLeadToDb(lead))).then(() => afterSaleMove(movedOne)).catch(() => null);
   }
   document.getElementById('move-modal').classList.remove('open');
   renderKanban(); renderFunilChart(); renderFunilEvolucao();
