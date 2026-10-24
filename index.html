@@ -11408,11 +11408,12 @@ async function renderAutomacoesView() {
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="huv-btn" style="height:40px;padding:0 16px;" onclick="_aiPreset=null;_flowReturn=null;openAiFlowModal()">${uiIco('sparkles')} Criar com IA</button>
-        <button class="btn-add-lead" style="height:40px;padding:0 16px;" onclick="_flowReturn=null;openFlowPresets()">+ Nova automação</button>
+        <button class="btn-add-lead" style="height:40px;padding:0 16px;" onclick="_flowReturn=null;openNewAutomation()">+ Nova automação</button>
       </div>
     </div>
     <div class="huv-grid">
       ${_flowList.length ? _flowList.map(f => {
+        if (f.channel === 'cloud') return cloudCadenceCardHtml(f, leads, act);
         const running = leads.filter(l => l.automation && l.automation.id === f.id && l.automation.status === 'running').length;
         const blocks = Array.isArray(f.nodes) ? f.nodes.length : (f.steps || []).length + 1;
         const id = escapeJsString(f.id);
@@ -11438,6 +11439,29 @@ async function renderAutomacoesView() {
       }).join('') : '<div class="integ-empty" style="grid-column:1/-1;">Nenhuma automação ainda. Clique em "+ Nova automação" para montar o primeiro fluxo.</div>'}
     </div>
     ${autoCaptureHtml(act)}${autoAlertsHtml(act)}`;
+}
+
+function cloudCadenceCardHtml(f, leads, act) {
+  const id = escapeJsString(f.id);
+  const running = leads.filter(l => l.cloudCadence && l.cloudCadence.id === f.id && l.cloudCadence.status === 'running').length;
+  return `<article class="huv-card">
+    <div class="huv-card-head">
+      <div class="huv-avatar" style="background:rgba(31,168,85,.15);color:#1FA855;">${uiIco('bolt', 16)}</div>
+      <div style="flex:1;min-width:0;"><div class="huv-name">${escapeHtml(f.name || 'Cadência')}</div><div class="huv-sub">API oficial · quando entrar em ${escapeHtml(autoStageLabel(act, f.triggerStage))}</div></div>
+      <label class="integ-toggle"><input type="checkbox" ${f.active ? 'checked' : ''} onchange="toggleCloudCadence('${id}', this.checked)"> ${f.active ? (f.paused ? uiIco('pause', 13) + ' Pausada' : 'Ligada') : 'Desligada'}</label>
+    </div>
+    <div class="huv-stats">
+      <div><div class="huv-stat-label">Mensagens</div><div class="huv-stat-value">${(f.steps || []).length}</div></div>
+      <div><div class="huv-stat-label">Leads na cadência</div><div class="huv-stat-value">${running}</div></div>
+      <div><div class="huv-stat-label">Envio</div><div class="huv-stat-value" style="font-size:13px;">Em lote, no horário</div></div>
+    </div>
+    <div class="huv-actions">
+      <button class="huv-btn primary" onclick="openCloudCadenceEditor('${id}')">Abrir editor</button>
+      <button class="huv-btn" onclick="openCloudProgress('${id}')">Andamento</button>
+      ${f.active ? `<button class="huv-btn" onclick="toggleFlowPause('${id}')">${f.paused ? uiIco('play') + ' Retomar' : uiIco('pause') + ' Pausar'}</button>` : ''}
+      <button class="huv-btn" style="margin-left:auto;color:var(--red);border-color:var(--red);" onclick="deleteFlowConfirm('${id}')">Excluir</button>
+    </div>
+  </article>`;
 }
 
 // ===== ANDAMENTO DA AUTOMAÇÃO (quantos receberam cada mensagem, quantos responderam, o que falta) =====
@@ -11691,6 +11715,403 @@ const FLOW_PRESETS = [
       { type: 'message', data: { kind: 'text', templates: ['Oi {primeiro_nome}, tudo bem? Recebi seu cadastro! Posso te fazer umas perguntas rápidas para te ajudar melhor?'] } },
       { type: 'ai', data: {} }]) }) }
 ];
+// ===== AUTOMAÇÃO PELA API OFICIAL: cadência com modelos aprovados pela Meta =====
+// Diferente do QR Code: sem travas contra bloqueio; todos os leads com mensagem na hora recebem juntos (em lotes).
+// Três jeitos de começar: documento (a IA separa as mensagens), pedido para a nossa IA, ou modelos já aprovados.
+function cloudLinesOf(act) { return waLines(act).filter(l => waIsCloud(l.id)); }
+const CADENCE_CSS = `<style>
+  .at-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+  .at-card{display:flex;flex-direction:column;gap:6px;text-align:left;padding:16px;border-radius:14px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;transition:border-color .15s,transform .15s}
+  .at-card:hover{border-color:var(--gold);transform:translateY(-2px)}
+  .at-card[disabled]{opacity:.5;cursor:not-allowed;transform:none}
+  .at-card b{font-size:14.5px}.at-card span{font-size:12.5px;color:var(--muted2);line-height:1.5}
+  .cc-row{display:grid;grid-template-columns:62px 82px 1fr 26px;gap:8px;align-items:start;padding:10px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px}
+  .cc-row input,.cc-row select{padding:6px 8px;font-size:12.5px}
+  .cc-st{display:inline-block;font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px;margin-top:4px}
+  .cc-x{background:none;border:0;color:var(--muted);font-size:18px;cursor:pointer;line-height:1}
+  @media (max-width:640px){.cc-row{grid-template-columns:54px 76px 1fr 22px}}
+</style>`;
+const CLOUD_STATUS_CHIP = { APPROVED: ['Aprovado', '#1FA855'], PENDING: ['Em análise', '#E0A43A'], IN_APPEAL: ['Em análise', '#E0A43A'], REJECTED: ['Recusado', '#D5563F'], PAUSED: ['Pausado', '#D5563F'], DISABLED: ['Desativado', '#D5563F'] };
+function cloudChip(status) {
+  const c = CLOUD_STATUS_CHIP[status] || [status ? status : 'Não encontrado', '#8a8a8a'];
+  return `<span class="cc-st" style="background:${c[1]}22;color:${c[1]};">${escapeHtml(c[0])}</span>`;
+}
+
+function openNewAutomation() {
+  const act = flowAct();
+  if (!act) return showToast('Escolha o cliente no topo do menu.', 'warning');
+  const hasCloud = cloudLinesOf(act).length > 0;
+  openHuvenModal('Nova automação', `${CADENCE_CSS}
+    <div class="integ-muted" style="font-size:13px;margin-bottom:14px;">Por qual WhatsApp a automação vai enviar?</div>
+    <div class="at-grid">
+      <button type="button" class="at-card" onclick="closeHuvenModal(); openFlowPresets()"><b>WhatsApp (QR Code)</b><span>Fluxo com esperas, texto, áudio, vídeo e condições. Envia aos poucos, com proteção contra bloqueio. Igual ao de sempre.</span></button>
+      <button type="button" class="at-card" ${hasCloud ? '' : 'disabled'} onclick="openCloudStart()"><b>API oficial (Meta)</b><span>${hasCloud ? 'Cadência com modelos aprovados pela Meta. Todos os leads da coluna recebem no mesmo horário, em volume.' : 'Conecte um número da API oficial em Conexões para usar.'}</span></button>
+    </div>`, 640);
+}
+
+let _cwPresetStage = '';
+function openCloudStart(stageId) {
+  if (stageId) _cwPresetStage = stageId;
+  openHuvenModal('Automação pela API oficial', `${CADENCE_CSS}
+    <div class="integ-muted" style="font-size:12.5px;line-height:1.55;margin-bottom:14px;">Pela API oficial, toda mensagem para quem não falou com você nas últimas 24 h precisa ser um <b>modelo aprovado pela Meta</b>. Escolha como montar a cadência:</div>
+    <div class="at-grid">
+      <button type="button" class="at-card" onclick="openCloudWizard('doc')"><b>Subir um documento</b><span>Anexe o roteiro (PDF, .md ou .txt). A IA separa cada mensagem, você revisa e envia tudo para a Meta aprovar.</span></button>
+      <button type="button" class="at-card" onclick="openCloudWizard('plan')"><b>Criar com a IA</b><span>Diga o objetivo, o público e a oferta. A IA escreve a cadência no formato de modelo; você revisa antes de enviar.</span></button>
+      <button type="button" class="at-card" onclick="closeHuvenModal(); openCloudCadenceEditor(null)"><b>Usar modelos já aprovados</b><span>Monte a cadência escolhendo modelos que já estão aprovados neste número.</span></button>
+    </div>`, 760);
+}
+
+// ----- Assistente: documento ou IA -> mensagens -> aprovação na Meta -> cadência montada -----
+let _cw = null;
+function openCloudWizard(mode) {
+  const act = flowAct();
+  const lines = cloudLinesOf(act);
+  if (!lines.length) return showToast('Conecte um número da API oficial em Conexões.', 'warning');
+  _cw = { act, mode, line: lines[0].id, items: [], times: { manha: '09:30', noite: '19:30' }, sent: false };
+  const plan = mode === 'plan';
+  openHuvenModal(plan ? 'Criar cadência com a IA' : 'Cadência a partir de um documento', `${CADENCE_CSS}
+    ${lines.length > 1 ? `<label class="field-label">Número da API oficial</label><select class="field-input" id="cw-line" onchange="_cw.line = this.value" style="margin-bottom:10px;">${lines.map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.label)}</option>`).join('')}</select>` : ''}
+    ${plan ? `<div class="integ-muted" style="font-size:12.5px;margin-bottom:8px;">Conte o objetivo, para quem é, a oferta, quantos dias e mensagens, e o tom. A IA escreve só texto e vídeo (áudio não é aceito pela Meta).</div>
+      <textarea class="field-input" id="cw-text" rows="6" style="width:100%;box-sizing:border-box;resize:vertical;" placeholder="Ex.: Cadência de 7 dias para quem se cadastrou no evento Máquina de Vendas e não respondeu. Duas mensagens por dia (manhã e noite). Objetivo: fazer o lead responder. Tom próximo, sem pressão."></textarea>`
+    : `<div class="integ-muted" style="font-size:12.5px;margin-bottom:8px;">Anexe o roteiro com as mensagens. [NOME] vira o nome do lead e [VENDEDOR] o nome de quem atende.</div>
+      <input type="file" class="field-input" accept="application/pdf,.pdf,text/plain,.txt,.md,text/markdown" onchange="readCwFile(this)" style="margin-bottom:6px;">
+      <textarea class="field-input" id="cw-text" rows="4" style="width:100%;box-sizing:border-box;resize:vertical;" placeholder="Ou cole aqui o texto com as mensagens"></textarea>`}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:10px 0;">
+      <div style="flex:1;min-width:140px;"><label class="field-label">Prefixo dos modelos</label><input class="field-input" id="cw-prefix" placeholder="mdv"></div>
+      <div style="flex:1;min-width:140px;"><label class="field-label">Categoria</label><select class="field-input" id="cw-cat"><option value="MARKETING">Marketing</option><option value="UTILITY">Utilidade</option></select></div>
+      <button class="btn-save" id="cw-read" style="width:auto;padding:9px 16px;" onclick="runCloudWizardAi()">${uiIco('sparkles', 13)} ${plan ? 'Criar mensagens' : 'Ler mensagens'}</button>
+    </div>
+    <div id="cw-fb" class="integ-muted" style="font-size:12.5px;margin-bottom:8px;"></div>
+    <div id="cw-list"></div>`, 860);
+}
+async function readCwFile(input) {
+  const file = input.files && input.files[0];
+  const fb = document.getElementById('cw-fb');
+  if (!file) return;
+  fb.style.color = 'var(--muted)'; fb.textContent = 'Lendo o arquivo...';
+  try {
+    const text = await fileToText(file);
+    document.getElementById('cw-text').value = text;
+    fb.style.color = text.length > 30 ? 'var(--green)' : 'var(--amber)';
+    fb.textContent = text.length > 30 ? `✓ ${text.length.toLocaleString('pt-BR')} caracteres lidos. Clique em "Ler mensagens".` : 'Não encontrei texto no arquivo.';
+  } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = 'Erro ao ler: ' + e.message; }
+}
+async function runCloudWizardAi() {
+  const fb = document.getElementById('cw-fb'), btn = document.getElementById('cw-read');
+  const text = document.getElementById('cw-text').value.trim();
+  if (text.length < 15) { fb.style.color = 'var(--red)'; fb.textContent = _cw.mode === 'plan' ? 'Descreva a cadência que você quer.' : 'Anexe o arquivo ou cole o texto.'; return; }
+  btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'A IA está trabalhando (pode levar até 1 a 2 minutos)...';
+  try {
+    const r = await window._fb.whatsapp('/ai/cloud-templates', _cw.act, { text, prefix: document.getElementById('cw-prefix').value, mode: _cw.mode === 'plan' ? 'plan' : 'doc' });
+    _cw.items = (r.templates || []).map(t => ({ ...t, on: true, media: null, status: '', audio: '', slot: /^\d{2}:\d{2}$/.test(t.time) ? '' : (t.time || '') }));
+    _cw.items.forEach(t => { if (!/^\d{2}:\d{2}$/.test(t.time)) t.time = ''; });
+    const audios = _cw.items.filter(t => t.kind === 'audio').length;
+    fb.style.color = 'var(--green)';
+    fb.textContent = `${_cw.items.length} mensagens.${audios ? ` ${audios} são áudio: escolha vídeo ou texto para cada uma.` : ''} Confira e envie para a Meta aprovar.`;
+    renderCloudWizardList();
+  } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = e.message; }
+  btn.disabled = false;
+}
+function cwTime(t) { return t.time || (t.slot === 'noite' ? _cw.times.noite : _cw.times.manha); }
+function cwProblem(t) {
+  if (t.kind === 'audio' && !t.audio) return 'Áudio não é aceito na API oficial: escolha "Trocar por vídeo" ou "Usar texto".';
+  if (t.kind === 'audio' && t.audio === 'video' && !t.media) return 'Anexe o vídeo que vai no lugar do áudio.';
+  if (t.kind === 'video' && !t.media) return 'Anexe o vídeo, ou clique em "Usar só texto".';
+  if (t.kind === 'image' && !t.media) return 'Anexe a imagem, ou clique em "Usar só texto".';
+  return cloudBulkProblem(t);
+}
+function renderCloudWizardList() {
+  const box = document.getElementById('cw-list');
+  if (!box || !_cw) return;
+  const items = _cw.items;
+  if (!items.length) { box.innerHTML = ''; return; }
+  const noTime = items.some(t => !t.time);
+  const kindLabel = { text: 'Texto', video: 'Vídeo', image: 'Imagem', audio: 'Áudio' };
+  box.innerHTML = (noTime ? `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12.5px;">
+      <b>Horários sugeridos</b> <span class="integ-muted">(para as mensagens sem horário no texto)</span>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;align-items:center;">Manhã <input type="time" class="field-input" style="width:110px;" value="${_cw.times.manha}" onchange="_cw.times.manha = this.value; renderCloudWizardList()"> Noite <input type="time" class="field-input" style="width:110px;" value="${_cw.times.noite}" onchange="_cw.times.noite = this.value; renderCloudWizardList()"></div>
+    </div>` : '') + items.map((t, i) => {
+    const prob = t.on ? cwProblem(t) : '';
+    const st = t.status === 'ok' ? `<span style="color:var(--green);font-weight:700;">✓ enviado</span>` : t.status ? `<span style="color:var(--red);font-size:12px;">${escapeHtml(t.status)}</span>` : '';
+    const isMedia = t.kind === 'video' || t.kind === 'image' || (t.kind === 'audio' && t.audio === 'video');
+    const mediaKind = t.kind === 'image' ? 'image' : 'video';
+    const audioBox = t.kind === 'audio' ? `<div style="font-size:12px;color:var(--amber);margin-top:6px;">${uiIco('alert', 12)} Áudio não é aceito em modelo da API oficial. Troque por um vídeo (você falando) ou use o texto da fala.</div>
+      <div style="display:flex;gap:6px;margin-top:6px;"><button class="chat-pill${t.audio === 'video' ? ' active' : ''}" onclick="_cw.items[${i}].audio = 'video'; renderCloudWizardList()">Trocar por vídeo</button><button class="chat-pill${t.audio === 'text' ? ' active' : ''}" onclick="_cw.items[${i}].audio = 'text'; _cw.items[${i}].media = null; renderCloudWizardList()">Usar texto</button></div>` : '';
+    const mediaRow = isMedia ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;font-size:12px;">
+        <span class="integ-muted">${mediaKind === 'video' ? 'Vídeo (MP4, até 16 MB)' : 'Imagem (JPG/PNG)'}:</span>
+        <input type="file" accept="${mediaKind === 'video' ? 'video/mp4' : 'image/jpeg,image/png'}" onchange="uploadCwMedia(${i}, this)" style="font-size:12px;">
+        <span id="cw-m${i}">${t.media ? `${uiIco('check', 12)} ${escapeHtml(t.media.fileName || 'arquivo')}` : ''}</span>
+        ${t.kind !== 'audio' ? `<button class="chat-pill" onclick="_cw.items[${i}].kind = 'text'; _cw.items[${i}].media = null; renderCloudWizardList()">Usar só texto</button>` : ''}</div>` : '';
+    return `<div style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;${t.on ? '' : 'opacity:.55;'}">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <input type="checkbox" ${t.on ? 'checked' : ''} ${t.status === 'ok' ? 'disabled' : ''} onchange="_cw.items[${i}].on = this.checked; renderCloudWizardList()">
+        <span style="font-size:12px;">Dia</span><input type="number" min="1" max="90" class="field-input" value="${t.day}" style="width:62px;padding:5px 6px;font-size:12.5px;" onchange="_cw.items[${i}].day = Math.max(1, Number(this.value) || 1)">
+        <input type="time" class="field-input" value="${cwTime(t)}" style="width:104px;padding:5px 6px;font-size:12.5px;" onchange="_cw.items[${i}].time = this.value">
+        <input class="field-input" value="${escapeHtml(t.name)}" style="flex:1;min-width:130px;padding:5px 8px;font-size:12.5px;" oninput="_cw.items[${i}].name = this.value.toLowerCase().replace(/[^a-z0-9_]/g, '_')">
+        <span class="chat-tag">${kindLabel[t.kind] || 'Texto'}</span> ${st}
+      </div>
+      <textarea class="field-input" rows="${Math.min(8, Math.max(3, Math.ceil(String(t.body).length / 80)))}" style="width:100%;box-sizing:border-box;resize:vertical;margin-top:6px;font-size:12.5px;" oninput="_cw.items[${i}].body = this.value; document.getElementById('cw-p${i}').textContent = cwProblem(_cw.items[${i}])">${escapeHtml(t.body)}</textarea>
+      <div id="cw-p${i}" style="font-size:12px;color:var(--red);">${escapeHtml(prob)}</div>
+      ${/última chance|não perca|corra|imperdível|incrível|vai perder/i.test(t.body) ? `<div style="font-size:12px;color:var(--amber);">Tem frase de pressão ("última chance", "incrível"...). Vale reescrever: a Meta e os leads respondem melhor sem isso.</div>` : ''}
+      ${audioBox}${mediaRow}
+    </div>`;
+  }).join('') + `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;">
+      <button class="btn-save" id="cw-send" style="width:auto;padding:9px 16px;" onclick="sendCloudWizard()">${_cw.sent ? 'Tentar de novo os com erro' : `Enviar ${items.filter(t => t.on).length} para aprovação`}</button>
+      ${_cw.sent && items.some(t => t.status === 'ok') ? `<button class="huv-btn" onclick="buildCadenceFromWizard()">Montar a cadência com os enviados</button>` : ''}
+      <span class="integ-muted" style="font-size:12px;">{{1}} = nome do lead · {{2}} = nome de quem atende.</span>
+    </div>`;
+}
+async function uploadCwMedia(i, input) {
+  const file = input.files && input.files[0];
+  const el = document.getElementById('cw-m' + i);
+  if (!file) return;
+  el.textContent = 'Enviando arquivo...';
+  try {
+    _cw.items[i].media = await window._fb.uploadCampaignMedia(_cw.act, file, true);
+    renderCloudWizardList();
+  } catch (e) { el.style.color = 'var(--red)'; el.textContent = 'Erro: ' + e.message; }
+}
+async function sendCloudWizard() {
+  const todo = _cw.items.filter(t => t.on && t.status !== 'ok');
+  const bad = todo.find(t => cwProblem(t));
+  if (bad) return showToast(`Mensagem "${bad.name}": ${cwProblem(bad)}`, 'warning', 7000);
+  if (!todo.length) return showToast('Nenhuma mensagem marcada.', 'warning');
+  if (!await showConfirm(`Enviar ${todo.length} modelo(s) para a Meta aprovar? Depois de aprovados, cada envio é cobrado pela Meta na conta do cliente.`, 'Enviar para aprovação', 'Enviar', false)) return;
+  const btn = document.getElementById('cw-send');
+  const category = document.getElementById('cw-cat').value;
+  const example = { nome: 'Maria', atendente: 'Gustavo' };
+  let ok = 0;
+  for (const t of todo) {
+    if (btn) { btn.disabled = true; btn.textContent = `Enviando ${ok + 1} de ${todo.length}...`; }
+    const headerType = t.media ? (t.kind === 'image' ? 'image' : 'video') : '';
+    try {
+      await window._fb.whatsapp('/whatsapp/cloud-template-create', _cw.act, {
+        line: _cw.line, name: t.name, category, body: t.body.trim(), headerType, headerMediaId: t.media ? t.media.id : '',
+        examples: (t.vars || []).map(v => example[v] || 'Maria')
+      });
+      t.status = 'ok'; ok++;
+    } catch (e) { t.status = e.message.slice(0, 220); }
+    await new Promise(r => setTimeout(r, 600));
+  }
+  _cw.sent = true;
+  _cloudTplCache[_cw.act + '|' + _cw.line] = null;
+  const fail = todo.length - ok;
+  if (!fail) return buildCadenceFromWizard();
+  renderCloudWizardList();
+  showToast(`${ok} enviado(s) e ${fail} com erro. Corrija e tente de novo, ou monte a cadência com os enviados.`, 'warning', 8000);
+}
+async function buildCadenceFromWizard() {
+  const items = _cw.items.filter(t => t.status === 'ok');
+  if (!items.length) return;
+  const stages = getStages(_cw.act) || [];
+  const prefix = (document.getElementById('cw-prefix') || {}).value || '';
+  const steps = items.map(t => ({
+    id: flowUid(), day: Number(t.day) || 1, time: cwTime(t),
+    template: { name: t.name, language: 'pt_BR', params: (t.vars || []).map(v => v === 'atendente' ? '{atendente}' : '{primeiro_nome}') }
+  })).sort((a, b) => a.day - b.day || a.time.localeCompare(b.time));
+  const data = {
+    channel: 'cloud', act: _cw.act, name: prefix ? 'Cadência ' + prefix : 'Cadência API oficial', active: false, line: _cw.line,
+    triggerStage: _cwPresetStage || (stages[0] ? stages[0].id : 'novo'), startMode: 'tomorrow',
+    onReply: { moveTo: '' }, onFinish: { moveTo: '' }, steps
+  };
+  _cwPresetStage = '';
+  try {
+    const id = await window._fb.saveAutomation(null, data);
+    auditLog(_cw.act, 'automacao', `Criou a cadência da API oficial "${data.name}" (${steps.length} mensagens enviadas para aprovação)`);
+    _flowList = await window._fb.listAutomations(_cw.act);
+    closeHuvenModal();
+    showToast('Cadência montada. Ela fica desligada até os modelos serem aprovados pela Meta.', 'success', 7000);
+    openCloudCadenceEditor(id);
+  } catch (e) { showToast('Não salvou a cadência: ' + e.message, 'error', 7000); }
+}
+
+// ----- Editor da cadência -----
+let _cc = null;
+async function openCloudCadenceEditor(id) {
+  const act = flowAct();
+  const lines = cloudLinesOf(act);
+  if (!lines.length) return showToast('Conecte um número da API oficial em Conexões.', 'warning');
+  const src = id ? (_flowList || []).find(x => x.id === id) : null;
+  if (id && !src) return showToast('Cadência não encontrada.', 'warning');
+  const stages = getStages(act) || [];
+  _cc = {
+    act, id: id || null,
+    data: src ? JSON.parse(JSON.stringify(src)) : { channel: 'cloud', act, name: 'Cadência API oficial', active: false, line: lines[0].id, triggerStage: _cwPresetStage || (stages[0] ? stages[0].id : 'novo'), startMode: 'tomorrow', onReply: { moveTo: '' }, onFinish: { moveTo: '' }, steps: [{ id: flowUid(), day: 1, time: '09:30', template: null }] },
+    list: []
+  };
+  _cwPresetStage = '';
+  openHuvenModal('Cadência · API oficial', `${CADENCE_CSS}<div id="cc-body"><div class="integ-muted">Carregando os modelos do número...</div></div>`, 900);
+  await loadCcTemplates(false);
+}
+async function loadCcTemplates(refresh) {
+  try { _cc.list = await cloudTemplatesFor(_cc.act, _cc.data.line, refresh); }
+  catch (e) { _cc.list = []; showToast('Não consegui buscar os modelos: ' + e.message, 'warning', 6000); }
+  renderCloudCadenceEditor();
+}
+function ccTpl(step) {
+  const t = step && step.template;
+  return t ? (_cc.list || []).find(x => x.name === t.name && x.language === (t.language || 'pt_BR')) || null : null;
+}
+function renderCloudCadenceEditor() {
+  const box = document.getElementById('cc-body');
+  if (!box || !_cc) return;
+  const d = _cc.data, act = _cc.act;
+  const lines = cloudLinesOf(act);
+  const inCol = (_leadsCache || []).filter(l => leadMatchesClient(l, act) && l.stage === d.triggerStage).length;
+  const tplOptions = sel => `<option value="">Escolha o modelo</option>` + (_cc.list || []).map(t => `<option value="${escapeHtml(t.name + '|' + t.language)}" ${sel && sel.name === t.name && (sel.language || 'pt_BR') === t.language ? 'selected' : ''}>${escapeHtml(t.name)} · ${escapeHtml((CLOUD_STATUS_CHIP[t.status] || [t.status])[0])}</option>`).join('');
+  box.innerHTML = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <div style="flex:2;min-width:200px;"><label class="field-label">Nome</label><input class="field-input" value="${escapeHtml(d.name || '')}" oninput="_cc.data.name = this.value"></div>
+      ${lines.length > 1 ? `<div style="flex:1;min-width:160px;"><label class="field-label">Número da API oficial</label><select class="field-input" onchange="_cc.data.line = this.value; loadCcTemplates(false)">${lines.map(l => `<option value="${escapeHtml(l.id)}" ${l.id === d.line ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}</select></div>` : ''}
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <div style="flex:1;min-width:180px;"><label class="field-label">Quando o lead entrar na coluna</label><select class="field-input" onchange="_cc.data.triggerStage = this.value; renderCloudCadenceEditor()">${autoStageOptions(act, d.triggerStage)}</select><div class="integ-muted" style="font-size:11.5px;margin-top:3px;">${inCol} lead(s) nessa coluna agora.</div></div>
+      <div style="flex:1;min-width:180px;"><label class="field-label">Dia 1 da cadência</label><select class="field-input" onchange="_cc.data.startMode = this.value"><option value="tomorrow" ${d.startMode !== 'today' ? 'selected' : ''}>Dia seguinte à entrada</option><option value="today" ${d.startMode === 'today' ? 'selected' : ''}>No mesmo dia, se ainda der tempo</option></select></div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+      <div style="flex:1;min-width:180px;"><label class="field-label">Se o lead responder: para e move para</label><select class="field-input" onchange="_cc.data.onReply = { moveTo: this.value, moveToLabel: this.value ? autoStageLabel(_cc.act, this.value) : '' }">${autoStageOptions(act, (d.onReply || {}).moveTo, 'Não mover (só para)')}</select></div>
+      <div style="flex:1;min-width:180px;"><label class="field-label">Quando terminar sem resposta, mover para</label><select class="field-input" onchange="_cc.data.onFinish = { moveTo: this.value, moveToLabel: this.value ? autoStageLabel(_cc.act, this.value) : '' }">${autoStageOptions(act, (d.onFinish || {}).moveTo, 'Não mover')}</select></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div style="font-size:13px;font-weight:600;color:var(--text);">Mensagens (${d.steps.length})</div>
+      <div style="display:flex;gap:6px;"><button class="chat-pill" onclick="loadCcTemplates(true)">Atualizar status</button><button class="chat-pill" onclick="addCcStep()">+ Mensagem</button></div>
+    </div>
+    ${d.steps.map((st, i) => {
+      const tpl = ccTpl(st);
+      const vars = tpl ? tpl.vars || 0 : (st.template && st.template.params ? st.template.params.length : 0);
+      const params = (st.template && st.template.params) || [];
+      return `<div class="cc-row">
+        <div><div class="integ-muted" style="font-size:11px;">Dia</div><input type="number" min="1" max="90" class="field-input" value="${Number(st.day) || 1}" onchange="_cc.data.steps[${i}].day = Math.max(1, Number(this.value) || 1)"></div>
+        <div><div class="integ-muted" style="font-size:11px;">Horário</div><input type="time" class="field-input" value="${escapeHtml(st.time || '09:30')}" onchange="_cc.data.steps[${i}].time = this.value"></div>
+        <div>
+          <div class="integ-muted" style="font-size:11px;">Modelo</div>
+          <select class="field-input" onchange="setCcStepTpl(${i}, this.value)">${tplOptions(st.template)}</select>
+          ${st.template ? (tpl ? cloudChip(tpl.status) : cloudChip('')) : ''}
+          ${tpl && tpl.body ? `<div class="integ-muted" style="font-size:11.5px;margin-top:4px;white-space:pre-wrap;max-height:60px;overflow:hidden;">${escapeHtml(limitText(tpl.body, 220))}</div>` : ''}
+          ${vars ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${Array.from({ length: vars }, (_, k) => `<label style="font-size:11.5px;display:flex;gap:4px;align-items:center;">{{${k + 1}}}<input class="field-input" style="width:140px;padding:4px 6px;font-size:12px;" value="${escapeHtml(params[k] != null ? params[k] : (k === 0 ? '{primeiro_nome}' : k === 1 ? '{atendente}' : ''))}" oninput="setCcParam(${i}, ${k}, this.value)"></label>`).join('')}</div>` : ''}
+          ${tpl && tpl.headerType && !tpl.headerUrl ? `<div style="font-size:11.5px;color:var(--red);margin-top:4px;">Modelo com ${escapeHtml(((CLOUD_HEADER_TYPES[tpl.headerType] || {}).label || 'mídia').toLowerCase())} sem arquivo: escolha em Conexões → Modelos.</div>` : ''}
+        </div>
+        <button class="cc-x" title="Tirar mensagem" onclick="_cc.data.steps.splice(${i}, 1); renderCloudCadenceEditor()">×</button>
+      </div>`;
+    }).join('')}
+    <div class="integ-muted" style="font-size:12px;line-height:1.55;margin:10px 0;">Todos os leads com mensagem marcada para o mesmo horário recebem juntos, em lotes, sem intervalo entre eles (a API oficial não tem risco de bloqueio por volume). Quem responde sai da cadência na hora. A Meta limita quantas pessoas novas o número pode chamar em 24 h, conforme o nível do número; o que passar disso fica para a rodada seguinte.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <button class="huv-btn" onclick="saveCloudCadence(false)">Salvar</button>
+      ${d.active ? `<button class="huv-btn" style="color:var(--red);border-color:var(--red);" onclick="setCloudCadenceActive(false)">Desligar</button>` : `<button class="btn-save" style="width:auto;padding:9px 16px;" onclick="setCloudCadenceActive(true)">Ligar cadência</button>`}
+      ${_cc.id ? `<button class="huv-btn" onclick="openCloudProgress('${escapeJsString(_cc.id)}')">Andamento</button>` : ''}
+      <span id="cc-fb" class="integ-muted" style="font-size:12.5px;">${d.active ? 'Ligada.' : 'Desligada.'}</span>
+    </div>`;
+}
+function addCcStep() {
+  const s = _cc.data.steps;
+  const last = s[s.length - 1];
+  const night = last && last.time >= '12:00';
+  s.push({ id: flowUid(), day: last ? (night ? Number(last.day) + 1 : Number(last.day)) : 1, time: last ? (night ? '09:30' : '19:30') : '09:30', template: null });
+  renderCloudCadenceEditor();
+}
+function setCcStepTpl(i, value) {
+  const st = _cc.data.steps[i];
+  if (!value) { st.template = null; return renderCloudCadenceEditor(); }
+  const [name, language] = value.split('|');
+  const tpl = (_cc.list || []).find(t => t.name === name && t.language === language);
+  const params = Array.from({ length: (tpl && tpl.vars) || 0 }, (_, k) => k === 0 ? '{primeiro_nome}' : k === 1 ? '{atendente}' : '');
+  st.template = { name, language, params };
+  renderCloudCadenceEditor();
+}
+function setCcParam(i, k, v) {
+  const st = _cc.data.steps[i];
+  if (!st.template) return;
+  st.template.params = st.template.params || [];
+  st.template.params[k] = v;
+}
+// Monta o que vai para o banco: passos em ordem de dia/horário, com o modelo completo (texto e arquivo do cabeçalho).
+function ccPayload() {
+  const d = _cc.data;
+  const steps = d.steps.map(st => {
+    const tpl = ccTpl(st);
+    const params = (st.template && st.template.params) || [];
+    const template = st.template ? (tpl ? cloudTplObject(tpl, Array.from({ length: tpl.vars || 0 }, (_, k) => params[k] != null ? params[k] : '')) : { name: st.template.name, language: st.template.language || 'pt_BR', params }) : null;
+    return { id: st.id || flowUid(), day: Math.max(1, Number(st.day) || 1), time: /^\d{2}:\d{2}$/.test(st.time || '') ? st.time : '09:30', template };
+  }).sort((a, b) => a.day - b.day || a.time.localeCompare(b.time));
+  return {
+    channel: 'cloud', act: _cc.act, name: (d.name || '').trim() || 'Cadência API oficial', active: !!d.active, paused: !!d.paused, line: d.line,
+    triggerStage: d.triggerStage, triggerStageLabel: autoStageLabel(_cc.act, d.triggerStage), startMode: d.startMode === 'today' ? 'today' : 'tomorrow',
+    onReply: { moveTo: (d.onReply || {}).moveTo || '', moveToLabel: (d.onReply || {}).moveTo ? autoStageLabel(_cc.act, d.onReply.moveTo) : '' },
+    onFinish: { moveTo: (d.onFinish || {}).moveTo || '', moveToLabel: (d.onFinish || {}).moveTo ? autoStageLabel(_cc.act, d.onFinish.moveTo) : '' },
+    ...(d.activatedAt ? { activatedAt: d.activatedAt } : {}),
+    steps, nodes: [], edges: []
+  };
+}
+async function saveCloudCadence(quiet) {
+  const fb = document.getElementById('cc-fb');
+  const data = ccPayload();
+  try {
+    const id = await window._fb.saveAutomation(_cc.id, data);
+    _cc.id = id;
+    _cc.data = { ...data, id };
+    _flowList = await window._fb.listAutomations(_cc.act);
+    _colAutos[normalizeActValue(_cc.act)] = { at: Date.now(), list: _flowList };
+    if (!quiet) { if (fb) { fb.style.color = 'var(--green)'; fb.textContent = 'Salvo ✓'; } auditLog(_cc.act, 'automacao', `Salvou a cadência da API oficial "${data.name}"`); }
+    return true;
+  } catch (e) { if (fb) { fb.style.color = 'var(--red)'; fb.textContent = 'Erro: ' + e.message; } return false; }
+}
+async function setCloudCadenceActive(on) {
+  const d = _cc.data;
+  if (on) {
+    if (!d.triggerStage) return showToast('Escolha a coluna que inicia a cadência.', 'warning');
+    if (!d.steps.length) return showToast('Adicione pelo menos uma mensagem.', 'warning');
+    await loadCcTemplates(true);
+    for (const st of d.steps) {
+      const tpl = ccTpl(st);
+      const label = `Dia ${st.day} ${st.time}`;
+      if (!st.template) return showToast(`${label}: escolha o modelo.`, 'warning', 6000);
+      if (!tpl || tpl.status !== 'APPROVED') return showToast(`${label}: o modelo "${st.template.name}" ainda não está aprovado pela Meta (${tpl ? (CLOUD_STATUS_CHIP[tpl.status] || [tpl.status])[0] : 'não encontrado'}). A cadência só liga com todos aprovados.`, 'warning', 8000);
+      if (tpl.headerType && !tpl.headerUrl) return showToast(`${label}: o modelo "${tpl.name}" tem mídia no cabeçalho sem arquivo. Escolha em Conexões → Modelos.`, 'warning', 8000);
+      const params = (st.template.params || []);
+      if (Array.from({ length: tpl.vars || 0 }, (_, k) => params[k]).some(p => !String(p || '').trim())) return showToast(`${label}: preencha todas as variáveis do modelo.`, 'warning', 6000);
+    }
+    const other = (_flowList || []).find(a => a.id !== _cc.id && a.active && a.triggerStage === d.triggerStage);
+    if (other) return showToast(`A automação "${other.name}" já está ligada nessa coluna. Desligue ela antes.`, 'warning', 7000);
+  }
+  d.active = on;
+  if (on) d.activatedAt = new Date().toISOString();
+  if (!await saveCloudCadence(true)) return;
+  auditLog(_cc.act, 'automacao', `${on ? 'Ligou' : 'Desligou'} a cadência da API oficial "${d.name || ''}"`);
+  renderCloudCadenceEditor();
+  if (!on) return showToast('Cadência desligada. Os leads que estavam nela param de receber.', 'success');
+  const inCol = (_leadsCache || []).filter(l => leadMatchesClient(l, _cc.act) && l.stage === d.triggerStage).length;
+  const first = ccPayload().steps[0];
+  const include = inCol && await showConfirm(`Colocar também os ${inCol} lead(s) que já estão em "${autoStageLabel(_cc.act, d.triggerStage)}"? Eles recebem a 1ª mensagem (Dia ${first.day}, ${first.time}) todos juntos. Se não, só entram os que chegarem na coluna a partir de agora.`, 'Leads que já estão na coluna', 'Incluir todos', false);
+  if (!include) return showToast('Cadência ligada. Os leads que chegarem na coluna entram nela.', 'success', 6000);
+  try {
+    const r = await window._fb.whatsapp('/cadence/enroll', _cc.act, { id: _cc.id });
+    const when = r.firstAt ? new Date(r.firstAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+    showToast(`${r.enrolled} lead(s) entraram na cadência${r.skipped ? ` (${r.skipped} pulados: sem telefone, pediram para sair ou já estavam)` : ''}.${when ? ' 1ª mensagem: ' + when + '.' : ''}`, 'success', 9000);
+  } catch (e) { showToast('Cadência ligada, mas não consegui colocar os leads da coluna: ' + e.message, 'error', 8000); }
+}
+async function toggleCloudCadence(id, on) {
+  _flowList = _flowList || [];
+  await openCloudCadenceEditor(id);
+  if (_cc && _cc.id === id) await setCloudCadenceActive(on);
+  renderAutomacoesView();
+}
+function openCloudProgress(id) {
+  const f = (_flowList || []).find(x => x.id === id) || (_cc && _cc.id === id ? _cc.data : null);
+  if (!f) return;
+  const leads = (_leadsCache || []).filter(l => l.cloudCadence && l.cloudCadence.id === id);
+  const by = s => leads.filter(l => l.cloudCadence.status === s).length;
+  const steps = (f.steps || []).slice().sort((a, b) => a.day - b.day || String(a.time).localeCompare(String(b.time)));
+  openHuvenModal('Andamento · ' + (f.name || 'Cadência'), `
+    <div class="huv-stats" style="margin-bottom:12px;">
+      <div><div class="huv-stat-label">Na cadência</div><div class="huv-stat-value">${by('running')}</div></div>
+      <div><div class="huv-stat-label">Responderam</div><div class="huv-stat-value">${by('replied')}</div></div>
+      <div><div class="huv-stat-label">Terminaram</div><div class="huv-stat-value">${by('done')}</div></div>
+      <div><div class="huv-stat-label">Parados</div><div class="huv-stat-value">${by('stopped')}</div></div>
+    </div>
+    ${steps.map((st, i) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px;"><span>Dia ${st.day} · ${escapeHtml(st.time)} · ${escapeHtml((st.template || {}).name || '—')}</span><b>${leads.filter(l => (Number(l.cloudCadence.step) || 0) > i).length} receberam</b></div>`).join('')}
+    <div class="integ-muted" style="font-size:12px;margin-top:10px;">Contagem pelos cards carregados no CRM. "Receberam" inclui envios que a Meta não entregou (o motivo fica no histórico de cada card).</div>`, 560);
+}
+
 function openFlowPresets() {
   const act = flowAct();
   if (!act) return showToast('Escolha o cliente no topo do menu.', 'warning');
@@ -11730,6 +12151,7 @@ function openFlowEditor(id, opts) {
   const act = (opts && opts.act) || flowAct();
   if (!act) return showToast('Escolha o cliente no topo do menu.', 'warning');
   const src = id ? _flowList.find(x => x.id === id) : null;
+  if (src && src.channel === 'cloud') return openCloudCadenceEditor(id);
   ensureWaSettings(act);
   const stages = getStages(act) || [];
   if (src) {
@@ -11886,7 +12308,7 @@ function openAiFlowModal() {
     <div class="integ-muted" style="font-size:12.5px;margin-bottom:10px;">Descreva o fluxo do seu jeito, em ordem: quando começa, quanto tempo esperar, o que enviar e o que fazer se o lead responder ou não. A IA monta os blocos no editor para você conferir antes de ligar.</div>
     <textarea class="field-input" id="ai-flow-text" rows="7" maxlength="8000" style="width:100%;box-sizing:border-box;resize:vertical;margin-bottom:10px;" placeholder="Ex.: Quando o lead chegar em Novo lead, espera 5 minutos e manda boas-vindas perguntando qual serviço ele procura. Se não responder em 2 horas, manda de novo. Se depois de 1 dia continuar sem responder, manda o vídeo de depoimento e move para Sem resposta. Se responder, move para Em contato."></textarea>
     <label class="field-label">Ou anexe um PDF ou arquivo de texto com o fluxo (opcional)</label>
-    <input type="file" class="field-input" id="ai-flow-file" accept="application/pdf,.pdf,text/plain,.txt" onchange="readAiFlowFile(this)" style="margin-bottom:6px;">
+    <input type="file" class="field-input" id="ai-flow-file" accept="application/pdf,.pdf,text/plain,.txt,.md,text/markdown" onchange="readAiFlowFile(this)" style="margin-bottom:6px;">
     <div id="ai-flow-file-fb" class="integ-muted" style="font-size:12px;margin-bottom:12px;"></div>
     </div>
     <button class="btn-save" id="ai-flow-btn" style="width:auto;padding:9px 16px;" onclick="runAiFlow()">Criar automação</button> <span id="ai-flow-fb" class="integ-muted"></span>`, 560);
@@ -12043,6 +12465,11 @@ function openColumnAutomation(stageId) {
   if (!act) return showToast('Escolha um cliente para criar a automação da coluna.', 'warning');
   const stage = getAllStages(act).find(s => s.id === stageId) || { label: stageId };
   const auto = columnAutomation(act, stageId);
+  if (auto && auto.channel === 'cloud') {
+    _flowList = (_colAutos[act] || {}).list || [];
+    switchView('automacoes');
+    return openCloudCadenceEditor(auto.id);
+  }
   if (auto) {
     _flowList = (_colAutos[act] || {}).list || [];
     _flowReturn = 'crm';
@@ -12055,6 +12482,7 @@ function openColumnAutomation(stageId) {
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="newColumnFlow('${escapeJsString(stageId)}', false)">${uiIco('sparkles')} Criar com IA</button>
       <button class="huv-btn" onclick="newColumnFlow('${escapeJsString(stageId)}', true)">Montar o fluxo</button>
+      ${cloudLinesOf(act).length ? `<button class="huv-btn" onclick="switchView('automacoes'); openCloudStart('${escapeJsString(stageId)}')">API oficial (cadência)</button>` : ''}
     </div>`, 460);
 }
 
@@ -12527,9 +12955,61 @@ function renderFlowInspector() {
       <button class="ci-add" style="margin-left:6px;" onclick="aiFlowNodeCopy()">${uiIco('sparkles', 13)} Sugerir texto com IA</button>
       ${varChipsHtml('flow')}
       <div class="integ-muted" style="margin-top:6px;">Clique para inserir no texto. {atendente} vira o nome do atendente do WhatsApp que envia (defina em Conexões). Com várias versões, uma é sorteada a cada envio.</div>`;
+    if (flowCloudLine()) html += `<div id="flow-cloud-box" style="margin-top:14px;"></div>`;
   }
   if (n.type !== 'trigger') html += `<button class="huv-btn" style="margin-top:16px;color:var(--red);border-color:var(--red);" onclick="deleteFlowNode('${n.id}')">Excluir bloco</button>`;
   box.innerHTML = html;
+  if (n.type === 'message' && flowCloudLine()) renderFlowCloudBox(n);
+}
+
+// ----- API oficial nas automações: cada bloco de mensagem pode ter o seu modelo aprovado -----
+// Fora da janela de 24 h, o número oficial envia este modelo (e não o modelo padrão da linha).
+function flowCloudLine() {
+  return ((_flow && Array.isArray(_flow.lines)) ? _flow.lines : []).find(l => waIsCloud(l)) || '';
+}
+async function renderFlowCloudBox(n) {
+  const box = document.getElementById('flow-cloud-box');
+  const line = flowCloudLine();
+  if (!box || !line) return;
+  const d = n.data || {};
+  box.innerHTML = '<div class="integ-muted" style="font-size:12px;">Buscando os modelos aprovados da API oficial...</div>';
+  let list = [];
+  try { list = (await cloudTemplatesFor(_flow.act, line)).filter(t => t.status === 'APPROVED'); }
+  catch (e) { box.innerHTML = `<div class="integ-error">${escapeHtml(e.message)}</div>`; return; }
+  if (_flowSel !== n.id) return;
+  const cur = d.cloudTemplate;
+  const sel = cur ? list.find(t => t.name === cur.name && t.language === cur.language) : null;
+  box.innerHTML = `<div class="wa-line-picker">
+    <div class="wa-line-picker-title">Modelo aprovado · API oficial</div>
+    <div class="wa-line-picker-hint" style="margin-bottom:6px;">Pelo número da API oficial, fora da janela de 24 h só sai modelo aprovado pela Meta. Escolha o modelo desta mensagem. Os números por QR Code continuam enviando o texto acima.</div>
+    <select class="field-input" id="flow-cloud-tpl" onchange="onFlowCloudTpl()">
+      <option value="">Usar o modelo padrão do número</option>
+      ${list.map(t => `<option value="${escapeHtml(t.name + '|' + t.language)}" ${sel === t ? 'selected' : ''}>${escapeHtml(t.name)}${t.headerType ? ' · ' + escapeHtml((CLOUD_HEADER_TYPES[t.headerType] || {}).label || '') : ''}</option>`).join('')}
+    </select>
+    ${list.length ? '' : `<div class="integ-muted" style="font-size:12px;margin-top:6px;">Nenhum modelo aprovado ainda. Crie em Conexões → ${escapeHtml(waLineLabel(_flow.act, line))} → Modelos.</div>`}
+    <div id="flow-cloud-params" oninput="saveFlowCloudParams()" onchange="saveFlowCloudParams()"></div>
+  </div>`;
+  renderFlowCloudParams(sel ? cur.params : null);
+}
+function flowCloudSelected() {
+  return cloudSelectedTpl('flow-cloud-tpl', _cloudTplCache[_flow.act + '|' + flowCloudLine()]);
+}
+function renderFlowCloudParams(values) {
+  const box = document.getElementById('flow-cloud-params');
+  const tpl = flowCloudSelected();
+  if (!box) return;
+  if (!tpl) { box.innerHTML = ''; return; }
+  // Padrão: {{1}} = primeiro nome do lead, {{2}} = atendente (nome de quem envia).
+  const vals = values || Array.from({ length: tpl.vars || 0 }, (_, i) => i === 0 ? '{primeiro_nome}' : i === 1 ? '{atendente}' : '');
+  box.innerHTML = cloudParamsHtml('flow-cloud', tpl, vals, 'Maria', 'O que vai em cada variável: texto, {primeiro_nome}, {nome} ou {atendente}.');
+}
+function onFlowCloudTpl() {
+  renderFlowCloudParams(null);
+  saveFlowCloudParams();
+}
+function saveFlowCloudParams() {
+  const tpl = flowCloudSelected();
+  setFlowData('cloudTemplate', tpl ? cloudTplObject(tpl, readCloudParams('flow-cloud', tpl)) : null);
 }
 
 async function uploadFlowMedia(input, kind) {
@@ -12561,9 +13041,9 @@ async function saveFlow() {
     const label = flowNodeTitle(n);
     if (n.type === 'message') {
       const kind = d.kind || 'text';
-      const hasText = (d.templates || []).some(t => String(t || '').trim());
+      const hasText = (d.templates || []).some(t => String(t || '').trim()) || !!d.cloudTemplate;
       if (kind === 'text' && !hasText) { _flowSel = n.id; renderFlowNodes(); renderFlowInspector(); return fail(`O bloco "${label}" está sem mensagem.`); }
-      if (kind !== 'text' && !(d.media && d.media.url)) { _flowSel = n.id; renderFlowNodes(); renderFlowInspector(); return fail(`O bloco "${label}" está sem arquivo.`); }
+      if (kind !== 'text' && !(d.media && d.media.url) && !d.cloudTemplate) { _flowSel = n.id; renderFlowNodes(); renderFlowInspector(); return fail(`O bloco "${label}" está sem arquivo.`); }
     }
     if (n.type === 'move' && !d.stage) { _flowSel = n.id; renderFlowNodes(); renderFlowInspector(); return fail('Escolha a coluna do bloco "Mover card".'); }
   }
@@ -15222,7 +15702,7 @@ function renderCloudTemplates(list) {
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
       <div style="font-size:13px;font-weight:600;color:var(--text);">Modelos desta conta (${list.length})</div>
-      <div style="display:flex;gap:6px;"><button class="chat-pill" onclick="refreshCloudTemplates()">Atualizar</button><button class="chat-pill" onclick="toggleCloudNewTpl()">+ Novo modelo</button></div>
+      <div style="display:flex;gap:6px;"><button class="chat-pill" onclick="refreshCloudTemplates()">Atualizar</button><button class="chat-pill" onclick="openCloudBulkTemplates()">${uiIco('sparkles', 13)} Vários de um documento</button><button class="chat-pill" onclick="toggleCloudNewTpl()">+ Novo modelo</button></div>
     </div>
     <div id="cloud-new-tpl" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;">
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
@@ -15328,6 +15808,142 @@ async function createCloudTemplate() {
     showToast(`Modelo "${r.name}" enviado. Status: ${(CLOUD_STATUS[r.status] || [r.status])[0]}. Clique em Atualizar daqui a pouco para ver a aprovação.`, 'success', 8000);
     renderCloudTemplates(await cloudTemplatesFor(act, line, true));
   } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = e.message; btn.disabled = false; }
+}
+
+// ----- Vários modelos de uma vez: a IA lê o roteiro (cadência) e monta um modelo por mensagem para revisar e enviar à Meta -----
+let _cloudBulk = null;
+async function fileToText(file) {
+  if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
+    if (!window.pdfjsLib) {
+      await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'; s.onload = res; s.onerror = () => rej(new Error('Não consegui abrir o leitor de PDF.')); document.head.appendChild(s); });
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+    const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const parts = [];
+    for (let i = 1; i <= Math.min(pdf.numPages, 25); i++) parts.push((await (await pdf.getPage(i)).getTextContent()).items.map(it => it.str).join(' '));
+    return parts.join('\n').replace(/[ \t]+/g, ' ').trim();
+  }
+  return (await file.text()).trim();
+}
+function openCloudBulkTemplates() {
+  _cloudBulk = { text: '', items: [] };
+  document.getElementById('huven-modal-body').innerHTML = `
+    <button class="chat-pill" onclick="refreshCloudTemplates()" style="margin-bottom:10px;">← Voltar aos modelos</button>
+    <div class="integ-muted" style="font-size:12.5px;line-height:1.55;margin-bottom:10px;">Anexe o roteiro (cadência, sequência de follow-up) em PDF, .md ou .txt, ou cole o texto. A IA separa cada mensagem num modelo, você revisa e envia todos para a Meta aprovar de uma vez. <b>[NOME]</b> vira {{1}} e <b>[VENDEDOR]</b> vira {{2}}.</div>
+    <input type="file" class="field-input" accept="application/pdf,.pdf,text/plain,.txt,.md,text/markdown" onchange="readCloudBulkFile(this)" style="margin-bottom:6px;">
+    <textarea class="field-input" id="cbt-text" rows="5" style="width:100%;box-sizing:border-box;resize:vertical;margin-bottom:8px;" placeholder="Ou cole aqui o texto com as mensagens"></textarea>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px;">
+      <div style="flex:1;min-width:150px;"><label class="field-label">Prefixo do nome (opcional)</label><input class="field-input" id="cbt-prefix" placeholder="mdv"></div>
+      <div style="flex:1;min-width:150px;"><label class="field-label">Categoria</label><select class="field-input" id="cbt-cat"><option value="MARKETING">Marketing</option><option value="UTILITY">Utilidade</option></select></div>
+      <button class="btn-save" id="cbt-read" style="width:auto;padding:9px 16px;" onclick="runCloudBulkAi()">${uiIco('sparkles', 13)} Ler mensagens com IA</button>
+    </div>
+    <div id="cbt-fb" class="integ-muted" style="font-size:12.5px;margin-bottom:8px;"></div>
+    <div id="cbt-list"></div>`;
+}
+async function readCloudBulkFile(input) {
+  const file = input.files && input.files[0];
+  const fb = document.getElementById('cbt-fb');
+  if (!file) return;
+  fb.style.color = 'var(--muted)'; fb.textContent = 'Lendo o arquivo...';
+  try {
+    const text = await fileToText(file);
+    document.getElementById('cbt-text').value = text;
+    fb.style.color = text.length > 30 ? 'var(--green)' : 'var(--amber)';
+    fb.textContent = text.length > 30 ? `✓ ${text.length.toLocaleString('pt-BR')} caracteres lidos. Clique em "Ler mensagens com IA".` : 'Não encontrei texto no arquivo.';
+  } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = 'Erro ao ler: ' + e.message; }
+}
+async function runCloudBulkAi() {
+  const { act } = _cloudCtx;
+  const fb = document.getElementById('cbt-fb');
+  const btn = document.getElementById('cbt-read');
+  const text = document.getElementById('cbt-text').value.trim();
+  if (text.length < 30) { fb.style.color = 'var(--red)'; fb.textContent = 'Anexe o arquivo ou cole o texto com as mensagens.'; return; }
+  btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'A IA está lendo as mensagens (pode levar até 1 minuto)...';
+  try {
+    const r = await window._fb.whatsapp('/ai/cloud-templates', act, { text, prefix: document.getElementById('cbt-prefix').value });
+    _cloudBulk.items = (r.templates || []).map(t => ({ ...t, on: true, media: null, status: '' }));
+    fb.style.color = 'var(--green)';
+    fb.textContent = `${_cloudBulk.items.length} mensagens encontradas. Confira os textos, anexe os vídeos e envie para a Meta.`;
+    renderCloudBulkList();
+  } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = e.message; }
+  btn.disabled = false;
+}
+function cloudBulkProblem(t) {
+  const body = String(t.body || '').trim();
+  if (!body) return 'Texto vazio.';
+  if (body.length > 1024) return 'Texto acima de 1024 caracteres.';
+  if (/^\{\{\d+\}\}|\{\{\d+\}\}[\s.!?]*$/.test(body)) return 'A Meta não aceita começar ou terminar com variável.';
+  const nums = [...new Set([...body.matchAll(/\{\{(\d+)\}\}/g)].map(m => Number(m[1])))].sort((a, b) => a - b);
+  if (nums.some((n, i) => n !== i + 1)) return 'Variáveis fora de ordem: use {{1}}, {{2}}...';
+  if (!/^[a-z0-9_]{1,60}$/.test(t.name || '')) return 'Nome inválido: só minúsculas, números e _.';
+  return '';
+}
+function renderCloudBulkList() {
+  const box = document.getElementById('cbt-list');
+  if (!box || !_cloudBulk) return;
+  const items = _cloudBulk.items;
+  if (!items.length) { box.innerHTML = ''; return; }
+  const kindLabel = { text: 'Texto', video: 'Vídeo', image: 'Imagem', audio: 'Áudio' };
+  box.innerHTML = items.map((t, i) => {
+    const prob = cloudBulkProblem(t);
+    const st = t.status === 'ok' ? `<span style="color:var(--green);font-weight:700;">✓ enviado</span>` : t.status ? `<span style="color:var(--red);">${escapeHtml(t.status)}</span>` : '';
+    const mediaRow = (t.kind === 'video' || t.kind === 'image') ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;font-size:12px;">
+        <span class="integ-muted">${t.kind === 'video' ? 'Vídeo (MP4, até 16 MB)' : 'Imagem (JPG/PNG)'} no topo:</span>
+        <input type="file" accept="${t.kind === 'video' ? 'video/mp4' : 'image/jpeg,image/png'}" onchange="uploadCloudBulkMedia(${i}, this)" style="font-size:12px;">
+        <span id="cbt-m${i}">${t.media ? `${uiIco('check', 12)} ${escapeHtml(t.media.fileName || 'arquivo')}` : '<span class="integ-muted">sem arquivo: vai só o texto</span>'}</span></div>` : '';
+    const audioNote = t.kind === 'audio' ? `<div style="font-size:12px;color:var(--amber);margin-top:6px;">Áudio não existe em modelo da Meta. Este modelo vai como <b>texto</b> (a fala escrita). Se preferir, desmarque e grave em vídeo.</div>` : '';
+    return `<div style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;${t.on ? '' : 'opacity:.55;'}">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <input type="checkbox" ${t.on ? 'checked' : ''} ${t.status === 'ok' ? 'disabled' : ''} onchange="_cloudBulk.items[${i}].on = this.checked; renderCloudBulkList()">
+        <input class="field-input" value="${escapeHtml(t.name)}" style="flex:1;min-width:140px;padding:5px 8px;font-size:12.5px;" oninput="_cloudBulk.items[${i}].name = this.value.toLowerCase().replace(/[^a-z0-9_]/g, '_')">
+        <span class="chat-tag">${kindLabel[t.kind] || 'Texto'}</span> ${st}
+      </div>
+      <textarea class="field-input" rows="${Math.min(8, Math.max(3, Math.ceil(String(t.body).length / 70)))}" style="width:100%;box-sizing:border-box;resize:vertical;margin-top:6px;font-size:12.5px;" oninput="_cloudBulk.items[${i}].body = this.value; const p = cloudBulkProblem(_cloudBulk.items[${i}]); document.getElementById('cbt-p${i}').textContent = p">${escapeHtml(t.body)}</textarea>
+      <div id="cbt-p${i}" style="font-size:12px;color:var(--red);">${escapeHtml(prob)}</div>
+      ${mediaRow}${audioNote}
+    </div>`;
+  }).join('') + `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;">
+      <button class="btn-save" id="cbt-send" style="width:auto;padding:9px 16px;" onclick="sendCloudBulk()">Enviar ${items.filter(t => t.on && t.status !== 'ok').length} para aprovação</button>
+      <span class="integ-muted" style="font-size:12px;">{{1}} = nome do lead · {{2}} = nome do vendedor. A Meta costuma responder em minutos; o status aparece em Modelos.</span>
+    </div>`;
+}
+async function uploadCloudBulkMedia(i, input) {
+  const file = input.files && input.files[0];
+  const el = document.getElementById('cbt-m' + i);
+  if (!file) return;
+  el.textContent = 'Enviando arquivo...';
+  try {
+    _cloudBulk.items[i].media = await window._fb.uploadCampaignMedia(_cloudCtx.act, file, true);
+    el.innerHTML = `${uiIco('check', 12)} ${escapeHtml(_cloudBulk.items[i].media.fileName || file.name)}`;
+  } catch (e) { el.style.color = 'var(--red)'; el.textContent = 'Erro: ' + e.message; }
+}
+async function sendCloudBulk() {
+  const { act, line } = _cloudCtx;
+  const btn = document.getElementById('cbt-send');
+  const todo = _cloudBulk.items.filter(t => t.on && t.status !== 'ok');
+  const bad = todo.find(t => cloudBulkProblem(t));
+  if (bad) return showToast(`Corrija o modelo "${bad.name}": ${cloudBulkProblem(bad)}`, 'warning', 6000);
+  if (!todo.length) return showToast('Nenhum modelo marcado.', 'warning');
+  if (!await showConfirm(`Enviar ${todo.length} modelo(s) para a Meta aprovar? Depois de aprovados, cada envio é cobrado pela Meta.`, 'Enviar para aprovação', 'Enviar', false)) return;
+  const category = document.getElementById('cbt-cat').value;
+  const example = { nome: 'Maria', atendente: 'Gustavo' };
+  let ok = 0;
+  for (const t of todo) {
+    if (btn) { btn.disabled = true; btn.textContent = `Enviando ${ok + 1} de ${todo.length}...`; }
+    try {
+      await window._fb.whatsapp('/whatsapp/cloud-template-create', act, {
+        line, name: t.name, category, body: t.body.trim(),
+        headerType: t.media ? t.kind : '', headerMediaId: t.media ? t.media.id : '',
+        examples: (t.vars || []).map(v => example[v] || 'Maria')
+      });
+      t.status = 'ok'; ok++;
+    } catch (e) { t.status = e.message.slice(0, 220); }
+    renderCloudBulkList();
+    await new Promise(r => setTimeout(r, 700));
+  }
+  _cloudTplCache[act + '|' + line] = null;
+  const fail = todo.length - ok;
+  showToast(fail ? `${ok} enviado(s) e ${fail} com erro. Corrija os marcados em vermelho e envie de novo.` : `${ok} modelo(s) enviados para a Meta aprovar.`, fail ? 'warning' : 'success', 8000);
 }
 
 async function deleteCloudTemplate(name) {
