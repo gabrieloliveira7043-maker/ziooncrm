@@ -6150,8 +6150,7 @@ async function doLogin() {
   if (window.innerWidth <= 768) {
     const mobileNav = document.getElementById('mobile-nav');
     if (mobileNav) mobileNav.style.display = 'flex';
-    const mobileFilters = document.getElementById('mobile-filters');
-    if (mobileFilters) mobileFilters.style.display = 'flex';
+    syncMobileFilters(document.querySelector('.content').style.display !== 'none');
   }
   refreshLeadsAfterLogin();
 }
@@ -7600,6 +7599,7 @@ function switchView(view) {
     if (el) el.classList.toggle('active', v === view);
   });
   document.querySelector('.topbar').style.display = view === 'report' ? 'flex' : 'none';
+  syncMobileFilters(view === 'report');
   document.querySelector('.content').style.display = view === 'report' ? 'block' : 'none';
   document.getElementById('crm-view').style.display = view === 'crm' ? 'block' : 'none';
   const ajudaView = document.getElementById('ajuda-view');
@@ -19482,9 +19482,18 @@ function setMobileNav(view) {
     const el = document.getElementById('mnav-' + v);
     if (el) el.classList.toggle('active', v === view);
   });
-  const isReport = view === 'report';
+}
+// Datas do Dashboard no celular: aparecem sempre que o Dashboard está aberto (inclusive vindo do menu "Mais").
+function syncMobileFilters(show) {
   const mf = document.getElementById('mobile-filters');
-  if (mf) mf.style.display = isReport ? 'flex' : 'none';
+  if (!mf) return;
+  mf.style.display = show ? 'flex' : 'none';
+  if (show) {
+    const mFrom = document.getElementById('mobile-date-from'), mTo = document.getElementById('mobile-date-to');
+    const dFrom = document.getElementById('date-from'), dTo = document.getElementById('date-to');
+    if (mFrom && dFrom && dFrom.value) mFrom.value = dFrom.value;
+    if (mTo && dTo && dTo.value) mTo.value = dTo.value;
+  }
 }
 
 function loadDataMobile() {
@@ -20721,8 +20730,7 @@ async function restoreSession() {
   updateSidebarForUser();
   const mobileNav = document.getElementById('mobile-nav');
   if (mobileNav) mobileNav.style.display = 'flex';
-  const mobileFilters = document.getElementById('mobile-filters');
-  if (mobileFilters && isAdmin === false) mobileFilters.style.display = 'flex';
+  syncMobileFilters(document.querySelector('.content').style.display !== 'none');
   updateSidebarForUser();
   refreshLeadsAfterLogin();
   return true;
