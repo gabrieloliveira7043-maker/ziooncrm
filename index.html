@@ -1280,10 +1280,26 @@ html[data-theme="light"] .login-overlay { background: var(--paper); }
 .chat-note-head button { background:none; border:none; color:var(--muted2); cursor:pointer; font-size:11px; padding:0 2px; font-weight:700; }
 .chat-sched { align-self:flex-end; max-width:70%; border:1px dashed var(--blue); background:var(--blue-dim); border-radius:10px; padding:8px 11px; font-size:13px; color:var(--text); white-space:pre-wrap; word-break:break-word; }
 .chat-sched.failed { border-color:var(--red); background:rgba(248,113,113,.1); }
-.rem-stack { position:fixed; right:16px; bottom:16px; z-index:9500; display:flex; flex-direction:column; gap:8px; width:min(360px, calc(100% - 32px)); }
+.rem-stack { position:fixed; right:16px; bottom:92px; z-index:9500; display:flex; flex-direction:column; align-items:flex-end; gap:8px; width:min(360px, calc(100% - 32px)); }
+.rem-pill { display:inline-flex; align-items:center; gap:8px; padding:9px 14px; border-radius:999px; border:1px solid #E0A43A; background:var(--surface); color:var(--text); font:700 13px 'Manrope', sans-serif; cursor:pointer; box-shadow:0 10px 26px rgba(0,0,0,.28); }
+.rem-pill .rem-count { background:#E0A43A; color:#111; border-radius:999px; padding:1px 8px; font-size:12px; }
+.rem-pill.pulse { animation: remPulse 1.2s ease-in-out 3; }
+@keyframes remPulse { 0%,100% { box-shadow:0 10px 26px rgba(0,0,0,.28); } 50% { box-shadow:0 0 0 6px rgba(224,164,58,.35); } }
+.rem-panel { width:100%; background:var(--surface); border:1px solid #E0A43A; border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,.3); overflow:hidden; }
+.rem-panel-head { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--border); font-size:12px; font-weight:800; color:#B7791F; }
+.rem-panel-head button { margin-left:auto; background:none; border:1px solid var(--border); color:var(--text); border-radius:8px; padding:4px 10px; font:600 12px 'Manrope', sans-serif; cursor:pointer; }
+.rem-list { max-height:min(55vh, 420px); overflow:auto; }
+.rem-row { padding:8px 12px; border-bottom:1px solid var(--border); font-size:12.5px; color:var(--text); }
+.rem-row:last-child { border-bottom:0; }
+.rem-row-top { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:700; color:var(--muted2); }
+.rem-row-top .x { margin-left:auto; background:none; border:0; color:var(--muted); cursor:pointer; font-size:15px; line-height:1; }
+.rem-row-text { margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rem-row-acts { display:flex; gap:10px; margin-top:4px; }
+.rem-row-acts button { background:none; border:0; padding:0; color:#B7791F; font:700 11.5px 'Manrope', sans-serif; cursor:pointer; }
+.rem-row-acts button:hover { text-decoration:underline; }
 .rem-card { background:var(--surface); border:1px solid #E0A43A; border-left:4px solid #E0A43A; border-radius:12px; padding:10px 12px; box-shadow:0 12px 32px rgba(0,0,0,.25); font-size:13px; color:var(--text); }
 .rem-card .rem-actions { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
-@media (max-width: 768px) { .rem-stack { bottom:80px; } }
+@media (max-width: 768px) { .rem-stack { bottom:140px; } }
 .chat-back { display:none; }
 .contatos-bulk { position:sticky; top:0; }
 /* Integrações */
@@ -14610,22 +14626,40 @@ function chatReminderFor(act, key) {
   return _reminders.filter(n => !n.done && normalizeActValue(n.act) === normalizeActValue(act) && n.chatKey === key).sort((a, b) => String(a.remindAt).localeCompare(String(b.remindAt)))[0] || null;
 }
 
+// Fica recolhido num botão "🔔 N lembretes" no canto; abre uma lista compacta. A escolha (aberto/recolhido) fica no navegador.
+let _remOpen = (() => { try { return localStorage.getItem('huven_rem_open') === '1'; } catch (e) { return false; } })();
+function toggleReminderPanel(open) {
+  _remOpen = open;
+  try { localStorage.setItem('huven_rem_open', open ? '1' : '0'); } catch (e) {}
+  renderReminders();
+}
+function hideReminder(id) { _remShown.add(id + ':hidden'); renderReminders(); }
 function renderReminders() {
   const due = dueReminders().filter(n => !_remShown.has(n.id + ':hidden'));
   let el = document.getElementById('rem-stack');
   if (!due.length) { if (el) el.remove(); return; }
   if (!el) { el = document.createElement('div'); el.id = 'rem-stack'; el.className = 'rem-stack'; document.body.appendChild(el); }
-  due.forEach(n => { if (!_remShown.has(n.id)) { _remShown.add(n.id); if (typeof playLeadNotificationSound === 'function') try { playLeadNotificationSound(); } catch (e) {} } });
-  el.innerHTML = due.slice(0, 4).map(n => `<div class="rem-card" data-rem="${escapeHtml(n.id)}">
-    <button class="wa-alert-close" style="position:static;float:right;font-size:16px;line-height:1;" title="Esconder" onclick="_remShown.add('${escapeJsString(n.id)}:hidden');renderReminders()">×</button><div style="font-size:11px;font-weight:800;color:#B7791F;margin-bottom:3px;">${uiIco('bell', 11)} LEMBRETE${isAdmin ? ' · ' + escapeHtml(getClientDisplayName(n.act) || '') : ''} · ${escapeHtml(n.chatName || '')}</div>
-    <div style="white-space:pre-wrap;">${escapeHtml(limitText(n.text || '', 240))}</div>
-    <div class="rem-actions">
-      <button class="chat-pill active" onclick="openChatByKey('${escapeJsString(n.act)}','${escapeJsString(n.chatKey)}')">Abrir conversa</button>
-      <button class="chat-pill" onclick="finishReminder('${escapeJsString(n.id)}')">Concluir</button>
-      <button class="chat-pill" onclick="snoozeReminder('${escapeJsString(n.id)}')">Adiar 1 h</button>
-    </div></div>`).join('') + (due.length > 4 ? `<div class="rem-card" style="text-align:center;">+${due.length - 4} lembretes</div>` : '');
-  // Arrastar o cartão para o lado esconde o lembrete (ele continua na conversa).
-  el.querySelectorAll('.rem-card[data-rem]').forEach(card => enableSwipeDismiss(card, () => { _remShown.add(card.getAttribute('data-rem') + ':hidden'); renderReminders(); }));
+  let fresh = false;
+  due.forEach(n => { if (!_remShown.has(n.id)) { _remShown.add(n.id); fresh = true; } });
+  if (fresh && typeof playLeadNotificationSound === 'function') try { playLeadNotificationSound(); } catch (e) {}
+  const label = `${due.length} lembrete${due.length > 1 ? 's' : ''}`;
+  if (!_remOpen) {
+    el.innerHTML = `<button type="button" class="rem-pill${fresh ? ' pulse' : ''}" onclick="toggleReminderPanel(true)" title="Ver lembretes">${uiIco('bell', 14)} Lembretes <span class="rem-count">${due.length}</span></button>`;
+    return;
+  }
+  const when = n => new Date(n.remindAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  el.innerHTML = `<div class="rem-panel"><div class="rem-panel-head">${uiIco('bell', 13)} ${label}<button type="button" onclick="toggleReminderPanel(false)">Minimizar ▾</button></div>
+    <div class="rem-list">${due.map(n => {
+      const id = escapeJsString(n.id);
+      return `<div class="rem-row" data-rem="${escapeHtml(n.id)}">
+        <div class="rem-row-top"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${isAdmin ? escapeHtml(getClientDisplayName(n.act) || '') + ' · ' : ''}${escapeHtml(n.chatName || '')} · ${when(n)}</span><button class="x" title="Esconder" onclick="hideReminder('${id}')">×</button></div>
+        <div class="rem-row-text" title="${escapeHtml(n.text || '')}">${escapeHtml(limitText(n.text || '', 240))}</div>
+        <div class="rem-row-acts">
+          <button onclick="openChatByKey('${escapeJsString(n.act)}','${escapeJsString(n.chatKey)}')">Abrir conversa</button>
+          <button onclick="finishReminder('${id}')">Concluir</button>
+          <button onclick="snoozeReminder('${id}')">Adiar 1 h</button>
+        </div></div>`;
+    }).join('')}</div></div>`;
 }
 
 async function snoozeReminder(id) {
