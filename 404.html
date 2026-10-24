@@ -6303,16 +6303,29 @@ function getStagesForArteAzulejo(act, custom) {
   }
   return (custom && custom.length) ? custom : STAGES_ARTE_AZULEJO;
 }
-function getCustomStages(act) {
+// Colunas da pipeline Principal: ficam no banco (pipelines/{act}.principalStages), iguais em todos os aparelhos.
+// O navegador guarda uma cópia; a cópia antiga (de antes de ir para o banco) sobe sozinha na primeira vez.
+function localCustomStages(act) {
   try {
     const raw = localStorage.getItem('custom_stages_' + act);
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
 }
+function getCustomStages(act) {
+  const cfg = pipelinesFor(act);
+  if (cfg && Array.isArray(cfg.principalStages) && cfg.principalStages.length) return cfg.principalStages;
+  return localCustomStages(act);
+}
 
 function saveCustomStages(act, stages) {
-  localStorage.setItem('custom_stages_' + act, JSON.stringify(stages));
+  try { localStorage.setItem('custom_stages_' + act, JSON.stringify(stages)); } catch (e) {}
   if (isArteAzulejoClient(act)) localStorage.setItem(getArteStagesMigrationKey(act), '1');
+  // Espera os funis carregarem para não apagar as outras pipelines ao gravar.
+  pipelinesReady(act).then(() => {
+    const cfg = JSON.parse(JSON.stringify(pipelinesFor(act) || { list: [] }));
+    cfg.principalStages = stages;
+    return savePipelinesCfg(act, cfg);
+  }).catch(e => showToast('Colunas não salvas no banco: ' + e.message, 'error', 6000));
 }
 
 // ===== PIPELINES DO FUNIL =====
@@ -6353,11 +6366,24 @@ function setCurrentPipeline(act, id) {
 }
 
 // Carrega os pipelines do cliente uma vez e redesenha quem pediu.
+// Colunas da Principal que só existiam neste navegador: sobem para o banco (uma vez).
+function uploadLocalPrincipalStages(act) {
+  act = normalizeActValue(act);
+  const cfg = _pipelinesCache[act];
+  if (!cfg || (Array.isArray(cfg.principalStages) && cfg.principalStages.length)) return;
+  const local = localCustomStages(act);
+  if (!Array.isArray(local) || !local.length) return;
+  savePipelinesCfg(act, { ...JSON.parse(JSON.stringify(cfg)), principalStages: local }).catch(e => console.warn('Colunas da Principal não subiram:', e && e.message));
+}
+
 function ensurePipelines(act, onLoad) {
   act = normalizeActValue(act);
   if (!act || _pipelinesCache[act] || !window._fb || typeof window._fb.getPipelines !== 'function') return;
   if (_pipelinesLoading[act]) { if (onLoad) _pipelinesLoading[act].then(onLoad); return; }
-  _pipelinesLoading[act] = window._fb.getPipelines(act).then(cfg => { _pipelinesCache[act] = cfg || { list: [] }; }).catch(() => { _pipelinesCache[act] = { list: [] }; });
+  _pipelinesLoading[act] = window._fb.getPipelines(act).then(cfg => {
+    _pipelinesCache[act] = cfg || { list: [] };
+    uploadLocalPrincipalStages(act);
+  }).catch(() => { _pipelinesCache[act] = { list: [] }; });
   if (onLoad) _pipelinesLoading[act].then(onLoad);
 }
 
@@ -11935,7 +11961,7 @@ async function runAiFlow() {
   const text = [desc, _aiFlowMode !== 'plan' && _aiPdfText ? 'Conteúdo do arquivo anexado:\n' + _aiPdfText.slice(0, 9000) : ''].filter(Boolean).join('\n\n');
   if (text.length < 15) { fb.style.color = 'var(--red)'; fb.textContent = 'Descreva o fluxo ou anexe um arquivo.'; return; }
   if (!pipelinesFor(act)) {
-    try { _pipelinesCache[normalizeActValue(act)] = (await window._fb.getPipelines(act)) || { list: [] }; } catch (e) {}
+    try { _pipelinesCache[normalizeActValue(act)] = (await window._fb.getPipelines(act)) || { list: [] }; uploadLocalPrincipalStages(act); } catch (e) {}
   }
   const stages = [];
   pipelineList(act).forEach(p => getStages(act, p.id).forEach(s => stages.push({ id: s.id, label: s.label, pipeline: p.name })));
