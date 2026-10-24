@@ -5666,7 +5666,8 @@ function getImportFieldsForAct(act) {
 async function importLeads(event) {
   const file = event.target.files[0];
   if (!file) return;
-  const act = crmClientFilter || (activeClient ? activeClient.account : null);
+  // Mesmo cliente que o Funil está mostrando (admin: o seletor de cliente do Funil).
+  const act = getActForStages();
   if (!act) { showToast('Selecione um cliente antes de importar.', 'warning'); event.target.value = ''; return; }
   _importAct = act;
   _importEvent = event;
@@ -5768,7 +5769,8 @@ function openImportModal(act, headers, rows) {
   const allClients = Object.entries(CLIENT_NAMES);
   if (!allClients.length) { showToast('Nenhum cliente disponível.', 'warning'); return; }
 
-  const selectedAct = allClients.find(([a]) => a === act) ? act : allClients[0][0];
+  const hit = allClients.find(([a]) => a === act) || allClients.find(([a]) => normalizeActValue(a) === normalizeActValue(act));
+  const selectedAct = hit ? hit[0] : allClients[0][0];
 
   // Para cliente não-admin: sem select de destino
   const infoHTML = isAdmin
