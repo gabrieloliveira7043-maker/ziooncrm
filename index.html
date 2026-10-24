@@ -3584,7 +3584,13 @@ html:root .chat-pill.chat-sum-pill { display: none; }
           <div class="modal-title">Importar leads</div>
           <button class="btn-close-panel" onclick="closeImportModal()">×</button>
         </div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:16px;" id="import-map-info"></div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;" id="import-map-info"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+          <label style="flex:1;min-width:180px;font-size:12px;color:var(--muted);">Pipeline
+            <select id="import-pipeline" class="field-input" style="width:100%;padding:6px 8px;font-size:13px;margin-top:4px;" onchange="onImportPipelineChange()"></select></label>
+          <label style="flex:1;min-width:180px;font-size:12px;color:var(--muted);" id="import-stage-default-label">Coluna onde os leads entram
+            <select id="import-stage-default" class="field-input" style="width:100%;padding:6px 8px;font-size:13px;margin-top:4px;"></select></label>
+        </div>
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Associe as colunas da planilha aos campos do CRM</div>
         <div id="import-map-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px;"></div>
         <div id="import-stage-map-section" style="display:none;margin-bottom:20px;">
@@ -5805,6 +5811,7 @@ function openImportModal(act, headers, rows) {
   document.getElementById('import-map-feedback').textContent = '';
   document.getElementById('import-map-modal').style.display = 'flex';
 
+  renderImportDestination();
   // Renderizar mapeamento de stages se já houver coluna de etapa selecionada
   setTimeout(() => renderStageMapping(), 50);
 }
@@ -5820,6 +5827,7 @@ function getStageColIdx() {
 }
 
 function onMapColChange() {
+  renderImportStageDefault();
   renderStageMapping();
 }
 
@@ -5846,6 +5854,40 @@ function refreshImportFieldOptionsForDestination() {
 
 function atualizarStageMappingDestino() {
   refreshImportFieldOptionsForDestination();
+  renderImportDestination();
+  renderStageMapping();
+}
+
+// Destino da importação: pipeline e coluna (a coluna vale para as linhas sem etapa na planilha).
+function importDestAct() {
+  const destinoSel = document.getElementById('import-destino-act');
+  return destinoSel ? destinoSel.value : _importAct;
+}
+function importPipeline() {
+  const sel = document.getElementById('import-pipeline');
+  return (sel && sel.value) || 'principal';
+}
+function renderImportDestination() {
+  const act = importDestAct();
+  const pSel = document.getElementById('import-pipeline');
+  if (!pSel) return;
+  const pipes = pipelineList(act);
+  const cur = pipes.some(p => p.id === pSel.value) ? pSel.value : (pipes.some(p => p.id === currentPipeline(act)) ? currentPipeline(act) : 'principal');
+  pSel.innerHTML = pipes.map(p => `<option value="${escapeHtml(p.id)}" ${p.id === cur ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
+  pSel.parentElement.style.display = pipes.length > 1 ? '' : 'none';
+  renderImportStageDefault();
+}
+function renderImportStageDefault() {
+  const sSel = document.getElementById('import-stage-default');
+  if (!sSel) return;
+  const stages = getStages(importDestAct(), importPipeline()) || [];
+  const prev = sSel.value;
+  sSel.innerHTML = stages.map(st => `<option value="${escapeHtml(st.id)}" ${st.id === prev ? 'selected' : ''}>${escapeHtml(st.label || st.id)}</option>`).join('');
+  const label = document.getElementById('import-stage-default-label');
+  if (label) label.firstChild.textContent = getStageColIdx() === -1 ? 'Coluna onde os leads entram' : 'Coluna para linhas sem etapa';
+}
+function onImportPipelineChange() {
+  renderImportStageDefault();
   renderStageMapping();
 }
 
@@ -5860,10 +5902,9 @@ function renderStageMapping() {
     return;
   }
 
-  // Pegar cliente de destino atual
-  const destinoSel = document.getElementById('import-destino-act');
-  const act = destinoSel ? destinoSel.value : _importAct;
-  const stages = getStages(act);
+  // Pegar cliente e pipeline de destino
+  const act = importDestAct();
+  const stages = getStages(act, importPipeline());
 
   // Coletar valores únicos da coluna de status
   const { rows } = _importRows;
@@ -5980,10 +6021,12 @@ async function confirmarImportacao() {
   const stageValueMap = {};
   stageMapEls.forEach(sel => { stageValueMap[sel.dataset.value] = sel.value; });
 
-  const stages = getStages(act);
+  const importPipe = importPipeline();
+  const stages = getStages(act, importPipe);
+  const defaultStage = (document.getElementById('import-stage-default') || {}).value || stages[0]?.id || 'novo';
 
   function resolveStage(raw) {
-    if (!raw) return stages[0]?.id || 'novo';
+    if (!raw) return defaultStage;
     const str = String(raw).trim();
     if (stageValueMap[str]) return stageValueMap[str];
     return autoMapStage(str, stages);
@@ -6015,7 +6058,8 @@ async function confirmarImportacao() {
   for (const row of rows) {
     const importedAt = new Date().toISOString();
     // "importado" impede o disparo automático de WhatsApp para leads antigos vindos de planilha.
-    const lead = { act, stage: stages[0]?.id || 'novo', createdAt: importedAt, updatedAt: importedAt, importado: true };
+    const lead = { act, stage: defaultStage, createdAt: importedAt, updatedAt: importedAt, importado: true };
+    if (importPipe !== 'principal') lead.pipeline = importPipe;
     let rawValor = null;
     let isFechado = false;
 
