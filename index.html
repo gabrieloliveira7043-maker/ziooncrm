@@ -21234,6 +21234,7 @@ async function pushSubscribe(silent) {
   let sub = await reg.pushManager.getSubscription();
   if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushKeyBytes(PUSH_PUBLIC_KEY) });
   await window._fb.whatsapp('/push/subscribe', '', { sub: sub.toJSON(), device: navigator.userAgent.slice(0, 120) });
+  _pushActiveHere = true;
   return true;
 }
 
@@ -21275,6 +21276,10 @@ function requestLeadNotificationPermission() {
   }
 }
 
+let _pushActiveHere = false;
+if ('serviceWorker' in navigator && 'PushManager' in window) {
+  navigator.serviceWorker.ready.then(reg => reg.pushManager.getSubscription()).then(sub => { _pushActiveHere = !!sub; }).catch(() => {});
+}
 function notifyNewLeadArrival(leads) {
   const count = leads.length;
   const first = leads[0] || {};
@@ -21289,11 +21294,12 @@ function notifyNewLeadArrival(leads) {
   if (typeof showToast === 'function') showToast(title + ' · ' + msg + ' · toque para ver', 'success', isCrmViewOpen() ? 6500 : 30000,
     { onClick: () => target ? openLeadInFunnel(target) : switchView('crm'), clickLabel: 'Abrir no funil' });
 
-  if ('Notification' in window && Notification.permission === 'granted') {
+  // Aparelho que já recebe o aviso do servidor (push): não mostra outro, senão o mesmo lead avisa duas vezes.
+  if ('Notification' in window && Notification.permission === 'granted' && !_pushActiveHere) {
     try {
       const n = new Notification(title, {
         body: msg,
-        tag: 'huven-crm-lead-arrival',
+        tag: count === 1 && first.id ? 'lead-' + first.id : 'huven-crm-lead-arrival',
         renotify: true
       });
       n.onclick = () => { window.focus(); if (target) openLeadInFunnel(target); else switchView('crm'); n.close(); };
