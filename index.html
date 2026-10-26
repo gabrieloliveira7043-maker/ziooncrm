@@ -11420,7 +11420,7 @@ async function renderAutomacoesView() {
         return `<article class="huv-card">
           <div class="huv-card-head">
             <div class="huv-avatar" style="background:var(--amber-dim);color:var(--amber);">${flowIcon('trigger', 'currentColor')}</div>
-            <div style="flex:1;min-width:0;"><div class="huv-name">${escapeHtml(f.name || 'Automação')}</div><div class="huv-sub">Quando entrar em ${escapeHtml(autoStageLabel(act, f.triggerStage))}</div></div>
+            <div style="flex:1;min-width:0;"><div class="huv-name">${escapeHtml(f.name || 'Automação')}${f.draft ? ' <span class="chat-tag" style="background:rgba(224,164,58,.2);color:#B7791F;">Rascunho</span>' : ''}</div><div class="huv-sub">${f.triggerStage ? 'Quando entrar em ' + escapeHtml(autoStageLabel(act, f.triggerStage)) : 'Sem coluna de início'}</div></div>
             <label class="integ-toggle"><input type="checkbox" ${f.active ? 'checked' : ''} onchange="toggleFlow('${id}', this.checked)"> ${f.active ? (f.paused ? uiIco('pause', 13) + ' Pausada' : 'Ligada') : 'Desligada'}</label>
           </div>
           <div class="huv-stats">
@@ -11606,6 +11606,10 @@ async function toggleFlowPause(id) {
 async function toggleFlow(id, on) {
   const f = _flowList.find(x => x.id === id);
   if (!f) return;
+  if (on && f.draft) {
+    showToast('É um rascunho: abra o editor, termine e clique em Salvar para poder ligar.', 'warning', 6000);
+    return renderAutomacoesView();
+  }
   if (on && _flowList.some(x => x.id !== id && x.active && x.triggerStage === f.triggerStage)) {
     showToast('Já tem outra automação ligada nessa coluna. Desligue ela antes.', 'warning');
     return renderAutomacoesView();
@@ -12599,6 +12603,7 @@ function renderFlowEditor() {
         <input class="field-input flow-name" id="flow-name" value="${escapeHtml(_flow.name || '')}" oninput="_flow.name = this.value; _flow._dirty = true" aria-label="Nome da automação">
         <label class="integ-toggle"><input type="checkbox" ${_flow.active !== false ? 'checked' : ''} onchange="_flow.active = this.checked; _flow._dirty = true"> Ligada</label>
         <span id="flow-fb" class="integ-muted" style="margin-left:auto;"></span>
+        <button class="huv-btn" style="height:38px;padding:0 14px;" onclick="saveFlow(true)" title="Salva do jeito que está, mesmo incompleto. Fica desligada até você salvar completo.">Salvar rascunho</button>
         <button class="btn-add-lead" style="height:38px;padding:0 16px;" onclick="saveFlow()">Salvar</button>
       </div>
       <div class="flow-body">
@@ -13027,12 +13032,15 @@ async function uploadFlowMedia(input, kind) {
   } catch (e) { fb.textContent = 'Erro: ' + e.message; }
 }
 
-async function saveFlow() {
+// Rascunho (draft = true): salva sem conferir nada (mensagens, anexos, ligações) e fica desligado.
+async function saveFlow(draft) {
+  draft = draft === true;
   const fb = document.getElementById('flow-fb');
   const fail = msg => { fb.style.color = 'var(--red)'; fb.textContent = msg; };
   const f = _flow;
   const act = f.act;
   const trigger = f.nodes.find(n => n.type === 'trigger');
+  if (!draft) {
   if (!(f.name || '').trim()) return fail('Dê um nome à automação.');
   if (!trigger || !trigger.data || !trigger.data.stage) return fail('Escolha a coluna do gatilho.');
   if (!f.edges.some(e => e.from === trigger.id)) return fail('Ligue o gatilho ao primeiro bloco.');
@@ -13051,9 +13059,11 @@ async function saveFlow() {
   if (f.dispatch && (!(Number(f.dispatch.dailyLimit) > 0) || !(Number(f.dispatch.hourlyLimit) > 0) || Number(f.dispatch.maxIntervalSec) < Number(f.dispatch.minIntervalSec) || Number(f.dispatch.typingMaxSec) < Number(f.dispatch.typingMinSec))) return fail('Na proteção contra bloqueio, os limites precisam ser maiores que zero e o máximo maior que o mínimo.');
   const other = _flowList.find(a => a.id !== f.id && a.active && a.triggerStage === trigger.data.stage);
   if (other && f.active !== false) return fail(`A automação "${other.name}" já está ligada nessa coluna. Desligue uma delas.`);
+  }
+  const trigStage = (trigger && trigger.data && trigger.data.stage) || '';
   const data = {
-    act, name: f.name.trim(), active: f.active !== false,
-    triggerStage: trigger.data.stage, triggerStageLabel: autoStageLabel(act, trigger.data.stage),
+    act, name: (f.name || '').trim() || 'Rascunho de automação', active: draft ? false : f.active !== false, draft,
+    triggerStage: trigStage, triggerStageLabel: trigStage ? autoStageLabel(act, trigStage) : '',
     stopOnReply: f.stopOnReply !== false,
     onReply: { moveTo: (f.onReply || {}).moveTo || '', moveToLabel: (f.onReply || {}).moveTo ? autoStageLabel(act, f.onReply.moveTo) : '' },
     hours: { enabled: !!(f.hours && f.hours.enabled), start: Number((f.hours || {}).start ?? 8), end: Number((f.hours || {}).end ?? 20) },
@@ -13072,9 +13082,12 @@ async function saveFlow() {
     f.id = id; f._dirty = false;
     _flowList = await window._fb.listAutomations(act);
     _colAutos[normalizeActValue(act)] = { at: Date.now(), list: _flowList };
-    fb.style.color = 'var(--green)'; fb.textContent = 'Salvo ✓';
-    showToast('Automação salva. Vale para os leads que entrarem na coluna a partir de agora.', 'success', 5000);
-    auditLog(_flow.act, 'automacao', `Salvou a automação "${_flow.name || 'Automação'}"`);
+    f.draft = draft;
+    if (draft) { f.active = false; renderFlowEditor(); }
+    const fb2 = document.getElementById('flow-fb') || fb;
+    fb2.style.color = 'var(--green)'; fb2.textContent = draft ? 'Rascunho salvo ✓' : 'Salvo ✓';
+    showToast(draft ? 'Rascunho salvo. Fica desligado até você terminar e clicar em Salvar.' : 'Automação salva. Vale para os leads que entrarem na coluna a partir de agora.', 'success', 5000);
+    auditLog(_flow.act, 'automacao', `Salvou ${draft ? 'o rascunho da' : 'a'} automação "${_flow.name || 'Automação'}"`);
   } catch (e) { fail('Erro: ' + e.message); }
 }
 
