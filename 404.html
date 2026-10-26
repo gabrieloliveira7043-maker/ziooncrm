@@ -12477,7 +12477,7 @@ function renderCloudProgress() {
       ${r.s.length ? `<div class="integ-muted" style="font-size:11.5px;margin:-4px 0 8px;">Disparo em ${escapeHtml(fmt(r.first))}${r.last && r.last.slice(0, 16) !== r.first.slice(0, 16) ? ' até ' + escapeHtml(fmt(r.last)) : ''}${r.waiting ? ` · ${r.waiting} aguardando este horário` : ''}${Object.keys(r.reasons).length ? ' · motivos: ' + Object.entries(r.reasons).map(([k, n]) => `${escapeHtml(limitText(k, 80))} (${n})`).join('; ') : ''}</div>` : ''}
       ${open === r.i ? `<div style="max-height:260px;overflow:auto;margin-bottom:10px;border:1px solid var(--border);border-radius:8px;">${r.s.slice().sort((a, b) => (a.ok === b.ok ? 0 : a.ok ? 1 : -1) || String(a.lead.name || '').localeCompare(String(b.lead.name || ''), 'pt-BR')).map(x => `<div style="display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;">
           <span style="color:${x.ok ? '#1FA855' : 'var(--red)'};font-weight:700;">${x.ok ? '✓' : '✗'}</span>
-          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><b>${escapeHtml(x.lead.name || 'Lead')}</b> <span class="integ-muted">${escapeHtml(chatFormatPhone(String(x.lead.phone || '').replace(/\D/g, '')) || '')}</span>${x.ok ? '' : `<br><span style="color:var(--red);">${escapeHtml(limitText(x.error, 140))}</span>`}</span>
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><b>${escapeHtml(x.lead.name || 'Lead')}</b> <span class="integ-muted">${escapeHtml(chatFormatPhone(String(x.lead.phone || '').replace(/\D/g, '')) || '')}${x.lead.cloudCadence.attendant ? ' · atendente: ' + escapeHtml(x.lead.cloudCadence.attendant) : ''}</span>${x.ok ? '' : `<br><span style="color:var(--red);">${escapeHtml(limitText(x.error, 140))}</span>`}</span>
           <span class="integ-muted" style="white-space:nowrap;">${escapeHtml(fmt(x.at))}</span>
           <button class="chat-pill" title="Abrir o card" onclick="closeHuvenModal(); openLeadInFunnel(_leadsCache.find(l => l.id === '${escapeJsString(x.lead.id || '')}'))">Card</button>
         </div>`).join('')}</div>` : ''}
@@ -16877,7 +16877,7 @@ async function addWaLine(act) {
 // Nome do atendente deste número: preenche {atendente} nas automações, campanhas e 1ª mensagem.
 async function setWaAttendant(act, id) {
   const cur = (waLines(act).find(l => l.id === id) || {}).attendant || '';
-  const v = prompt('Nome do atendente deste WhatsApp (vai no lugar de {atendente} nas mensagens automáticas). Deixe vazio para tirar:', cur);
+  const v = prompt('Nome do atendente deste WhatsApp (vai no lugar de {atendente} nas mensagens automáticas). Para variar, coloque vários separados por vírgula (ex.: Gustavo, Vitor Gabriel): cada lead fica com um deles, sempre o mesmo. Deixe vazio para tirar:', cur);
   if (v === null) return;
   const attendant = v.trim().slice(0, 40);
   try {
