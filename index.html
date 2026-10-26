@@ -21234,6 +21234,7 @@ async function pushSubscribe(silent) {
   let sub = await reg.pushManager.getSubscription();
   if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushKeyBytes(PUSH_PUBLIC_KEY) });
   await window._fb.whatsapp('/push/subscribe', '', { sub: sub.toJSON(), device: navigator.userAgent.slice(0, 120) });
+  _pushActiveHere = true;
   return true;
 }
 
