@@ -20983,10 +20983,8 @@ function getSelectedCrmActForNotifications() {
 }
 
 function syncLeadNotifierKnownKeys(leads) {
-  const selectedAct = getSelectedCrmActForNotifications();
   const sourceLeads = Array.isArray(leads) ? leads : getLeads();
-  const visibleLeads = selectedAct ? sourceLeads.filter(l => leadMatchesClient(l, selectedAct)) : sourceLeads;
-  _knownLeadKeys = new Set(visibleLeads.map(getLeadUniqueKey).filter(Boolean));
+  _knownLeadKeys = new Set(sourceLeads.map(getLeadUniqueKey).filter(Boolean));
   _leadNotifierPrimed = true;
 }
 
@@ -21313,10 +21311,12 @@ async function checkForNewLeads() {
   processLeadNotificationSnapshot(leads);
 }
 
+// Os leads já conhecidos valem para todos os clientes: trocar o cliente selecionado não faz os leads dele parecerem novos.
+// Só avisa lead criado nas últimas 2 horas (lead antigo que aparece de repente é recarga, não chegada).
 function processLeadNotificationSnapshot(leads) {
   const selectedAct = getSelectedCrmActForNotifications();
   const visibleLeads = selectedAct ? leads.filter(l => leadMatchesClient(l, selectedAct)) : leads;
-  const nextKeys = new Set(visibleLeads.map(getLeadUniqueKey).filter(Boolean));
+  const nextKeys = new Set(leads.map(getLeadUniqueKey).filter(Boolean));
 
   if (Date.now() < _leadNotifierMutedUntil) {
     _knownLeadKeys = nextKeys;
@@ -21330,9 +21330,10 @@ function processLeadNotificationSnapshot(leads) {
     return;
   }
 
+  const recent = lead => { const t = Date.parse(lead.createdAt || ''); return !t || Date.now() - t < 2 * 3600 * 1000; };
   const newLeads = visibleLeads.filter(lead => {
     const key = getLeadUniqueKey(lead);
-    return key && !_knownLeadKeys.has(key);
+    return key && !_knownLeadKeys.has(key) && recent(lead);
   });
   _knownLeadKeys = nextKeys;
 
