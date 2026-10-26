@@ -14945,6 +14945,8 @@ function renderChatMessages() {
       media = `<img src="${escapeHtml(m.mediaUrl)}" alt="" class="${m.type === 'sticker' ? 'chat-sticker' : ''}"><br>`;
     } else if (m.mediaUrl && m.type === 'video') {
       media = `<video src="${escapeHtml(m.mediaUrl)}" controls></video><br>`;
+    } else if (m.mediaUrl && m.type === 'audio') {
+      media = `<audio src="${escapeHtml(m.mediaUrl)}" controls style="max-width:240px;display:block;margin-bottom:4px;"></audio>`;
     } else if (m.mediaUrl && m.type === 'document') {
       media = `<a href="${escapeHtml(m.mediaUrl)}" target="_blank" rel="noopener" style="color:var(--accent2);">${uiIco('download', 13)} ${escapeHtml(m.fileName || 'Abrir PDF')}</a><br>`;
     } else if (['image', 'video', 'audio', 'document', 'sticker'].includes(m.type)) {
@@ -14976,7 +14978,8 @@ function renderChatMessages() {
     const canDel = !cloudChat && m.fromMe && age < 2 * 86400000 && !/^(crm|sch)\d/.test(m.id);
     const menu = canEdit || canDel ? `<button class="chat-msg-more" title="Editar ou apagar" onclick="openChatMsgMenu(event, '${escapeJsString(m.id)}', ${canEdit}, ${canDel})">⋯</button>` : '';
     const sender = !m.fromMe && (m.senderName || m.senderPhone) ? `<div style="font-size:12px;font-weight:700;color:var(--accent2);margin-bottom:2px;">${escapeHtml(m.senderName || chatFormatPhone(m.senderPhone))}${m.senderName && m.senderPhone ? ` <span style="font-weight:400;color:var(--muted2);">${escapeHtml(chatFormatPhone(m.senderPhone))}</span>` : ''}</div>` : '';
-    parts.push(`<div class="chat-bubble ${m.fromMe ? 'out' : 'in'}">${menu}${sender}${media}${chatMentionsHtml(chatLinkify(escapeHtml(bodyText)))}${m.failed ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">${uiIco('alert', 12)} Não entregue: ${escapeHtml(m.error || '')}</div>` : ''}<div class="chat-meta">${who ? escapeHtml(who) + ' · ' : ''}${m.edited ? 'editada · ' : ''}${time}</div></div>`);
+    const autoTag = !m.fromMe && m.autoReply ? `<div style="font-size:11px;color:var(--muted2);margin-bottom:3px;">${uiIco('bot', 11)} resposta automática do WhatsApp do contato (não conta como resposta)</div>` : '';
+    parts.push(`<div class="chat-bubble ${m.fromMe ? 'out' : 'in'}">${menu}${sender}${autoTag}${media}${chatMentionsHtml(chatLinkify(escapeHtml(bodyText)))}${m.failed ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">${uiIco('alert', 12)} Não entregue: ${escapeHtml(m.error || '')}</div>` : ''}<div class="chat-meta">${who ? escapeHtml(who) + ' · ' : ''}${m.edited ? 'editada · ' : ''}${time}</div></div>`);
   });
   pendingSched.forEach(s => {
     const when = new Date(s.sendAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
