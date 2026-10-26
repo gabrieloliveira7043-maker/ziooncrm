@@ -12390,6 +12390,11 @@ async function setCloudCadenceActive(on) {
       const params = (st.template.params || []);
       if (Array.from({ length: tpl.vars || 0 }, (_, k) => params[k]).some(p => !String(p || '').trim())) return showToast(`${label}: preencha todas as variáveis do modelo.`, 'warning', 6000);
     }
+    // {atendente} precisa de um nome: sem ele, a API oficial mandaria "-" no lugar.
+    const usesAtt = d.steps.some(st => ((st.template && st.template.params) || []).some(p => /\{atendente\}/i.test(String(p || ''))));
+    const wl = waLines(_cc.act);
+    const att = ((wl.find(l => l.id === d.line) || {}).attendant || '').trim() || wl.map(l => String(l.attendant || '').trim()).find(Boolean);
+    if (usesAtt && !att) return showToast('O modelo usa {atendente}, mas o número da API oficial está sem nome de atendente. Em Conexões, no número oficial, clique em "Definir atendente" e depois ligue a cadência.', 'warning', 10000);
     const other = (_flowList || []).find(a => a.id !== _cc.id && a.active && a.triggerStage === d.triggerStage);
     if (other) return showToast(`A automação "${other.name}" já está ligada nessa coluna. Desligue ela antes.`, 'warning', 7000);
   }
