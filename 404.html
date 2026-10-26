@@ -14385,7 +14385,7 @@ function closeChat() {
 function openChat(key) {
   if (!_chatAct) return;
   if (_chatMsgUnsub) { _chatMsgUnsub(); _chatMsgUnsub = null; }
-  _chatOpenKey = key; _chatMsgs = []; _chatMsgLimit = 150; _chatPendingMedia = null;
+  _chatOpenKey = key; _chatMsgs = []; _chatMsgLimit = 150; _chatPendingMedia = null; _chatMentions = []; _groupMemberQuery = '';
   document.getElementById('chat-wrap').classList.add('open');
   document.getElementById('chat-main').innerHTML = `
     <div class="chat-head" id="chat-head"></div>
@@ -14458,7 +14458,7 @@ function renderChatInfo() {
   const label = t => `<div class="ci-label">${t}</div>`;
   const tagsHtml = `<div class="ci-block">${label('Etiquetas')}<div class="ci-tags">${tags.map(t => tagChipHtml(t)).join('')}<button class="ci-add" onclick="openChatTags()">+ Etiqueta</button></div></div>`;
   if (c.isGroup) {
-    box.innerHTML = `<div class="ci-block">${label('Grupo')}<div class="ci-muted">Conversa de grupo do WhatsApp. Ela não vira lead e a IA não responde aqui.</div></div>${tagsHtml}`;
+    box.innerHTML = (chatOpenGroup() && chatOpenGroup().id === c.id ? groupInfoPanelHtml(c) : `<div class="ci-block">${label('Grupo')}<div class="ci-muted">Conversa de grupo do WhatsApp. Ela não vira lead e a IA não responde aqui.</div></div>`) + tagsHtml;
     return;
   }
   if (!lead) {
@@ -14645,7 +14645,7 @@ function renderChatMessages() {
     const canDel = !cloudChat && m.fromMe && age < 2 * 86400000 && !/^(crm|sch)\d/.test(m.id);
     const menu = canEdit || canDel ? `<button class="chat-msg-more" title="Editar ou apagar" onclick="openChatMsgMenu(event, '${escapeJsString(m.id)}', ${canEdit}, ${canDel})">⋯</button>` : '';
     const sender = !m.fromMe && (m.senderName || m.senderPhone) ? `<div style="font-size:12px;font-weight:700;color:var(--accent2);margin-bottom:2px;">${escapeHtml(m.senderName || chatFormatPhone(m.senderPhone))}${m.senderName && m.senderPhone ? ` <span style="font-weight:400;color:var(--muted2);">${escapeHtml(chatFormatPhone(m.senderPhone))}</span>` : ''}</div>` : '';
-    parts.push(`<div class="chat-bubble ${m.fromMe ? 'out' : 'in'}">${menu}${sender}${media}${chatLinkify(escapeHtml(bodyText))}${m.failed ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">${uiIco('alert', 12)} Não entregue: ${escapeHtml(m.error || '')}</div>` : ''}<div class="chat-meta">${who ? escapeHtml(who) + ' · ' : ''}${m.edited ? 'editada · ' : ''}${time}</div></div>`);
+    parts.push(`<div class="chat-bubble ${m.fromMe ? 'out' : 'in'}">${menu}${sender}${media}${chatMentionsHtml(chatLinkify(escapeHtml(bodyText)))}${m.failed ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">${uiIco('alert', 12)} Não entregue: ${escapeHtml(m.error || '')}</div>` : ''}<div class="chat-meta">${who ? escapeHtml(who) + ' · ' : ''}${m.edited ? 'editada · ' : ''}${time}</div></div>`);
   });
   pendingSched.forEach(s => {
     const when = new Date(s.sendAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -14783,8 +14783,12 @@ async function sendChatMessage() {
   try {
     const cOpen = _chatItems.find(x => x.id === _chatOpenKey);
     if (cOpen && cOpen.channel === 'instagram') await window._fb.whatsapp('/instagram/send', _chatAct, { chatKey: _chatOpenKey, text });
-    else await window._fb.whatsapp('/whatsapp/chat-send', _chatAct, { chatKey: _chatOpenKey, text, media: _chatPendingMedia || undefined });
+    else {
+      const mt = chatOpenGroup() ? chatApplyMentions(text) : { text, mentioned: [], mentionAll: false };
+      await window._fb.whatsapp('/whatsapp/chat-send', _chatAct, { chatKey: _chatOpenKey, text: mt.text, media: _chatPendingMedia || undefined, ...(mt.mentioned.length ? { mentioned: mt.mentioned } : {}), ...(mt.mentionAll ? { mentionAll: true } : {}) });
+    }
     ta.value = ''; ta.style.height = 'auto';
+    _chatMentions = [];
     clearChatMedia();
     const c = _chatItems.find(x => x.id === _chatOpenKey);
     const me = chatMe();
@@ -14795,6 +14799,197 @@ async function sendChatMessage() {
   } finally {
     _chatSending = false; btn.disabled = false; btn.textContent = 'Enviar';
   }
+}
+
+// ===== CHAT: GRUPOS (participantes, configurações e marcação com @) =====
+// Só nos números por QR Code (a API oficial não trabalha com grupos). Os dados vêm do WhatsApp na hora, guardados 5 min.
+let _groupInfo = {};
+let _chatMentions = []; // marcações da mensagem em edição: [{ label: '@Nome', phone }]
+function chatOpenGroup() {
+  const c = _chatItems.find(x => x.id === _chatOpenKey);
+  return c && c.isGroup && !waIsCloud(c.line || waLineOfKey(c.id)) ? c : null;
+}
+function loadGroupInfo(key, force) {
+  const hit = _groupInfo[key];
+  if (hit && hit.data && !force && Date.now() - hit.at < 5 * 60000) return Promise.resolve(hit.data);
+  if (hit && hit.loading && !force) return hit.loading;
+  const act = _chatAct;
+  const loading = window._fb.whatsapp('/whatsapp/group-info', act, { chatKey: key })
+    .then(d => { _groupInfo[key] = { at: Date.now(), data: d }; return d; })
+    .catch(e => { _groupInfo[key] = { at: Date.now(), error: e.message }; throw e; });
+  _groupInfo[key] = { ...(hit || {}), loading };
+  return loading;
+}
+// Nome de cada pessoa: card no funil > agenda do celular > nome do perfil visto no grupo.
+function groupMemberName(p) {
+  if (p.phone) {
+    const base = leadChatBase(p.phone);
+    const lead = (_leadsCache || []).find(l => leadMatchesClient(l, _chatAct) && l.phone && leadChatBase(l.phone) === base);
+    if (lead && lead.name) return { name: lead.name, lead };
+  }
+  if (p.name) return { name: p.name };
+  const seen = p.phone ? (_chatMsgs || []).find(m => m.senderPhone === p.phone && m.senderName) : null;
+  return { name: seen ? seen.senderName : '' };
+}
+function groupMembersSorted(info) {
+  const rank = { dono: 0, admin: 1 };
+  return (info.participants || []).map(p => ({ ...p, ...groupMemberName(p) }))
+    .sort((a, b) => (rank[a.admin] ?? 2) - (rank[b.admin] ?? 2) || (a.name ? 0 : 1) - (b.name ? 0 : 1) || String(a.name || a.phone).localeCompare(String(b.name || b.phone), 'pt-BR'));
+}
+function groupInfoPanelHtml(c) {
+  const st = _groupInfo[c.id];
+  if (!st || (!st.data && !st.error)) {
+    loadGroupInfo(c.id).then(() => { if (_chatOpenKey === c.id) renderChatInfo(); }).catch(() => { if (_chatOpenKey === c.id) renderChatInfo(); });
+    return `<div class="ci-block"><div class="ci-label">Grupo</div><div class="ci-muted">Buscando os dados do grupo no WhatsApp...</div></div>`;
+  }
+  if (!st.data) return `<div class="ci-block"><div class="ci-label">Grupo</div><div class="ci-muted">${escapeHtml(st.error || 'Não consegui buscar os dados do grupo.')}</div><button class="huv-btn" style="margin-top:8px;" onclick="refreshGroupInfo()">Tentar de novo</button></div>`;
+  const g = st.data;
+  const members = groupMembersSorted(g);
+  const q = (_groupMemberQuery || '').toLowerCase();
+  const shown = q ? members.filter(m => String(m.name || '').toLowerCase().includes(q) || String(m.phone || '').includes(q.replace(/\D/g, '') || '§')) : members;
+  const created = g.creation ? new Date(g.creation).toLocaleDateString('pt-BR') : '';
+  const creator = g.owner ? (groupMemberName({ phone: g.owner, name: g.ownerName }).name || chatFormatPhone(g.owner)) : '';
+  return `<div class="ci-block">
+      <div style="display:flex;gap:10px;align-items:center;">
+        ${g.pictureUrl ? `<img src="${escapeHtml(g.pictureUrl)}" alt="" referrerpolicy="no-referrer" style="width:46px;height:46px;border-radius:50%;object-fit:cover;" onerror="this.remove()">` : ''}
+        <div style="min-width:0;"><div style="font-weight:700;color:var(--text);">${escapeHtml(g.subject || 'Grupo')}</div><div class="ci-muted">${g.size} participante${g.size === 1 ? '' : 's'}${created ? ' · criado em ' + created : ''}${creator ? ' por ' + escapeHtml(creator) : ''}</div></div>
+      </div>
+      ${g.desc ? `<div style="font-size:12.5px;color:var(--muted2);white-space:pre-wrap;margin-top:8px;max-height:110px;overflow:auto;">${chatLinkify(escapeHtml(g.desc))}</div>` : ''}
+    </div>
+    <div class="ci-block"><div class="ci-label">Configurações</div>
+      <div style="font-size:12.5px;line-height:1.7;color:var(--text);">
+        <div>Enviar mensagens: <b>${g.announce ? 'só admins' : 'todos'}</b></div>
+        <div>Editar dados do grupo: <b>${g.restrict ? 'só admins' : 'todos'}</b></div>
+        ${g.inviteUrl ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">Link de convite: <a href="${escapeHtml(g.inviteUrl)}" target="_blank" rel="noopener" style="color:var(--gold);word-break:break-all;">${escapeHtml(g.inviteUrl)}</a> <button class="chat-pill" onclick="navigator.clipboard.writeText('${escapeJsString(g.inviteUrl)}').then(() => showToast('Link copiado.', 'success'))">Copiar</button></div>` : `<div class="ci-muted">Link de convite: só aparece se este número for admin do grupo.</div>`}
+      </div>
+    </div>
+    <div class="ci-block"><div class="ci-label">Participantes (${members.length})</div>
+      <input class="field-input" placeholder="Buscar nome ou número" value="${escapeHtml(_groupMemberQuery || '')}" oninput="_groupMemberQuery = this.value; renderGroupMemberList()" style="margin-bottom:6px;padding:6px 8px;font-size:12.5px;">
+      <div id="group-member-list">${groupMemberListHtml(shown)}</div>
+      <button class="chat-pill" style="margin-top:8px;" onclick="refreshGroupInfo()">Atualizar</button>
+    </div>`;
+}
+let _groupMemberQuery = '';
+function groupMemberListHtml(list) {
+  return list.length ? list.map(m => `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12.5px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(m.name || (m.phone ? chatFormatPhone(m.phone) : 'Número oculto'))}${m.admin ? ` <span class="chat-tag" style="font-size:10.5px;">${m.admin === 'dono' ? 'Dono' : 'Admin'}</span>` : ''}${m.lead ? ` <span class="chat-tag" style="font-size:10.5px;background:rgba(31,168,85,.15);color:#1FA855;">no funil</span>` : ''}</div>
+        <div class="ci-muted" style="font-size:11.5px;">${m.phone ? (m.name ? escapeHtml(chatFormatPhone(m.phone)) : '') : 'Número oculto pelo WhatsApp'}</div>
+      </div>
+      ${m.phone ? `<button class="chat-pill" title="Conversa no privado" onclick="openGroupMemberChat('${escapeJsString(m.phone)}', '${escapeJsString(m.name || '')}')">${uiIco('chat', 13)}</button>` : ''}
+      ${m.phone && !m.lead ? `<button class="chat-pill" title="Criar lead no funil" onclick="createLeadFromGroupMember('${escapeJsString(m.phone)}', '${escapeJsString(m.name || '')}')">+ Lead</button>` : ''}
+    </div>`).join('') : '<div class="ci-muted">Ninguém encontrado.</div>';
+}
+function openGroupMemberChat(phone, name) {
+  const c = chatOpenGroup();
+  openChatWith({ act: _chatAct, phone, name, line: c ? (c.line || waLineOfKey(c.id)) : undefined });
+}
+function renderGroupMemberList() {
+  const c = chatOpenGroup();
+  const st = c && _groupInfo[c.id];
+  const el = document.getElementById('group-member-list');
+  if (!st || !st.data || !el) return;
+  const q = (_groupMemberQuery || '').toLowerCase();
+  const members = groupMembersSorted(st.data);
+  el.innerHTML = groupMemberListHtml(q ? members.filter(m => String(m.name || '').toLowerCase().includes(q) || (q.replace(/\D/g, '') && String(m.phone || '').includes(q.replace(/\D/g, '')))) : members);
+}
+function refreshGroupInfo() {
+  const c = chatOpenGroup();
+  if (!c) return;
+  delete _groupInfo[c.id];
+  renderChatInfo();
+}
+async function createLeadFromGroupMember(phone, name) {
+  const act = normalizeActValue(_chatAct);
+  const stages = getStages(act) || [];
+  const now = new Date().toISOString();
+  const lead = { id: Date.now().toString(), act, name: name || chatFormatPhone(phone), phone: '+' + phone, stage: stages[0] ? stages[0].id : 'novo', origem: 'Grupo do WhatsApp', createdAt: now, updatedAt: now, history: [{ stage: stages[0] ? stages[0].label : 'Novo lead', at: new Date().toLocaleString('pt-BR') }], importado: true };
+  try {
+    await saveLeadToDb(lead);
+    auditLog(act, 'criar', `Criou o lead "${lead.name}" a partir de um grupo do WhatsApp`, { leadId: lead.id });
+    showToast(`Lead "${lead.name}" criado em ${stages[0] ? stages[0].label : 'Novo lead'}.`, 'success');
+    renderGroupMemberList();
+  } catch (e) { showToast('Não criou o lead: ' + e.message, 'error'); }
+}
+
+// ----- @ na caixa de mensagem (grupos) -----
+function chatMentionQuery(ta) {
+  const before = ta.value.slice(0, ta.selectionStart);
+  const m = before.match(/(^|\s)@([^\s@]{0,30})$/);
+  return m ? m[2] : null;
+}
+function chatMentionItems(q) {
+  const c = chatOpenGroup();
+  const st = c && _groupInfo[c.id];
+  if (!st || !st.data) return [];
+  const t = prosNorm(q || '');
+  const all = [{ all: true, name: 'todos', phone: '' }].concat(groupMembersSorted(st.data).filter(m => m.phone));
+  return all.filter(m => !t || prosNorm((m.name || '') + ' ' + (m.phone || '')).includes(t)).slice(0, 30);
+}
+let _mentionSel = 0, _mentionOpen = false;
+function chatMentionInput(ta) {
+  const c = chatOpenGroup();
+  const q = c ? chatMentionQuery(ta) : null;
+  if (q === null) { if (_mentionOpen) closeChatMention(); return false; }
+  if (!_groupInfo[c.id] || (!_groupInfo[c.id].data && !_groupInfo[c.id].error)) loadGroupInfo(c.id).then(() => { if (_mentionOpen) renderChatMention(); }).catch(() => {});
+  _mentionOpen = true; _mentionSel = 0;
+  renderChatMention();
+  return true;
+}
+function renderChatMention() {
+  const pop = document.getElementById('chat-qr-pop');
+  const ta = document.getElementById('chat-text');
+  if (!pop || !ta) return;
+  const q = chatMentionQuery(ta);
+  const c = chatOpenGroup();
+  const st = c && _groupInfo[c.id];
+  const items = chatMentionItems(q || '');
+  _mentionSel = Math.min(_mentionSel, Math.max(items.length - 1, 0));
+  pop.innerHTML = !st || (!st.data && !st.error) ? '<div class="chat-qr-item" style="cursor:default;"><div>Buscando os participantes...</div></div>'
+    : !st.data ? `<div class="chat-qr-item" style="cursor:default;"><div>${escapeHtml(st.error || 'Não consegui buscar os participantes.')}</div></div>`
+    : items.length ? items.map((m, i) => `<div class="chat-qr-item ${i === _mentionSel ? 'sel' : ''}" onmousedown="event.preventDefault();pickChatMention(${i})"><b>@${escapeHtml(m.all ? 'todos' : (m.name || chatFormatPhone(m.phone)))}</b><div>${m.all ? 'Marca todo mundo do grupo' : escapeHtml(m.name ? chatFormatPhone(m.phone) : '')}</div></div>`).join('')
+    : '<div class="chat-qr-item" style="cursor:default;"><div>Ninguém com esse nome no grupo.</div></div>';
+  pop.classList.add('open');
+}
+function pickChatMention(i) {
+  const ta = document.getElementById('chat-text');
+  const q = chatMentionQuery(ta);
+  const m = chatMentionItems(q || '')[i];
+  if (!ta || !m || q === null) return;
+  const label = '@' + (m.all ? 'todos' : (m.name || m.phone).trim().split(/\s+/).slice(0, 2).join(' '));
+  const start = ta.selectionStart - q.length - 1;
+  ta.value = ta.value.slice(0, start) + label + ' ' + ta.value.slice(ta.selectionStart);
+  const pos = start + label.length + 1;
+  ta.setSelectionRange(pos, pos);
+  if (!m.all) _chatMentions.push({ label, phone: m.phone });
+  closeChatMention();
+  ta.focus();
+}
+function closeChatMention() {
+  _mentionOpen = false;
+  const pop = document.getElementById('chat-qr-pop');
+  if (pop) pop.classList.remove('open');
+}
+// Na hora de enviar: "@Nome" vira "@numero" (como o WhatsApp entende) e vai a lista de quem foi marcado.
+function chatApplyMentions(text) {
+  const out = { text, mentioned: [], mentionAll: /(^|\s)@todos\b/i.test(text) };
+  _chatMentions.forEach(m => {
+    if (!out.text.includes(m.label)) return;
+    out.text = out.text.split(m.label).join('@' + m.phone);
+    if (!out.mentioned.includes(m.phone)) out.mentioned.push(m.phone);
+  });
+  return out;
+}
+// Mensagens recebidas no grupo: "@5511999..." aparece como "@Nome" destacado.
+function chatMentionsHtml(html) {
+  const c = chatOpenGroup();
+  const st = c && _groupInfo[c.id];
+  if (!c) return html;
+  return html.replace(/(^|[\s>(])@(\d{8,15})\b/g, (all, pre, num) => {
+    const p = st && st.data ? (st.data.participants || []).find(x => x.phone === num || (x.lid || '').split('@')[0] === num) : null;
+    const name = p ? groupMemberName(p).name : '';
+    return `${pre}<b style="color:var(--accent2);">@${escapeHtml(name || chatFormatPhone(num))}</b>`;
+  });
 }
 
 // ===== CHAT: RESPOSTAS PRONTAS =====
@@ -14839,6 +15034,7 @@ function closeQuickReplies() {
 
 // Digitar "/" no começo da mensagem abre a lista filtrada pelo que vem depois.
 function chatQrInput(ta) {
+  if (chatMentionInput(ta)) return;
   const v = ta.value;
   if (v.startsWith('/') && !v.includes('\n')) { _qrBySlash = true; _qrSel = 0; renderQuickReplies(v.slice(1)); }
   else if (_qrBySlash) closeQuickReplies();
@@ -14847,6 +15043,12 @@ function chatQrInput(ta) {
 function chatTextKey(event) {
   const pop = document.getElementById('chat-qr-pop');
   const open = pop && pop.classList.contains('open');
+  if (_mentionOpen && open) {
+    const n = chatMentionItems(chatMentionQuery(event.target) || '').length;
+    if (['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); _mentionSel = (_mentionSel + (event.key === 'ArrowDown' ? 1 : -1) + n) % Math.max(n, 1); renderChatMention(); return; }
+    if (event.key === 'Escape') { closeChatMention(); return; }
+    if ((event.key === 'Enter' || event.key === 'Tab') && n) { event.preventDefault(); return pickChatMention(_mentionSel); }
+  }
   if (open && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
     event.preventDefault();
     const n = quickReplyMatches(_qrBySlash ? event.target.value.slice(1) : '').length;
