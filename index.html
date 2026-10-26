@@ -4674,7 +4674,9 @@ async function buildDashboardPdf() {
     const useConv = !snap.hideConv && snap.raw.totalConv > 0;
     const resultLabel = useLeads ? 'Leads' : useConv ? 'Conversas' : 'Resultados';
     const resultOf = a => { const r = rpResults(a); return useLeads ? r.leads : useConv ? r.conv : 0; };
-    const kpiKeys = snap.visible.filter(k => RP_LABELS[k] && snap.values[k] && snap.values[k] !== '—');
+    // Métricas do jeito que estão na tela agora (a escolha em "Métricas" pode ter mudado depois de carregar os dados).
+    const visibleNow = [...document.querySelectorAll('[data-dashboard-metric]')].filter(el => el.style.display !== 'none' && !el.closest('[style*="display: none"]')).map(el => el.getAttribute('data-dashboard-metric'));
+    const kpiKeys = (visibleNow.length ? visibleNow : snap.visible).filter(k => RP_LABELS[k] && snap.values[k] && snap.values[k] !== '—');
     const val = k => ['ctr', 'freq'].includes(k) ? String(snap.values[k]).replace('.', ',') : snap.values[k];
     const camps = snap.campaigns.map(c => {
       const spend = parseFloat(c.spend || 0), res = resultOf(c.actions);
