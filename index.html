@@ -11459,6 +11459,7 @@ function cloudCadenceCardHtml(f, leads, act) {
       <button class="huv-btn primary" onclick="openCloudCadenceEditor('${id}')">Abrir editor</button>
       <button class="huv-btn" onclick="openCloudProgress('${id}')">Andamento</button>
       ${f.active ? `<button class="huv-btn" onclick="toggleFlowPause('${id}')">${f.paused ? uiIco('play') + ' Retomar' : uiIco('pause') + ' Pausar'}</button>` : ''}
+      <button class="huv-btn" onclick="duplicateFlow('${id}')">Duplicar</button>
       <button class="huv-btn" style="margin-left:auto;color:var(--red);border-color:var(--red);" onclick="deleteFlowConfirm('${id}')">Excluir</button>
     </div>
   </article>`;
@@ -11618,9 +11619,25 @@ async function toggleFlow(id, on) {
   catch (e) { showToast('Erro: ' + e.message, 'warning'); }
 }
 
-async function duplicateFlow(id) {
+function duplicateFlow(id) {
   const f = _flowList.find(x => x.id === id);
   if (!f) return;
+  const act = flowAct();
+  const hasCloud = cloudLinesOf(act).length > 0;
+  const from = f.channel === 'cloud' ? 'API oficial' : 'WhatsApp (QR Code)';
+  openHuvenModal('Duplicar automação', `${CADENCE_CSS}
+    <div class="integ-muted" style="font-size:12.5px;margin-bottom:12px;">"${escapeHtml(f.name || 'Automação')}" é ${from}. A cópia vai ser para:</div>
+    <div class="at-grid">
+      <button type="button" class="at-card" onclick="duplicateFlowAs('${escapeJsString(id)}', 'qr')"><b>WhatsApp (QR Code)</b><span>${f.channel === 'cloud' ? 'Os modelos viram mensagens de texto (ou vídeo/foto do cabeçalho) e os dias e horários viram esperas. Abre no editor para revisar.' : 'Cópia igual, desligada.'}</span></button>
+      <button type="button" class="at-card" ${hasCloud ? '' : 'disabled'} onclick="duplicateFlowAs('${escapeJsString(id)}', 'cloud')"><b>API oficial (Meta)</b><span>${!hasCloud ? 'Conecte um número da API oficial em Conexões para usar.' : f.channel === 'cloud' ? 'Cópia igual, desligada.' : 'Cada mensagem vira um modelo para a Meta aprovar (você revisa antes), e as esperas viram dias e horários.'}</span></button>
+    </div>`, 640);
+}
+async function duplicateFlowAs(id, target) {
+  const f = _flowList.find(x => x.id === id);
+  if (!f) return;
+  closeHuvenModal();
+  const same = (f.channel === 'cloud') === (target === 'cloud');
+  if (!same) return target === 'cloud' ? flowToCloudWizard(f) : await cloudToQrFlow(f);
   const { id: _i, createdAt, updatedAt, ...rest } = JSON.parse(JSON.stringify(f));
   try { await window._fb.saveAutomation(null, { ...rest, name: (f.name || 'Automação') + ' (cópia)', active: false }); renderAutomacoesView(); }
   catch (e) { showToast('Erro: ' + e.message, 'warning'); }
@@ -11632,6 +11649,74 @@ async function deleteFlowConfirm(id) {
   if (!await showConfirm(`A automação "${f.name}" será excluída. Os leads que estão no fluxo param de receber os próximos passos.`, 'Excluir automação', 'Excluir', true)) return;
   try { await window._fb.deleteAutomation(id); auditLog(f.act, 'automacao', `Excluiu a automação "${f.name || ''}"`); renderAutomacoesView(); }
   catch (e) { showToast('Erro: ' + e.message, 'warning'); }
+}
+
+// Fluxo QR -> cadência da API oficial: cada mensagem vira um modelo para revisar e mandar para a Meta;
+// as esperas somadas viram o dia e o horário (a partir das 09:30 do Dia 1).
+function flowToCloudWizard(f) {
+  const act = flowAct();
+  const lines = cloudLinesOf(act);
+  const chain = flowChain(Array.isArray(f.nodes) ? f : { ...f, ...flowFromSteps(f, act) });
+  let hours = 0, n = 0;
+  const items = [];
+  const base = prosNorm(f.name || 'fluxo').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 20) || 'fluxo';
+  chain.forEach(node => {
+    const d = node.data || {};
+    if (node.type === 'wait') hours += (Number(d.amount) || 0) * (d.unit === 'd' ? 24 : d.unit === 'min' ? 1 / 60 : 1);
+    if (node.type !== 'message') return;
+    const order = [];
+    let body = String((d.templates || [])[0] || '').trim();
+    body = body.replace(/\{(primeiro_nome|nome|atendente)\}/gi, (_, v) => { const role = /atendente/i.test(v) ? 'atendente' : 'nome'; if (!order.includes(role)) order.push(role); return `{{${order.indexOf(role) + 1}}}`; });
+    if (/^\{\{\d+\}\}/.test(body)) body = 'Oi, ' + body;
+    const total = 9.5 + hours;
+    const day = Math.floor(total / 24) + 1;
+    const hh = Math.floor(total % 24), mm = Math.round(((total % 24) - hh) * 60 / 5) * 5 % 60;
+    const kind = d.kind || 'text';
+    const mid = d.media && d.media.url ? (String(d.media.url).match(/\/media\/([a-f0-9]+)/) || [])[1] : '';
+    items.push({ name: `${base}_${++n}`, kind, day, time: `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`, slot: '', body: body || (kind === 'text' ? '' : 'Oi, {{1}}! Separei isso para você. O que achou?'), vars: order.length ? order : (body ? [] : ['nome']), on: true, status: '', audio: '', media: mid && (kind === 'video' || kind === 'image') ? { id: mid, fileName: d.media.fileName || 'arquivo', url: d.media.url } : null });
+  });
+  if (!items.length) return showToast('Este fluxo não tem mensagens para virar modelos.', 'warning');
+  openCloudWizard('doc');
+  _cw.items = items;
+  _cw.line = lines[0].id;
+  const fb = document.getElementById('cw-fb');
+  if (fb) { fb.style.color = 'var(--green)'; fb.textContent = `${items.length} mensagens vindas de "${f.name || 'Automação'}". Revise os textos e horários, anexe os vídeos e envie para a Meta aprovar.`; }
+  const pre = document.getElementById('cw-prefix'); if (pre) pre.value = base;
+  renderCloudWizardList();
+}
+// Cadência da API oficial -> fluxo QR: cada modelo vira mensagem (texto com as variáveis; vídeo/foto do cabeçalho vira o arquivo).
+async function cloudToQrFlow(f) {
+  const act = flowAct();
+  let list = [];
+  try { list = await cloudTemplatesFor(act, f.line); } catch (e) {}
+  const steps = (f.steps || []).slice().sort((a, b) => a.day - b.day || String(a.time).localeCompare(String(b.time)));
+  if (!steps.length) return showToast('Esta cadência não tem mensagens.', 'warning');
+  const nodes = [{ id: flowUid(), type: 'trigger', x: 40, y: 160, data: { stage: f.triggerStage || '' } }];
+  const edges = [];
+  let prev = nodes[0].id, x = 330, prevAbs = null;
+  const add = (type, data) => { const id = flowUid(); nodes.push({ id, type, x, y: 160, data }); edges.push({ from: prev, port: 'out', to: id }); prev = id; x += 290; };
+  steps.forEach(st => {
+    const [hh, mm] = String(st.time || '09:30').split(':').map(Number);
+    const abs = ((Number(st.day) || 1) - 1) * 24 + (hh || 0) + (mm || 0) / 60;
+    const diff = prevAbs === null ? 0 : Math.max(0, abs - prevAbs);
+    prevAbs = abs;
+    if (diff >= 24 && Number.isInteger(diff / 24)) add('wait', { amount: diff / 24, unit: 'd' });
+    else if (diff >= 1) add('wait', { amount: Math.round(diff), unit: 'h' });
+    else if (diff > 0) add('wait', { amount: Math.round(diff * 60), unit: 'min' });
+    const t = st.template || {};
+    const tpl = list.find(x => x.name === t.name && x.language === (t.language || 'pt_BR')) || t;
+    const params = t.params || [];
+    const text = String(tpl.body || t.body || '').replace(/\{\{(\d+)\}\}/g, (_, i) => params[Number(i) - 1] || '{primeiro_nome}');
+    const hType = tpl.headerType || t.headerType, hUrl = tpl.headerUrl || t.headerUrl;
+    const kind = (hType === 'video' || hType === 'image') && hUrl ? hType : 'text';
+    add('message', { kind, templates: [text || `[modelo ${t.name || ''}]`], ...(kind !== 'text' ? { media: { type: kind, url: hUrl, fileName: tpl.headerFileName || t.headerFileName || 'arquivo' } } : {}) });
+  });
+  _flow = { act, name: (f.name || 'Cadência') + ' (QR Code)', active: false, stopOnReply: true, onReply: { moveTo: (f.onReply || {}).moveTo || '' }, hours: { enabled: true, start: 8, end: 20 }, lines: [waDefaultLine(act)], nodes, edges, _dirty: true };
+  _flowSel = null;
+  _flowView = { x: 30, y: 30, z: window.innerWidth < 900 ? 0.7 : 1 };
+  document.getElementById('automacoes-view').classList.add('editing');
+  renderFlowEditor();
+  showToast('Fluxo montado a partir da cadência. Revise as esperas e os textos, escolha os números e clique em Salvar.', 'success', 8000);
 }
 
 // ----- Editor -----
@@ -11656,7 +11741,7 @@ function flowFindStage(stages, ...words) {
   for (const w of words) { const s = (stages || []).find(x => norm(x.label).includes(w)); if (s) return s; }
   return null;
 }
-function flowChain(specs) {
+function flowSeq(specs) {
   // specs: [{ type, data, port?, from? }] em sequência; devolve { nodes, edges } com posições em linha.
   const nodes = [], edges = [];
   specs.forEach((sp, i) => {
@@ -11672,14 +11757,14 @@ const flowMove = st => ({ stage: st ? st.id : '', stageLabel: st ? st.label : ''
 const FLOW_PRESETS = [
   { id: 'boas-vindas', group: 'Primeiro contato', color: '#1FA855', steps: 'Mensagem|Respondeu?|Em contato', icon: 'message', title: 'Boas-vindas ao novo lead',
     desc: 'Recebe a 1ª mensagem ao entrar. Respondeu, o card vai para "Em contato".',
-    build: st => ({ name: 'Boas-vindas · novo lead', stopOnReply: false, ...flowChain([
+    build: st => ({ name: 'Boas-vindas · novo lead', stopOnReply: false, ...flowSeq([
       { type: 'trigger', data: { stage: (st[0] || {}).id || 'novo' } },
       { type: 'message', data: { kind: 'text', templates: ['Oi {primeiro_nome}, tudo bem? Aqui é {atendente}! Recebi seu contato e vou te ajudar por aqui. Me conta: o que você está buscando?', 'Olá {primeiro_nome}! Sou {atendente} e vi que você se cadastrou agora. Posso te ajudar com mais informações?'] } },
       { type: 'condition', data: { check: 'replied', anyTime: true } },
       { type: 'move', port: 'yes', data: flowMove(flowFindStage(st, 'contato', 'atendimento', 'conversa')) }]) }) },
   { id: 'abordagem-cobranca', group: 'Primeiro contato', color: '#C9A24B', steps: 'Mensagem|2h|Respondeu?|Cobrança', icon: 'bolt', title: '1ª mensagem + cobrança',
     desc: 'Se não responder em 2 horas, recebe um "conseguiu ver?". Respondeu, vai para "Em contato".',
-    build: st => ({ name: 'Abordagem com cobrança', stopOnReply: false, ...flowChain([
+    build: st => ({ name: 'Abordagem com cobrança', stopOnReply: false, ...flowSeq([
       { type: 'trigger', data: { stage: (st[0] || {}).id || 'novo' } },
       { type: 'message', data: { kind: 'text', templates: ['Oi {primeiro_nome}, tudo bem? Aqui é {atendente}. Recebi seu cadastro e quero te ajudar. Qual o melhor horário para conversarmos?'] } },
       { type: 'condition', data: { check: 'replied', waitAmount: 2, waitUnit: 'h' } },
@@ -11687,7 +11772,7 @@ const FLOW_PRESETS = [
       { type: 'message', port: 'no', from: 2, x: 910, y: 280, data: { kind: 'text', templates: ['{primeiro_nome}, conseguiu ver minha mensagem? 🙋‍♂️'] } }]) }) },
   { id: 'followup-3', group: 'Acompanhamento', color: '#3B82F6', steps: 'Dia 1|Dia 3|Dia 7', icon: 'clock', title: 'Follow-up em 3 toques',
     desc: 'Três lembretes ao longo de uma semana. Para sozinho quando o lead responde.',
-    build: st => ({ name: 'Follow-up 3 toques', stopOnReply: true, ...flowChain([
+    build: st => ({ name: 'Follow-up 3 toques', stopOnReply: true, ...flowSeq([
       { type: 'trigger', data: { stage: (flowFindStage(st, 'contato', 'sem resposta') || st[0] || {}).id || 'novo' } },
       { type: 'wait', data: { amount: 1, unit: 'd' } },
       { type: 'message', data: { kind: 'text', templates: ['Oi {primeiro_nome}, tudo certo? Passando para saber se ficou alguma dúvida. Estou por aqui!'] } },
@@ -11697,7 +11782,7 @@ const FLOW_PRESETS = [
       { type: 'message', data: { kind: 'text', templates: ['{primeiro_nome}, vou parar de te chamar por aqui para não incomodar. Se fizer sentido mais pra frente, é só me mandar um "oi" que eu te ajudo. Abraço!'] } }]) }) },
   { id: 'reativar', group: 'Acompanhamento', color: '#F97316', steps: '2 tentativas|Perdido', icon: 'swap', title: 'Reativar lead parado',
     desc: 'Duas tentativas de reativar. Sem resposta, o card vai para "Perdido".',
-    build: st => ({ name: 'Reativar lead parado', stopOnReply: true, ...flowChain([
+    build: st => ({ name: 'Reativar lead parado', stopOnReply: true, ...flowSeq([
       { type: 'trigger', data: { stage: (flowFindStage(st, 'sem resposta', 'parado', 'contato') || st[0] || {}).id || 'novo' } },
       { type: 'wait', data: { amount: 1, unit: 'd' } },
       { type: 'message', data: { kind: 'text', templates: ['Oi {primeiro_nome}! Ainda tem interesse? Tenho uma condição especial essa semana e lembrei de você.'] } },
@@ -11707,14 +11792,14 @@ const FLOW_PRESETS = [
       { type: 'move', data: flowMove(flowFindStage(st, 'perdid')) }]) }) },
   { id: 'pos-venda', group: 'Depois da venda', color: '#14B8A6', steps: 'Obrigado|7 dias|Indicação', icon: 'checkCircle', title: 'Pós-venda e indicação',
     desc: 'Agradece no fechamento e, 7 dias depois, pede avaliação ou indicação.',
-    build: st => ({ name: 'Pós-venda', stopOnReply: false, ...flowChain([
+    build: st => ({ name: 'Pós-venda', stopOnReply: false, ...flowSeq([
       { type: 'trigger', data: { stage: (flowFindStage(st, 'fechad', 'ganho', 'venda') || st[st.length - 1] || {}).id || 'fechado' } },
       { type: 'message', data: { kind: 'text', templates: ['{primeiro_nome}, muito obrigado pela confiança! Qualquer coisa que precisar, é só chamar aqui. 🙌'] } },
       { type: 'wait', data: { amount: 7, unit: 'd' } },
       { type: 'message', data: { kind: 'text', templates: ['Oi {primeiro_nome}! Como está sendo sua experiência? Se puder indicar alguém que também vá gostar, me manda o contato que eu cuido com carinho.'] } }]) }) },
   { id: 'ia', group: 'Primeiro contato', color: '#8B5CF6', steps: 'Mensagem|Agente de IA', icon: 'bot', title: 'Atendimento pela IA',
     desc: 'Depois da 1ª mensagem, a IA qualifica e marca a reunião. Precisa do Agente de IA ligado.',
-    build: st => ({ name: 'Atendimento com IA', stopOnReply: true, ...flowChain([
+    build: st => ({ name: 'Atendimento com IA', stopOnReply: true, ...flowSeq([
       { type: 'trigger', data: { stage: (st[0] || {}).id || 'novo' } },
       { type: 'message', data: { kind: 'text', templates: ['Oi {primeiro_nome}, tudo bem? Recebi seu cadastro! Posso te fazer umas perguntas rápidas para te ajudar melhor?'] } },
       { type: 'ai', data: {} }]) }) }
@@ -11772,11 +11857,26 @@ function openCloudWizard(mode) {
   const lines = cloudLinesOf(act);
   if (!lines.length) return showToast('Conecte um número da API oficial em Conexões.', 'warning');
   _cw = { act, mode, line: lines[0].id, items: [], times: { manha: '09:30', noite: '19:30' }, sent: false };
+  _cwAiMode = 'plan';
   const plan = mode === 'plan';
   openHuvenModal(plan ? 'Criar cadência com a IA' : 'Cadência a partir de um documento', `${CADENCE_CSS}
     ${lines.length > 1 ? `<label class="field-label">Número da API oficial</label><select class="field-input" id="cw-line" onchange="_cw.line = this.value" style="margin-bottom:10px;">${lines.map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.label)}</option>`).join('')}</select>` : ''}
-    ${plan ? `<div class="integ-muted" style="font-size:12.5px;margin-bottom:8px;">Conte o objetivo, para quem é, a oferta, quantos dias e mensagens, e o tom. A IA escreve só texto e vídeo (áudio não é aceito pela Meta).</div>
-      <textarea class="field-input" id="cw-text" rows="6" style="width:100%;box-sizing:border-box;resize:vertical;" placeholder="Ex.: Cadência de 7 dias para quem se cadastrou no evento Máquina de Vendas e não respondeu. Duas mensagens por dia (manhã e noite). Objetivo: fazer o lead responder. Tom próximo, sem pressão."></textarea>`
+    ${plan ? `<div class="pr-tabs" style="margin-bottom:12px;">
+        <button class="pr-tab active" id="cw-mode-plan" onclick="setCwAiMode('plan')">A IA planeja a cadência</button>
+        <button class="pr-tab" id="cw-mode-describe" onclick="setCwAiMode('describe')">Eu descrevo a cadência</button>
+      </div>
+      <div id="cw-plan-box">
+        <div class="integ-muted" style="font-size:12.5px;margin-bottom:10px;">Diga o objetivo. A IA decide quantas mensagens, o que cada uma diz e os dias e horários. Só texto e vídeo (a Meta não aceita áudio em modelo).</div>
+        ${aiBriefFieldsHtml('cw-plan', act)}
+        <label class="field-label">Duração (opcional)</label>
+        <input class="field-input" id="cw-plan-dur" placeholder="Ex.: 5 dias, uma mensagem de manhã e uma à noite" style="margin-bottom:6px;">
+      </div>
+      <div id="cw-describe-box" style="display:none;">
+        <div class="integ-muted" style="font-size:12.5px;margin-bottom:10px;">Descreva a cadência do seu jeito: quantos dias, horários e o que cada mensagem fala. Se já tiver as mensagens prontas, anexe o arquivo.</div>
+        <textarea class="field-input" id="cw-text" rows="6" style="width:100%;box-sizing:border-box;resize:vertical;margin-bottom:8px;" placeholder="Ex.: 7 dias, manhã 9h30 e noite 19h30. Dia 1: me apresento e pergunto o que ele vende. Dia 2: vídeo do evento..."></textarea>
+        <label class="field-label">Ou anexe um PDF ou arquivo de texto (opcional)</label>
+        <input type="file" class="field-input" accept="application/pdf,.pdf,text/plain,.txt,.md,text/markdown" onchange="readCwFile(this)" style="margin-bottom:6px;">
+      </div>`
     : `<div class="integ-muted" style="font-size:12.5px;margin-bottom:8px;">Anexe o roteiro com as mensagens. [NOME] vira o nome do lead e [VENDEDOR] o nome de quem atende.</div>
       <input type="file" class="field-input" accept="application/pdf,.pdf,text/plain,.txt,.md,text/markdown" onchange="readCwFile(this)" style="margin-bottom:6px;">
       <textarea class="field-input" id="cw-text" rows="4" style="width:100%;box-sizing:border-box;resize:vertical;" placeholder="Ou cole aqui o texto com as mensagens"></textarea>`}
@@ -11788,6 +11888,14 @@ function openCloudWizard(mode) {
     <div id="cw-fb" class="integ-muted" style="font-size:12.5px;margin-bottom:8px;"></div>
     <div id="cw-list"></div>`, 860);
 }
+let _cwAiMode = 'plan';
+function setCwAiMode(mode) {
+  _cwAiMode = mode;
+  document.getElementById('cw-mode-plan').classList.toggle('active', mode === 'plan');
+  document.getElementById('cw-mode-describe').classList.toggle('active', mode === 'describe');
+  document.getElementById('cw-plan-box').style.display = mode === 'plan' ? 'block' : 'none';
+  document.getElementById('cw-describe-box').style.display = mode === 'describe' ? 'block' : 'none';
+}
 async function readCwFile(input) {
   const file = input.files && input.files[0];
   const fb = document.getElementById('cw-fb');
@@ -11796,17 +11904,30 @@ async function readCwFile(input) {
   try {
     const text = await fileToText(file);
     document.getElementById('cw-text').value = text;
+    _cw.fileText = true;
     fb.style.color = text.length > 30 ? 'var(--green)' : 'var(--amber)';
     fb.textContent = text.length > 30 ? `✓ ${text.length.toLocaleString('pt-BR')} caracteres lidos. Clique em "Ler mensagens".` : 'Não encontrei texto no arquivo.';
   } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = 'Erro ao ler: ' + e.message; }
 }
 async function runCloudWizardAi() {
   const fb = document.getElementById('cw-fb'), btn = document.getElementById('cw-read');
-  const text = document.getElementById('cw-text').value.trim();
+  let text = (document.getElementById('cw-text') || {}).value || '';
+  text = text.trim();
+  let aiMode = _cw.mode === 'plan' ? 'plan' : 'doc';
+  if (_cw.mode === 'plan' && _cwAiMode === 'plan') {
+    const b = readAiBrief('cw-plan', _cw.act);
+    if (b.objetivo.length < 5) { fb.style.color = 'var(--red)'; fb.textContent = 'Conte o objetivo.'; return; }
+    const dur = (document.getElementById('cw-plan-dur') || {}).value || '';
+    text = [`Objetivo: ${b.objetivo}`, b.publico && `Público: ${b.publico}`, b.oferta && `Oferta/diferencial: ${b.oferta}`, b.tom && `Tom: ${b.tom}`, b.cta && `Chamada para ação: ${b.cta}`, dur.trim() && `Duração: ${dur.trim()}`, b.extra && `Extras: ${b.extra}`].filter(Boolean).join('\n');
+  } else if (_cw.mode === 'plan') {
+    // Descrição própria: com arquivo de mensagens prontas, a IA copia; sem arquivo, escreve seguindo a descrição.
+    if (_cw.fileText) aiMode = 'doc';
+    else text = 'Siga exatamente esta descrição do usuário (dias, horários e conteúdo de cada mensagem):\n' + text;
+  }
   if (text.length < 15) { fb.style.color = 'var(--red)'; fb.textContent = _cw.mode === 'plan' ? 'Descreva a cadência que você quer.' : 'Anexe o arquivo ou cole o texto.'; return; }
   btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'A IA está trabalhando (pode levar até 1 a 2 minutos)...';
   try {
-    const r = await window._fb.whatsapp('/ai/cloud-templates', _cw.act, { text, prefix: document.getElementById('cw-prefix').value, mode: _cw.mode === 'plan' ? 'plan' : 'doc' });
+    const r = await window._fb.whatsapp('/ai/cloud-templates', _cw.act, { text, prefix: document.getElementById('cw-prefix').value, mode: aiMode });
     _cw.items = (r.templates || []).map(t => ({ ...t, on: true, media: null, status: '', audio: '', slot: /^\d{2}:\d{2}$/.test(t.time) ? '' : (t.time || '') }));
     _cw.items.forEach(t => { if (!/^\d{2}:\d{2}$/.test(t.time)) t.time = ''; });
     const audios = _cw.items.filter(t => t.kind === 'audio').length;
@@ -12147,7 +12268,10 @@ function openFlowPresets() {
       .fp-steps i{font-style:normal;color:var(--muted);font-size:12px}
     </style>
     <div class="fp-intro">Escolha um modelo pronto: ele já vem montado com textos de exemplo. É só ajustar as mensagens e ligar. A automação abre <b>desligada</b> para você revisar antes.</div>
-    <button type="button" class="fp-blank" onclick="closeHuvenModal(); openFlowEditor(null, {})">${uiIco('edit', 18)}<span><b>Começar do zero</b><small>Abre o editor com um fluxo simples para montar do seu jeito.</small></span></button>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:20px;">
+      <button type="button" class="fp-blank" style="margin:0;" onclick="closeHuvenModal(); _aiPreset = null; openAiFlowModal()">${uiIco('sparkles', 18)}<span><b>Criar com IA</b><small>A IA planeja o fluxo a partir do objetivo, ou monta o que você descrever.</small></span></button>
+      <button type="button" class="fp-blank" style="margin:0;" onclick="closeHuvenModal(); openFlowEditor(null, {})">${uiIco('edit', 18)}<span><b>Começar do zero</b><small>Abre o editor com um fluxo simples para montar do seu jeito.</small></span></button>
+    </div>
     ${groups.map(g => `<div class="fp-group">${escapeHtml(g)}</div><div class="fp-grid">${FLOW_PRESETS.filter(p => p.group === g).map(card).join('')}</div>`).join('')}`, 820);
 }
 
