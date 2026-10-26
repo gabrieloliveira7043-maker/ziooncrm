@@ -11446,7 +11446,7 @@ function cloudCadenceCardHtml(f, leads, act) {
   return `<article class="huv-card">
     <div class="huv-card-head">
       <div class="huv-avatar" style="background:rgba(31,168,85,.15);color:#1FA855;">${uiIco('bolt', 16)}</div>
-      <div style="flex:1;min-width:0;"><div class="huv-name">${escapeHtml(f.name || 'Cadência')}</div><div class="huv-sub">API oficial · quando entrar em ${escapeHtml(autoStageLabel(act, f.triggerStage))}</div></div>
+      <div style="flex:1;min-width:0;"><div class="huv-name">${escapeHtml(f.name || 'Cadência')}${f.draft ? ' <span class="chat-tag" style="background:rgba(224,164,58,.2);color:#B7791F;">Rascunho</span>' : ''}</div><div class="huv-sub">API oficial · quando entrar em ${escapeHtml(autoStageLabel(act, f.triggerStage))}</div></div>
       <label class="integ-toggle"><input type="checkbox" ${f.active ? 'checked' : ''} onchange="toggleCloudCadence('${id}', this.checked)"> ${f.active ? (f.paused ? uiIco('pause', 13) + ' Pausada' : 'Ligada') : 'Desligada'}</label>
     </div>
     <div class="huv-stats">
@@ -12050,17 +12050,208 @@ async function buildCadenceFromWizard() {
 }
 
 // ----- Editor da cadência -----
-let _cc = null;
-async function openCloudCadenceEditor(id) {
+// ===== CADÊNCIA DA API OFICIAL NO EDITOR VISUAL (mesmo quadro do QR Code) =====
+// Blocos: Gatilho → "Quando enviar" (Dia N às HH:MM) → "Mensagem (modelo aprovado)" ... → "Mover card" (no fim).
+// O quadro vira a lista de passos (steps) que o servidor usa; a posição dos blocos fica salva em nodes/edges.
+function isCloudFlow() { return !!(_flow && _flow.channel === 'cloud'); }
+function cadenceToGraph(f) {
+  const steps = (f.steps || []).slice().sort((a, b) => a.day - b.day || String(a.time).localeCompare(String(b.time)));
+  const nodes = [{ id: flowUid(), type: 'trigger', x: 40, y: 160, data: { stage: f.triggerStage || '' } }];
+  const edges = [];
+  let prev = nodes[0].id, x = 330;
+  const add = (type, data) => { const id = flowUid(); nodes.push({ id, type, x, y: 160, data }); edges.push({ from: prev, port: 'out', to: id }); prev = id; x += 290; };
+  steps.forEach(st => {
+    add('wait', { day: Number(st.day) || 1, time: st.time || '09:30' });
+    const t = st.template;
+    add('message', { kind: 'text', cloudTemplate: t ? { name: t.name, language: t.language || 'pt_BR', params: t.params || [] } : null });
+  });
+  if (f.onFinish && f.onFinish.moveTo) add('move', { stage: f.onFinish.moveTo, stageLabel: autoStageLabel(f.act, f.onFinish.moveTo) });
+  return { nodes, edges };
+}
+function graphToCadence(fl) {
+  const trigger = fl.nodes.find(n => n.type === 'trigger');
+  let day = 1, time = '09:30', finish = '';
+  const steps = [], order = [];
+  flowChain(fl).forEach(n => {
+    const d = n.data || {};
+    if (n.type === 'wait') { day = Math.max(1, Number(d.day) || 1); time = /^\d{2}:\d{2}$/.test(d.time || '') ? d.time : '09:30'; }
+    if (n.type === 'message') { steps.push({ id: n.id, day, time, template: d.cloudTemplate ? { ...d.cloudTemplate } : null }); order.push(day * 10000 + Number(time.replace(':', ''))); }
+    if (n.type === 'move' && d.stage) finish = d.stage;
+  });
+  return {
+    channel: 'cloud', act: fl.act, name: (fl.name || '').trim(), line: fl.line, startMode: fl.startMode === 'today' ? 'today' : 'tomorrow',
+    triggerStage: trigger && trigger.data ? trigger.data.stage || '' : '', onReply: fl.onReply || { moveTo: '' },
+    onFinish: { moveTo: finish, moveToLabel: finish ? autoStageLabel(fl.act, finish) : '' }, paused: !!fl.paused,
+    steps, _outOfOrder: order.some((v, i) => i && v < order[i - 1]),
+    nodes: fl.nodes.map(n => ({ id: n.id, type: n.type, x: n.x, y: n.y, data: JSON.parse(JSON.stringify(n.data || {})) })),
+    edges: fl.edges.map(e => ({ from: e.from, port: e.port || 'out', to: e.to }))
+  };
+}
+async function openCloudCadenceEditor(id, override) {
   const act = flowAct();
   const lines = cloudLinesOf(act);
   if (!lines.length) return showToast('Conecte um número da API oficial em Conexões.', 'warning');
-  const src = id ? (_flowList || []).find(x => x.id === id) : null;
+  const src = override || (id ? (_flowList || []).find(x => x.id === id) : null);
+  if (id && !src) return showToast('Cadência não encontrada.', 'warning');
+  const stages = getStages(act) || [];
+  const base = src ? JSON.parse(JSON.stringify(src)) : { channel: 'cloud', act, name: 'Cadência API oficial', active: false, line: lines[0].id, triggerStage: _cwPresetStage || (stages[0] ? stages[0].id : 'novo'), startMode: 'tomorrow', onReply: { moveTo: '' }, onFinish: { moveTo: '' }, steps: [{ id: flowUid(), day: 1, time: '09:30', template: null }] };
+  _cwPresetStage = '';
+  const graph = Array.isArray(base.nodes) && base.nodes.length ? { nodes: base.nodes, edges: base.edges || [] } : cadenceToGraph({ ...base, act });
+  closeHuvenModal();
+  _flow = { ...base, id: id || base.id || null, channel: 'cloud', act, line: base.line || lines[0].id, nodes: graph.nodes, edges: graph.edges, _tplList: _cloudTplCache[act + '|' + (base.line || lines[0].id)] || [], _dirty: !!override };
+  _flowSel = null;
+  _flowView = { x: 30, y: 30, z: window.innerWidth < 900 ? 0.7 : 1 };
+  const view = document.getElementById('automacoes-view');
+  if (view) view.classList.add('editing');
+  renderFlowEditor();
+  loadCloudFlowTemplates(false);
+}
+async function loadCloudFlowTemplates(refresh) {
+  if (!isCloudFlow()) return;
+  const f = _flow;
+  try { f._tplList = await cloudTemplatesFor(f.act, f.line, refresh); }
+  catch (e) { showToast('Não consegui buscar os modelos: ' + e.message, 'warning', 6000); }
+  if (_flow === f) { renderFlowNodes(); renderFlowInspector(); }
+}
+function cloudFlowTpl(t) {
+  return t ? (_flow._tplList || []).find(x => x.name === t.name && x.language === (t.language || 'pt_BR')) || null : null;
+}
+function cloudFlowSummary(n) {
+  const d = n.data || {};
+  if (n.type === 'wait') return `Enviar no <b>Dia ${Number(d.day) || 1} às ${escapeHtml(d.time || '09:30')}</b> (todos juntos)`;
+  if (n.type !== 'message') return null;
+  if (!d.cloudTemplate) return '<span style="color:var(--red);">Escolha o modelo</span>';
+  const tpl = cloudFlowTpl(d.cloudTemplate);
+  return `<b>${escapeHtml(d.cloudTemplate.name)}</b> ${tpl ? cloudChip(tpl.status) : cloudChip('')}${tpl && tpl.body ? '<br>' + escapeHtml(limitText(tpl.body, 80)) : ''}`;
+}
+function cloudFlowInspectorHtml(n) {
+  const d = n.data || {};
+  if (n.type === 'wait') return `<label class="auto-label">Dia da cadência</label><input type="number" min="1" max="90" class="field-input" value="${Number(d.day) || 1}" style="width:100px;" onchange="setFlowData('day', Math.max(1, Number(this.value) || 1))">
+    <label class="auto-label" style="margin-top:10px;">Horário (Brasília)</label><input type="time" class="field-input" value="${escapeHtml(d.time || '09:30')}" style="width:130px;" onchange="setFlowData('time', this.value || '09:30')">
+    <div class="integ-muted" style="margin-top:8px;">Todos os leads que estão nesta etapa recebem a próxima mensagem juntos, neste dia e horário. O Dia 1 é o dia da entrada ou o seguinte, conforme a regra à esquerda.</div>`;
+  const list = _flow._tplList || [];
+  const cur = d.cloudTemplate;
+  const tpl = cloudFlowTpl(cur);
+  const vars = tpl ? tpl.vars || 0 : (cur && cur.params ? cur.params.length : 0);
+  const params = (cur && cur.params) || [];
+  return `${CADENCE_CSS}<label class="auto-label">Modelo aprovado</label>
+    <select class="field-input" onchange="setCloudFlowTpl(this.value)"><option value="">Escolha o modelo</option>${list.map(t => `<option value="${escapeHtml(t.name + '|' + t.language)}" ${cur && cur.name === t.name && (cur.language || 'pt_BR') === t.language ? 'selected' : ''}>${escapeHtml(t.name)} · ${escapeHtml((CLOUD_STATUS_CHIP[t.status] || [t.status])[0])}</option>`).join('')}</select>
+    ${cur ? `<div style="margin-top:6px;">${tpl ? cloudChip(tpl.status) : cloudChip('')}</div>` : ''}
+    ${tpl && tpl.body ? `<div class="integ-muted" style="font-size:12px;white-space:pre-wrap;margin-top:6px;border:1px solid var(--border);border-radius:8px;padding:8px;">${escapeHtml(tpl.body)}</div>` : ''}
+    ${vars ? `<label class="auto-label" style="margin-top:10px;">Variáveis</label>${Array.from({ length: vars }, (_, k) => `<label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-bottom:6px;">{{${k + 1}}}<input class="field-input" style="flex:1;padding:5px 8px;font-size:12.5px;" value="${escapeHtml(params[k] != null ? params[k] : (k === 0 ? '{primeiro_nome}' : k === 1 ? '{atendente}' : ''))}" oninput="setCloudFlowParam(${k}, this.value)"></label>`).join('')}<div class="integ-muted" style="font-size:11.5px;">Use texto, {primeiro_nome}, {nome} ou {atendente}.</div>` : ''}
+    ${tpl && tpl.headerType && !tpl.headerUrl ? `<div style="font-size:12px;color:var(--red);margin-top:6px;">Modelo com ${escapeHtml(((CLOUD_HEADER_TYPES[tpl.headerType] || {}).label || 'mídia').toLowerCase())} no topo sem arquivo: escolha em Conexões → Modelos.</div>` : ''}
+    ${list.length ? '' : '<div class="integ-muted" style="margin-top:8px;">Nenhum modelo neste número ainda. Crie em Conexões → Modelos, ou pela Nova automação → API oficial.</div>'}`;
+}
+function setCloudFlowTpl(value) {
+  const n = _flow.nodes.find(x => x.id === _flowSel);
+  if (!n) return;
+  if (!value) { setFlowData('cloudTemplate', null); return renderFlowInspector(); }
+  const [name, language] = value.split('|');
+  const tpl = (_flow._tplList || []).find(t => t.name === name && t.language === language);
+  setFlowData('cloudTemplate', { name, language, params: Array.from({ length: (tpl && tpl.vars) || 0 }, (_, k) => k === 0 ? '{primeiro_nome}' : k === 1 ? '{atendente}' : '') });
+  renderFlowInspector();
+}
+function setCloudFlowParam(k, v) {
+  const n = _flow.nodes.find(x => x.id === _flowSel);
+  if (!n || !n.data.cloudTemplate) return;
+  n.data.cloudTemplate.params = n.data.cloudTemplate.params || [];
+  n.data.cloudTemplate.params[k] = v;
+  _flow._dirty = true;
+}
+function cloudFlowPaletteHtml(add) {
+  const lines = cloudLinesOf(_flow.act);
+  return `<div class="ci-label">Adicionar bloco</div>
+    ${add('wait', 'wait', 'Quando enviar (dia e hora)')}
+    ${add('message', 'text', 'Mensagem (modelo aprovado)')}
+    ${add('move', 'move', 'Mover card (no fim)')}
+    <div class="ci-label" style="margin-top:16px;">Regras da cadência</div>
+    ${lines.length > 1 ? `<label class="auto-label" style="display:block;">Número da API oficial<select class="field-input" style="margin-top:4px;" onchange="_flow.line = this.value; _flow._dirty = true; loadCloudFlowTemplates(false)">${lines.map(l => `<option value="${escapeHtml(l.id)}" ${l.id === _flow.line ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}</select></label>` : ''}
+    <label class="auto-label" style="display:block;margin-top:8px;">Dia 1 da cadência<select class="field-input" style="margin-top:4px;" onchange="_flow.startMode = this.value; _flow._dirty = true"><option value="tomorrow" ${_flow.startMode !== 'today' ? 'selected' : ''}>Dia seguinte à entrada</option><option value="today" ${_flow.startMode === 'today' ? 'selected' : ''}>Mesmo dia, se ainda der tempo</option></select></label>
+    <label class="auto-label" style="display:block;margin-top:8px;">Se o lead responder: para e move para<select class="field-input" style="margin-top:4px;" onchange="_flow.onReply = { moveTo: this.value, moveToLabel: this.value ? autoStageLabel(_flow.act, this.value) : '' }; _flow._dirty = true">${autoStageOptions(_flow.act, (_flow.onReply || {}).moveTo, 'Não mover (só para)')}</select></label>
+    <button class="huv-btn" style="margin-top:10px;width:100%;" onclick="loadCloudFlowTemplates(true)">Atualizar status dos modelos</button>
+    <div class="integ-muted" style="margin-top:14px;">API oficial: sem trava contra bloqueio. Todos os leads com mensagem marcada para o mesmo horário recebem juntos, em lotes. Ligue os blocos em sequência: Quando enviar → Mensagem → Quando enviar → Mensagem...</div>`;
+}
+function cloudFlowTopHtml() {
+  const st = _flow.draft ? 'Rascunho' : _flow.active ? (_flow.paused ? 'Pausada' : 'Ligada') : 'Desligada';
+  return `<button class="huv-btn" onclick="closeFlowEditor()">← Automações</button>
+    <input class="field-input flow-name" id="flow-name" value="${escapeHtml(_flow.name || '')}" oninput="_flow.name = this.value; _flow._dirty = true" aria-label="Nome da cadência">
+    <span class="chat-tag" style="background:rgba(31,168,85,.15);color:#1FA855;">API oficial · ${st}</span>
+    <span id="flow-fb" class="integ-muted" style="margin-left:auto;"></span>
+    <button class="huv-btn" style="height:38px;padding:0 12px;" onclick="cloudFlowToList()">Ver em lista</button>
+    ${_flow.id ? `<button class="huv-btn" style="height:38px;padding:0 12px;" onclick="openCloudProgress('${escapeJsString(_flow.id)}')">Andamento</button>` : ''}
+    <button class="huv-btn" style="height:38px;padding:0 14px;" onclick="saveCloudFlow(true)" title="Salva do jeito que está, mesmo incompleto. Fica desligada.">Salvar rascunho</button>
+    <button class="btn-add-lead" style="height:38px;padding:0 16px;" onclick="saveCloudFlow(false)">Salvar</button>
+    ${_flow.active ? `<button class="huv-btn" style="height:38px;padding:0 14px;color:var(--red);border-color:var(--red);" onclick="activateCloudFlow(false)">Desligar</button>` : `<button class="btn-add-lead" style="height:38px;padding:0 16px;background:#1FA855;border-color:#1FA855;" onclick="activateCloudFlow(true)">Ligar</button>`}`;
+}
+function cloudFlowToCc(draft) {
+  const cad = graphToCadence(_flow);
+  _cc = { act: _flow.act, id: _flow.id || null, data: { ...cad, name: cad.name || 'Cadência API oficial', active: draft ? false : !!_flow.active, draft: !!draft, ...(_flow.activatedAt ? { activatedAt: _flow.activatedAt } : {}) }, list: _flow._tplList || [] };
+  return cad;
+}
+function cloudFlowProblem(cad) {
+  if (!cad.triggerStage) return 'Escolha a coluna no Gatilho.';
+  if (!cad.steps.length) return 'Ligue pelo menos uma Mensagem ao Gatilho (Gatilho → Quando enviar → Mensagem).';
+  const msgs = _flow.nodes.filter(n => n.type === 'message').length;
+  if (msgs > cad.steps.length) return 'Tem bloco de mensagem solto: ligue todos em sequência a partir do Gatilho.';
+  const miss = cad.steps.find(s => !s.template);
+  if (miss) { _flowSel = miss.id; renderFlowNodes(); renderFlowInspector(); return 'Escolha o modelo de todas as mensagens.'; }
+  if (cad._outOfOrder) return 'Os dias e horários precisam ir em ordem: cada "Quando enviar" depois do anterior.';
+  return '';
+}
+async function saveCloudFlow(draft) {
+  const fb = document.getElementById('flow-fb');
+  const cad = cloudFlowToCc(draft);
+  if (!draft) { const prob = cloudFlowProblem(cad); if (prob) { fb.style.color = 'var(--red)'; fb.textContent = prob; return; } }
+  fb.style.color = 'var(--muted)'; fb.textContent = 'Salvando...';
+  if (!(await saveCloudCadence(true))) { fb.style.color = 'var(--red)'; fb.textContent = 'Não salvou. Tente de novo.'; return; }
+  _flow.id = _cc.id; _flow.draft = !!draft; if (draft) _flow.active = false; _flow._dirty = false;
+  auditLog(_flow.act, 'automacao', `Salvou ${draft ? 'o rascunho da' : 'a'} cadência da API oficial "${_cc.data.name}"`);
+  renderFlowEditor();
+  const fb2 = document.getElementById('flow-fb');
+  if (fb2) { fb2.style.color = 'var(--green)'; fb2.textContent = draft ? 'Rascunho salvo ✓' : 'Salvo ✓'; }
+  showToast(draft ? 'Rascunho salvo. Fica desligado até você terminar e clicar em Salvar.' : 'Cadência salva. Clique em Ligar quando os modelos estiverem aprovados.', 'success', 5000);
+}
+async function activateCloudFlow(on) {
+  const fb = document.getElementById('flow-fb');
+  const cad = cloudFlowToCc(false);
+  if (on) { const prob = cloudFlowProblem(cad); if (prob) { fb.style.color = 'var(--red)'; fb.textContent = prob; return; } }
+  await setCloudCadenceActive(on);
+  if (!_cc || !_flow) return;
+  _flow.id = _cc.id || _flow.id;
+  _flow.active = !!_cc.data.active;
+  if (_cc.data.activatedAt) _flow.activatedAt = _cc.data.activatedAt;
+  if (_flow.active) { _flow.draft = false; _flow._dirty = false; }
+  renderFlowEditor();
+}
+function cloudFlowToList() {
+  const cad = graphToCadence(_flow);
+  const data = { ...cad, name: cad.name || 'Cadência API oficial', active: !!_flow.active, id: _flow.id || null, nodes: [], edges: [], steps: cad.steps.map(s => ({ ...s, template: s.template })) };
+  const id = _flow.id;
+  _flow = null; _flowSel = null;
+  const view = document.getElementById('automacoes-view');
+  if (view) view.classList.remove('editing');
+  renderAutomacoesView();
+  openCloudCadenceList(id, data);
+}
+async function prepareCloudCc(id) {
+  const f = (_flowList || []).find(x => x.id === id);
+  if (!f) return false;
+  _cc = { act: f.act || flowAct(), id, data: JSON.parse(JSON.stringify(f)), list: [] };
+  try { _cc.list = await cloudTemplatesFor(_cc.act, f.line, true); } catch (e) {}
+  return true;
+}
+
+let _cc = null;
+async function openCloudCadenceList(id, override) {
+  const act = flowAct();
+  const lines = cloudLinesOf(act);
+  if (!lines.length) return showToast('Conecte um número da API oficial em Conexões.', 'warning');
+  const src = override || (id ? (_flowList || []).find(x => x.id === id) : null);
   if (id && !src) return showToast('Cadência não encontrada.', 'warning');
   const stages = getStages(act) || [];
   _cc = {
     act, id: id || null,
-    data: src ? JSON.parse(JSON.stringify(src)) : { channel: 'cloud', act, name: 'Cadência API oficial', active: false, line: lines[0].id, triggerStage: _cwPresetStage || (stages[0] ? stages[0].id : 'novo'), startMode: 'tomorrow', onReply: { moveTo: '' }, onFinish: { moveTo: '' }, steps: [{ id: flowUid(), day: 1, time: '09:30', template: null }] },
+    data: src ? { ...JSON.parse(JSON.stringify(src)), nodes: [], edges: [] } : { channel: 'cloud', act, name: 'Cadência API oficial', active: false, line: lines[0].id, triggerStage: _cwPresetStage || (stages[0] ? stages[0].id : 'novo'), startMode: 'tomorrow', onReply: { moveTo: '' }, onFinish: { moveTo: '' }, steps: [{ id: flowUid(), day: 1, time: '09:30', template: null }] },
     list: []
   };
   _cwPresetStage = '';
@@ -12120,7 +12311,9 @@ function renderCloudCadenceEditor() {
     }).join('')}
     <div class="integ-muted" style="font-size:12px;line-height:1.55;margin:10px 0;">Todos os leads com mensagem marcada para o mesmo horário recebem juntos, em lotes, sem intervalo entre eles (a API oficial não tem risco de bloqueio por volume). Quem responde sai da cadência na hora. A Meta limita quantas pessoas novas o número pode chamar em 24 h, conforme o nível do número; o que passar disso fica para a rodada seguinte.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-      <button class="huv-btn" onclick="saveCloudCadence(false)">Salvar</button>
+      <button class="huv-btn" onclick="openCloudCadenceEditor(_cc.id, { ...ccPayload(), id: _cc.id })">Ver no visual</button>
+      <button class="huv-btn" onclick="_cc.data.draft = true; _cc.data.active = false; saveCloudCadence(false).then(() => renderCloudCadenceEditor())">Salvar rascunho</button>
+      <button class="huv-btn" onclick="_cc.data.draft = false; saveCloudCadence(false)">Salvar</button>
       ${d.active ? `<button class="huv-btn" style="color:var(--red);border-color:var(--red);" onclick="setCloudCadenceActive(false)">Desligar</button>` : `<button class="btn-save" style="width:auto;padding:9px 16px;" onclick="setCloudCadenceActive(true)">Ligar cadência</button>`}
       ${_cc.id ? `<button class="huv-btn" onclick="openCloudProgress('${escapeJsString(_cc.id)}')">Andamento</button>` : ''}
       <span id="cc-fb" class="integ-muted" style="font-size:12.5px;">${d.active ? 'Ligada.' : 'Desligada.'}</span>
@@ -12163,7 +12356,8 @@ function ccPayload() {
     onReply: { moveTo: (d.onReply || {}).moveTo || '', moveToLabel: (d.onReply || {}).moveTo ? autoStageLabel(_cc.act, d.onReply.moveTo) : '' },
     onFinish: { moveTo: (d.onFinish || {}).moveTo || '', moveToLabel: (d.onFinish || {}).moveTo ? autoStageLabel(_cc.act, d.onFinish.moveTo) : '' },
     ...(d.activatedAt ? { activatedAt: d.activatedAt } : {}),
-    steps, nodes: [], edges: []
+    steps, draft: !!d.draft,
+    nodes: Array.isArray(d.nodes) ? d.nodes : [], edges: Array.isArray(d.edges) ? d.edges : []
   };
 }
 async function saveCloudCadence(quiet) {
@@ -12214,9 +12408,9 @@ async function setCloudCadenceActive(on) {
   } catch (e) { showToast('Cadência ligada, mas não consegui colocar os leads da coluna: ' + e.message, 'error', 8000); }
 }
 async function toggleCloudCadence(id, on) {
-  _flowList = _flowList || [];
-  await openCloudCadenceEditor(id);
-  if (_cc && _cc.id === id) await setCloudCadenceActive(on);
+  const f = (_flowList || []).find(x => x.id === id);
+  if (on && f && f.draft) { showToast('É um rascunho: abra o editor, termine e clique em Salvar para poder ligar.', 'warning', 6000); return renderAutomacoesView(); }
+  if (await prepareCloudCc(id)) await setCloudCadenceActive(on);
   renderAutomacoesView();
 }
 function openCloudProgress(id) {
@@ -12721,16 +12915,16 @@ function renderFlowEditor() {
   const add = (type, kind, label) => `<button class="flow-add" onclick="addFlowNode('${type}', '${kind || ''}')">${flowIcon(kind || type, FLOW_COLORS[type])}<span>${label}</span></button>`;
   box.innerHTML = `
     <div class="flow-editor">
-      <div class="flow-top">
+      <div class="flow-top">${isCloudFlow() ? cloudFlowTopHtml() : `
         <button class="huv-btn" onclick="closeFlowEditor()">← Automações</button>
         <input class="field-input flow-name" id="flow-name" value="${escapeHtml(_flow.name || '')}" oninput="_flow.name = this.value; _flow._dirty = true" aria-label="Nome da automação">
         <label class="integ-toggle"><input type="checkbox" ${_flow.active !== false ? 'checked' : ''} onchange="_flow.active = this.checked; _flow._dirty = true"> Ligada</label>
         <span id="flow-fb" class="integ-muted" style="margin-left:auto;"></span>
         <button class="huv-btn" style="height:38px;padding:0 14px;" onclick="saveFlow(true)" title="Salva do jeito que está, mesmo incompleto. Fica desligada até você salvar completo.">Salvar rascunho</button>
-        <button class="btn-add-lead" style="height:38px;padding:0 16px;" onclick="saveFlow()">Salvar</button>
+        <button class="btn-add-lead" style="height:38px;padding:0 16px;" onclick="saveFlow()">Salvar</button>`}
       </div>
       <div class="flow-body">
-        <aside class="flow-palette">
+        <aside class="flow-palette">${isCloudFlow() ? cloudFlowPaletteHtml(add) : `
           <div class="ci-label">Adicionar bloco</div>
           ${add('wait', 'wait', 'Esperar')}
           ${add('message', 'text', 'Mensagem de texto')}
@@ -12747,7 +12941,7 @@ function renderFlowEditor() {
           <div style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:12px;color:var(--muted2);">das <input type="number" class="field-input" min="0" max="23" value="${(_flow.hours || {}).start ?? 8}" style="width:58px;padding:5px;" onchange="_flow.hours = { ..._flow.hours, start: Number(this.value) }; _flow._dirty = true"> às <input type="number" class="field-input" min="1" max="24" value="${(_flow.hours || {}).end ?? 20}" style="width:58px;padding:5px;" onchange="_flow.hours = { ..._flow.hours, end: Number(this.value) }; _flow._dirty = true"> h</div>
           ${flowLinesHtml()}
           ${flowDispatchHtml()}
-          <div class="integ-muted" style="margin-top:14px;">Arraste os blocos para organizar. Para ligar, puxe a bolinha da direita de um bloco até outro. Clique na ✕ da linha para desligar.</div>
+          <div class="integ-muted" style="margin-top:14px;">Arraste os blocos para organizar. Para ligar, puxe a bolinha da direita de um bloco até outro. Clique na ✕ da linha para desligar.</div>`}
         </aside>
         <div class="flow-canvas" id="flow-canvas">
           <div class="flow-world" id="flow-world"><svg class="flow-edges" id="flow-edges" width="6000" height="4000"></svg><div id="flow-nodes"></div></div>
@@ -12783,6 +12977,7 @@ function fitFlow() {
 function flowNodeSummary(n) {
   const d = n.data || {};
   const act = _flow.act;
+  if (isCloudFlow()) { const cs = cloudFlowSummary(n); if (cs !== null) return cs; }
   if (n.type === 'trigger') return `Quando o lead entrar em <b>${escapeHtml(autoStageLabel(act, d.stage))}</b>`;
   if (n.type === 'wait') return `Esperar <b>${Number(d.amount) || 0} ${FLOW_UNITS[d.unit] || 'horas'}</b>`;
   if (n.type === 'move') return d.stage ? `Mover para <b>${escapeHtml(autoStageLabel(act, d.stage))}</b>` : '<span style="color:var(--red);">Escolha a coluna</span>';
@@ -12795,6 +12990,8 @@ function flowNodeSummary(n) {
 }
 
 function flowNodeTitle(n) {
+  if (isCloudFlow() && n.type === 'message') return 'Modelo aprovado';
+  if (isCloudFlow() && n.type === 'wait') return 'Quando enviar';
   if (n.type === 'message') return FLOW_MEDIA[(n.data || {}).kind || 'text'] === 'Texto' ? 'Mensagem' : FLOW_MEDIA[(n.data || {}).kind];
   return { trigger: 'Gatilho', wait: 'Esperar', move: 'Mover card', condition: 'Respondeu?', ai: 'Agente de IA' }[n.type] || n.type;
 }
@@ -12920,7 +13117,14 @@ function addFlowNode(type, kind) {
   const c = document.getElementById('flow-canvas');
   const cx = (c.clientWidth / 2 - _flowView.x) / _flowView.z - FLOW_W / 2;
   const cy = (c.clientHeight / 2 - _flowView.y) / _flowView.z - 50;
-  const data = type === 'wait' ? { amount: 1, unit: 'h' } : type === 'message' ? { kind: kind || 'text', templates: [''] } : type === 'move' ? { stage: '' } : type === 'condition' ? { check: 'replied' } : {};
+  let data = type === 'wait' ? { amount: 1, unit: 'h' } : type === 'message' ? { kind: kind || 'text', templates: [''] } : type === 'move' ? { stage: '' } : type === 'condition' ? { check: 'replied' } : {};
+  if (isCloudFlow() && type === 'wait') {
+    const waits = _flow.nodes.filter(x => x.type === 'wait').map(x => x.data || {}).sort((a, b) => (a.day - b.day) || String(a.time).localeCompare(String(b.time)));
+    const last = waits[waits.length - 1];
+    const night = last && String(last.time) >= '12:00';
+    data = last ? { day: night ? Number(last.day) + 1 : Number(last.day), time: night ? '09:30' : '19:30' } : { day: 1, time: '09:30' };
+  }
+  if (isCloudFlow() && type === 'message') data = { kind: 'text', cloudTemplate: null };
   const n = { id: flowUid(), type, x: Math.round(cx / 10) * 10, y: Math.round(cy / 10) * 10, data };
   // Liga sozinho depois do bloco selecionado, se ele ainda não tiver saída.
   if (_flowSel && _flowSel !== n.id) {
@@ -13043,6 +13247,10 @@ function renderFlowInspector() {
   const act = _flow.act;
   const d = n.data || {};
   let html = `<div class="flow-insp-head"><span class="flow-node-icon" style="background:${FLOW_COLORS[n.type]}22;">${flowIcon(n.type === 'message' ? (d.kind || 'text') : n.type, FLOW_COLORS[n.type])}</span><b>${escapeHtml(flowNodeTitle(n))}</b><button class="btn-close-panel" style="margin-left:auto;" onclick="_flowSel = null; renderFlowNodes(); renderFlowInspector()" aria-label="Fechar">×</button></div>`;
+  if (isCloudFlow() && (n.type === 'wait' || n.type === 'message')) {
+    box.innerHTML = html + cloudFlowInspectorHtml(n) + `<button class="huv-btn" style="margin-top:16px;color:var(--red);border-color:var(--red);" onclick="deleteFlowNode('${n.id}')">Excluir bloco</button>`;
+    return;
+  }
   if (n.type === 'trigger') {
     html += `<label class="auto-label">Quando o lead entrar na coluna<select class="field-input" onchange="setFlowData('stage', this.value)">${autoStageOptions(act, d.stage)}</select></label>
       <div class="integ-muted" style="margin-top:8px;">Vale para leads novos e para cards arrastados ou movidos para essa coluna depois que a automação for salva.</div>
