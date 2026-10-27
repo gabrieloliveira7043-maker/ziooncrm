@@ -14422,7 +14422,7 @@ function onChatClientChange() {
     list.innerHTML = '<div class="chat-empty">Carregando conversas...</div>';
     _chatUnsub = window._fb.listenInboxChats(act, _chatLimit, (items, error) => {
       if (!items) { list.innerHTML = `<div class="chat-empty" style="color:var(--red);">Não foi possível carregar: ${escapeHtml(error && error.message || '')}</div>`; return; }
-      _chatItems = items.concat(Object.values(_chatExtra).filter(x => !items.some(i => i.id === x.id))).filter(chatLineVisible);
+      _chatItems = items.concat(Object.values(_chatExtra).filter(x => !items.some(i => i.id === x.id))).filter(chatVisibleFilter(act));
       renderChatList();
       renderChatHeader();
       const open = items.find(c => c.id === _chatOpenKey);
@@ -16770,6 +16770,19 @@ function chatLines(act) {
   return mine.length ? mine : all.slice(0, 0);
 }
 const chatLineVisible = c => { const ok = chatAllowedLineIds(); return !ok || ok.includes(c.line || waLineOfKey(c.id)); };
+// Número com mais de um atendente (ex.: API oficial): o login vê só as conversas cujo lead é dele (sem lead = visível).
+function chatVisibleFilter(act) {
+  let index = null;
+  return c => {
+    if (!chatLineVisible(c)) return false;
+    if (!myPersonKey() || c.isGroup) return true;
+    const line = c.line || waLineOfKey(c.id);
+    if (attNames((waLines(act).find(l => l.id === line) || {}).attendant).length < 2) return true;
+    index = index || chatLeadIndex(normalizeActValue(act));
+    const lead = chatLeadFor(c, index);
+    return !lead || personVisibleToMe(lead);
+  };
+}
 const waHasMultiple = act => waLines(act).length > 1;
 const waLineLabel = (act, id) => (waLines(act).find(l => l.id === (id || WA_MAIN)) || { label: 'Principal' }).label;
 const waLineOfKey = key => (String(key || '').match(/^([a-z0-9]{1,12})__/) || [])[1] || WA_MAIN;
@@ -19484,8 +19497,33 @@ function funnelScopeLines() {
 function leadVisibleToMe(lead) {
   const lines = funnelScopeLines();
   if (!lines) return true;
-  const line = leadAttendantLine(lead);
-  return !!line && lines.includes(line);
+  const cs = lead.cloudCadence || {};
+  const line = leadAttendantLine(lead) || (cs.chatKey ? waLineOfKey(cs.chatKey) : '');
+  return !!line && lines.includes(line) && personVisibleToMe(lead);
+}
+// Atendentes por pessoa: um número pode ter vários nomes ("Gustavo, Vitor Gabriel").
+const attNames = raw => String(raw || '').split(/\s*[,;\/]\s*/).map(n => n.trim()).filter(Boolean);
+const personKey = n => String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const samePerson = (a, b) => { a = personKey(a); b = personKey(b); return !!a && !!b && (a === b || a.split(' ')[0] === b.split(' ')[0]); };
+function myPersonKey() {
+  if (isAdmin) return '';
+  const p = window._fb && window._fb.getProfile && window._fb.getProfile();
+  return p && p.parentLogin ? personKey(p.personName || p.name) : '';
+}
+// Mesmo sorteio do servidor (seedIndex): sem nome guardado, o lead fica com a mesma pessoa que saiu na mensagem.
+function pickPerson(names, seed) {
+  if (names.length < 2) return names[0] || '';
+  let h = 0;
+  for (const ch of String(seed || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return names[h % names.length];
+}
+// Login de equipe: em número com mais de um atendente, só os leads da pessoa dele (pessoa desconhecida = visível).
+function personVisibleToMe(lead) {
+  const me = myPersonKey();
+  if (!me) return true;
+  const a = leadAttendant(lead);
+  if (!a || !a.multi || !a.person) return true;
+  return samePerson(a.person, me);
 }
 // Campo "Responsável" do formulário do card: automático (pelo WhatsApp da conversa) ou um número escolhido.
 function fillLeadResponsavel(act, lead) {
@@ -19511,11 +19549,22 @@ function leadNoWhatsApp(lead) {
   return !(Array.isArray(a.sent) && a.sent.length) && (a.log || []).some(x => /sem WhatsApp/i.test(String(x && x.text || '')));
 }
 function leadAttendant(lead) {
-  const line = leadAttendantLine(lead);
+  const cs = lead.cloudCadence || {};
+  const line = leadAttendantLine(lead) || (cs.chatKey ? waLineOfKey(cs.chatKey) : '');
   if (!line) return null;
   const l = waLines(lead.act).find(x => x.id === line);
   if (!l) return null;
-  return { id: line, name: l.attendant || l.label };
+  const names = attNames(l.attendant);
+  const multi = names.length > 1;
+  // Número com vários atendentes: a pessoa que saiu na cadência (ou o mesmo sorteio do servidor).
+  const person = !multi ? (names[0] || l.label) : (String(cs.attendant || '').trim() || (Array.isArray((lead.automation || {}).sent) && lead.automation.sent.length ? pickPerson(names, lead.id || lead.phone) : ''));
+  return { id: line, name: person || l.attendant || l.label, person, multi, api: /^api/.test(line) };
+}
+// Pessoas que atendem os números do filtro (nomes iguais em números diferentes viram uma só).
+function attendantPeople(lines) {
+  const out = [];
+  lines.forEach(l => (attNames(l.attendant).length ? attNames(l.attendant) : [l.label]).forEach(n => { if (!out.some(x => personKey(x) === personKey(n))) out.push(n); }));
+  return out;
 }
 let _attFilterAsked = {};
 function renderAttendantFilter(filterAct) {
@@ -19532,10 +19581,12 @@ function renderAttendantFilter(filterAct) {
   if (sumBtn) sumBtn.style.display = act && !scope && leadSummaryOn(act) ? '' : 'none';
   const bulkBtn = document.getElementById('btn-bulk-assign');
   if (bulkBtn) bulkBtn.style.display = act && !scope && waLines(act).length > 1 ? '' : 'none';
-  if (!act || lines.length < 2) { sel.style.display = 'none'; _crmAttendantFilter = 'all'; if (act && waLines(act).length > 1) loadFunnelChatLines(act); return; }
+  const me = myPersonKey();
+  const people = attendantPeople(lines).filter(n => !me || !scope || samePerson(n, me) || !lines.some(l => attNames(l.attendant).length > 1 && attNames(l.attendant).some(x => personKey(x) === personKey(n))));
+  if (!act || people.length < 2) { sel.style.display = 'none'; _crmAttendantFilter = 'all'; if (act && waLines(act).length > 1) loadFunnelChatLines(act); return; }
   loadFunnelChatLines(act);
-  if (_crmAttendantFilter !== 'all' && _crmAttendantFilter !== 'none' && !lines.some(l => l.id === _crmAttendantFilter)) _crmAttendantFilter = 'all';
-  sel.innerHTML = `<option value="all">Todos os atendentes</option>${lines.map(l => `<option value="${escapeHtml(l.id)}" ${_crmAttendantFilter === l.id ? 'selected' : ''}>${escapeHtml(l.attendant || l.label)}</option>`).join('')}<option value="none" ${_crmAttendantFilter === 'none' ? 'selected' : ''}>Sem responsável</option>`;
+  if (_crmAttendantFilter !== 'all' && _crmAttendantFilter !== 'none' && !people.some(n => personKey(n) === _crmAttendantFilter)) _crmAttendantFilter = 'all';
+  sel.innerHTML = `<option value="all">Todos os atendentes</option>${people.map(n => `<option value="${escapeHtml(personKey(n))}" ${_crmAttendantFilter === personKey(n) ? 'selected' : ''}>${escapeHtml(n)}</option>`).join('')}<option value="none" ${_crmAttendantFilter === 'none' ? 'selected' : ''}>Sem responsável</option>`;
   sel.style.display = '';
 }
 
@@ -19560,7 +19611,7 @@ function renderKanban() {
   }
   if (filterAct && _mqlFilter && _mqlFilter.act === normalizeActValue(filterAct)) leads = leads.filter(l => mqlLeadMatches(l, _mqlFilter));
   renderAttendantFilter(filterAct);
-  if (filterAct && _crmAttendantFilter !== 'all') leads = leads.filter(l => { const a = leadAttendant(l); return _crmAttendantFilter === 'none' ? !a : !!a && a.id === _crmAttendantFilter; });
+  if (filterAct && _crmAttendantFilter !== 'all') leads = leads.filter(l => { const a = leadAttendant(l); return _crmAttendantFilter === 'none' ? !a : !!a && personKey(a.person) === _crmAttendantFilter; });
   renderPipelineBar(filterAct);
   if (filterAct) loadColumnAutomations(filterAct);
   leads = sortCrmLeadsForKanban(leads, filterAct);
@@ -19760,7 +19811,7 @@ function renderKanban() {
       const autoChip = automationCardChip(lead);
       if (autoChip) chips.push(autoChip);
       const att = waLines(lead.act).length > 1 || (waLines(lead.act)[0] || {}).attendant ? leadAttendant(lead) : null;
-      if (att) chips.push(`<span class="kc-chip" style="background:var(--blue-dim);color:var(--blue);" title="Responsável: WhatsApp que atende este lead">${uiIco('user', 11)} ${escapeHtml(limitText(att.name, 24))}</span>`);
+      if (att) chips.push(`<span class="kc-chip" style="background:var(--blue-dim);color:var(--blue);" title="Responsável: ${att.api ? 'atendido pela API oficial' : 'WhatsApp que atende este lead'}">${uiIco('user', 11)} ${escapeHtml(limitText(att.name, 24))}${att.api ? ' · API' : ''}</span>`);
       if (lead.aiSummary && leadSummaryOn(lead.act)) chips.push(aiSummaryChip(lead.aiSummary));
       if (leadNoWhatsApp(lead)) chips.push(`<span class="kc-chip" style="background:rgba(248,113,113,.14);color:var(--red);" title="A automação tentou enviar e este número não tem WhatsApp. Corrija o telefone no card.">${uiIco('alert', 11)} Sem WhatsApp</span>`);
       if (lead.redeSocial && !String(lead.origem || '').toLowerCase().includes(String(lead.redeSocial).toLowerCase())) chips.push(`<span class="kc-chip">${escapeHtml(limitText(lead.redeSocial, 30))}</span>`);
