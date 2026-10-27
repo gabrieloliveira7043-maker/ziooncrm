@@ -16775,7 +16775,7 @@ function chatVisibleFilter(act) {
   let index = null;
   return c => {
     if (!chatLineVisible(c)) return false;
-    if (!myPersonKey() || c.isGroup) return true;
+    if (!myPersonKeys().length || c.isGroup) return true;
     const line = c.line || waLineOfKey(c.id);
     if (attNames((waLines(act).find(l => l.id === line) || {}).attendant).length < 2) return true;
     index = index || chatLeadIndex(normalizeActValue(act));
@@ -19505,11 +19505,15 @@ function leadVisibleToMe(lead) {
 const attNames = raw => String(raw || '').split(/\s*[,;\/]\s*/).map(n => n.trim()).filter(Boolean);
 const personKey = n => String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 const samePerson = (a, b) => { a = personKey(a); b = personKey(b); return !!a && !!b && (a === b || a.split(' ')[0] === b.split(' ')[0]); };
-function myPersonKey() {
-  if (isAdmin) return '';
+// Nomes do login: o dele e o atendente dos números só dele (ex.: login "Victor Gabriel", atendente "Vitor Gabriel").
+function myPersonKeys() {
+  if (isAdmin) return [];
   const p = window._fb && window._fb.getProfile && window._fb.getProfile();
-  return p && p.parentLogin ? personKey(p.personName || p.name) : '';
+  if (!p || !p.parentLogin) return [];
+  const own = (chatAllowedLineIds() || []).map(id => attNames((waLines(p.act).find(l => l.id === id) || {}).attendant)).filter(n => n.length === 1).map(n => n[0]);
+  return [p.personName || p.name].concat(own).map(personKey).filter(Boolean);
 }
+const isMe = (name, me) => me.some(k => samePerson(name, k));
 // Mesmo sorteio do servidor (seedIndex): sem nome guardado, o lead fica com a mesma pessoa que saiu na mensagem.
 function pickPerson(names, seed) {
   if (names.length < 2) return names[0] || '';
@@ -19519,11 +19523,11 @@ function pickPerson(names, seed) {
 }
 // Login de equipe: em número com mais de um atendente, só os leads da pessoa dele (pessoa desconhecida = visível).
 function personVisibleToMe(lead) {
-  const me = myPersonKey();
-  if (!me) return true;
+  const me = myPersonKeys();
+  if (!me.length) return true;
   const a = leadAttendant(lead);
   if (!a || !a.multi || !a.person) return true;
-  return samePerson(a.person, me);
+  return isMe(a.person, me);
 }
 // Campo "Responsável" do formulário do card: automático (pelo WhatsApp da conversa) ou um número escolhido.
 function fillLeadResponsavel(act, lead) {
@@ -19581,8 +19585,8 @@ function renderAttendantFilter(filterAct) {
   if (sumBtn) sumBtn.style.display = act && !scope && leadSummaryOn(act) ? '' : 'none';
   const bulkBtn = document.getElementById('btn-bulk-assign');
   if (bulkBtn) bulkBtn.style.display = act && !scope && waLines(act).length > 1 ? '' : 'none';
-  const me = myPersonKey();
-  const people = attendantPeople(lines).filter(n => !me || !scope || samePerson(n, me) || !lines.some(l => attNames(l.attendant).length > 1 && attNames(l.attendant).some(x => personKey(x) === personKey(n))));
+  const me = myPersonKeys();
+  const people = attendantPeople(lines).filter(n => !me.length || !scope || isMe(n, me) || !lines.some(l => attNames(l.attendant).length > 1 && attNames(l.attendant).some(x => personKey(x) === personKey(n))));
   if (!act || people.length < 2) { sel.style.display = 'none'; _crmAttendantFilter = 'all'; if (act && waLines(act).length > 1) loadFunnelChatLines(act); return; }
   loadFunnelChatLines(act);
   if (_crmAttendantFilter !== 'all' && _crmAttendantFilter !== 'none' && !people.some(n => personKey(n) === _crmAttendantFilter)) _crmAttendantFilter = 'all';
