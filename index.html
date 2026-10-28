@@ -14181,11 +14181,26 @@ async function renderIntegMcp(skipLoad) {
       </ol>
       <div class="integ-muted" style="margin-top:10px;">O Claude enxerga só o que o login usado na conexão pode ver. Para conectar outra pessoa da equipe, ela faz esses passos no Claude dela, com o login dela.</div>
       <div class="integ-muted" style="margin-top:8px;"><b>Deu "não foi possível conectar"?</b> Apague o conector na lista do Claude e adicione de novo. Se continuar, chame o suporte.</div>
+    </div>
+    <div class="integ-card">
+      <div class="integ-title" style="margin-bottom:4px;">Como conectar no app do Codex</div>
+      <div class="integ-muted" style="margin-bottom:10px;">Vale para o app do Codex no computador e para a extensão do Codex no VS Code e similares: eles usam a mesma configuração. Faz uma vez só, não precisa de chave.</div>
+      <ol class="mcp-steps">
+        <li><b>Copie o endereço</b> do servidor MCP lá em cima (botão <b>Copiar</b>).</li>
+        <li>No Codex, abra <b>Configurações</b> → <b>Servidores MCP</b> (em inglês: <i>Settings → MCP servers</i>).</li>
+        <li>Clique em <b>Adicionar servidor</b> (<i>Add server</i>).</li>
+        <li>Em <b>Nome</b>, escreva <b>${escapeHtml(MCP_SERVER_NAME)}</b>. Em tipo, escolha <b>Streamable HTTP</b>. Em <b>URL</b>, cole o endereço copiado. Salve.</li>
+        <li>Na lista de servidores, clique em <b>Autenticar</b> (<i>Authenticate</i>) no ${escapeHtml(MCP_SERVER_NAME)}. Abre no navegador a tela <b>"Conectar ao CRM"</b>: entre com o <b>seu login e senha do CRM</b> e clique em <b>Entrar e permitir</b>.</li>
+        <li>Pronto: volte ao Codex e peça em português, por exemplo <i>"quantos leads chegaram essa semana?"</i>. Se ele não enxergar o CRM, feche e abra o Codex de novo.</li>
+      </ol>
+      <div class="integ-muted" style="margin-top:10px;">Pelo terminal (Codex CLI) é o mesmo login, com dois comandos:</div>
+      ${code(`codex mcp add ${MCP_SERVER_NAME} --url ${url}\ncodex mcp login ${MCP_SERVER_NAME}`)}
+      <div class="integ-muted" style="margin-top:8px;"><b>Deu erro na autenticação?</b> Remova o servidor na lista do Codex e adicione de novo. Se continuar, use a chave (abaixo, em "outras formas").</div>
       <details class="mcp-adv" style="margin-top:14px;">
-        <summary>Claude Code, Codex e outros assistentes (para quem usa no computador)</summary>
+        <summary>Outras formas: Claude Code, Codex com chave e outros assistentes</summary>
         <div class="integ-muted" style="margin:12px 0 6px;"><b>Claude Code</b> (no terminal; ao usar, ele abre o login do CRM):</div>
         ${code(`claude mcp add --transport http ${MCP_SERVER_NAME} ${url}`)}
-        <div class="integ-muted" style="margin:12px 0 6px;"><b>Codex</b>: gere uma chave abaixo e coloque no arquivo <code>~/.codex/config.toml</code>:</div>
+        <div class="integ-muted" style="margin:12px 0 6px;"><b>Codex com chave</b> (se não puder usar o login pelo navegador): gere uma chave abaixo e coloque no arquivo <code>~/.codex/config.toml</code>:</div>
         ${code(`[mcp_servers.${MCP_SERVER_NAME.replace(/-/g, '_')}]\nurl = "${url}"\nbearer_token_env_var = "${MCP_KEY_ENV}"`)}
         <div class="integ-muted" style="margin:8px 0 6px;">e deixe a chave na variável de ambiente (no terminal, antes de abrir o Codex):</div>
         ${code(`export ${MCP_KEY_ENV}="${key}"`)}
