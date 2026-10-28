@@ -2835,6 +2835,19 @@ html:root .chat-pill.chat-sum-pill { display: none; }
 })();
 </script>
 <link rel="stylesheet" href="tema-novo.css?v=5">
+<link rel="stylesheet" href="layouts.css?v=1">
+<script>
+// Layout escolhido em Conta → Aparência (vidro / escuro quente): aplicado já aqui para não piscar o layout antigo.
+(function () {
+  try {
+    var p = JSON.parse(localStorage.getItem('crm_ui') || 'null');
+    if (!p || (p.theme !== 'vidro' && p.theme !== 'quente')) return;
+    var h = document.documentElement;
+    h.classList.add(p.theme === 'vidro' ? 'ui-vidro' : 'ui-quente', 'ui-top', p.calm ? 'ui-calm' : 'ui-anim');
+    h.style.setProperty('--ui-bg-img', 'url("' + (/^https:\/\//.test(p.bg || '') ? p.bg : '/fundos/' + (p.bg || 'por-do-sol') + '.jpg') + '")');
+  } catch (e) {}
+})();
+</script>
 <script src="icones.js?v=6"></script>
 <script src="cores.js?v=2"></script>
 </head>
@@ -3959,6 +3972,8 @@ html:root .chat-pill.chat-sum-pill { display: none; }
         <div style="font-size:13px; color:var(--muted); margin-bottom:28px;">Altere sua senha de acesso ao relatório.</div>
 
         <div id="conta-team" style="display:none;margin-bottom:24px;"></div>
+
+        <div id="ui-aparencia"></div>
 
         <div class="paleta-card">
           <div class="paleta-head"><i data-ico="palette" data-size="18"></i><div><div class="paleta-titulo">Cores do CRM</div><div class="paleta-sub">Escolha a cor e onde ela aparece. A escolha fica guardada neste aparelho e vale no tema claro e no escuro.</div></div></div>
@@ -23108,6 +23123,7 @@ function onCrmClientChange() {
 </script>
 <script src="ajuda-ia.js?v=3" defer></script>
 <script src="modelos.js?v=2" defer></script>
+<script src="layouts.js?v=1"></script>
 </body>
 </html>
 
