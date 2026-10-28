@@ -50,6 +50,19 @@
     document.body.insertBefore(d, document.body.firstChild);
   }
 
+  // Botão claro/escuro do topo: lua acesa (preenchida, na cor de destaque) = modo noturno ligado; sol = modo claro.
+  function syncThemeBtn() {
+    var b = document.getElementById('ui-theme');
+    if (!b) return;
+    var dark = H.getAttribute('data-theme') !== 'light';
+    b.classList.toggle('is-dark', dark);
+    b.setAttribute('aria-pressed', dark ? 'true' : 'false');
+    b.title = dark ? 'Modo noturno ligado (clique para o modo claro)' : 'Modo claro ligado (clique para o modo noturno)';
+    b.innerHTML = dark
+      ? '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.2M12 19.8V22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M2 12h2.2M19.8 12H22M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6"/></svg>';
+  }
+
   // ---------- Itens do menu original ----------
   function navItems() {
     var out = [];
@@ -93,7 +106,9 @@
     dock.id = 'ui-dock';
     document.body.appendChild(dock);
     document.getElementById('ui-bell').onclick = function () { if (window.openNotificationsCenter) window.openNotificationsCenter(); };
-    document.getElementById('ui-theme').onclick = function () { if (window.toggleHuvenTheme) window.toggleHuvenTheme(); };
+    document.getElementById('ui-theme').onclick = function () { if (window.toggleHuvenTheme) window.toggleHuvenTheme(); syncThemeBtn(); };
+    syncThemeBtn();
+    if (!syncThemeBtn.obs) { syncThemeBtn.obs = new MutationObserver(syncThemeBtn); syncThemeBtn.obs.observe(H, { attributes: true, attributeFilter: ['data-theme'] }); }
     document.getElementById('ui-me').onclick = function (ev) { ev.stopPropagation(); openMe(ev.currentTarget); };
     // Troca de cliente: o mesmo botão do menu lateral passa para o topo (e volta ao sair do layout).
     var cs = document.getElementById('client-switch');
