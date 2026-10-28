@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+<script>
+// Enquanto o CRM ainda não sabe quem está logado, a tela fica escondida (sem piscar o menu completo e "Todos os clientes").
+document.documentElement.classList.add('crm-booting');
+setTimeout(function () { document.documentElement.classList.remove('crm-booting'); }, 8000);
+</script>
+<style>
+html.crm-booting body > *:not(#login-overlay):not(.ui-bg):not(#toast-container) { visibility: hidden !important; }
+html.crm-booting body::after { content: ""; position: fixed; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; border: 3px solid rgba(128,128,128,.25); border-top-color: rgba(128,128,128,.8); animation: crm-boot-spin .8s linear infinite; z-index: 99999; }
+@keyframes crm-boot-spin { to { transform: rotate(360deg); } }
+</style>
 <meta charset="UTF-8">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="zioon-192.png">
@@ -8119,7 +8129,13 @@ function subExtraPermsHtml(perms) {
   perms = perms || {};
   return `<div class="sub-views-head"><span>Permissões extras</span></div>
     <label class="sub-view"><input type="checkbox" class="sub-ads-manage" ${perms.adsManage ? 'checked' : ''}><span class="sub-box"></span>Dashboard: pausar e ativar anúncios na Meta</label>
-    <label class="sub-view"><input type="checkbox" class="sub-mcp" ${perms.mcp ? 'checked' : ''}><span class="sub-box"></span>Conectar o CRM no Claude / Codex (MCP)</label>`;
+    <label class="sub-view"><input type="checkbox" class="sub-mcp" ${perms.mcp ? 'checked' : ''} onchange="if (this.checked) subEnsureView(this, 'integracoes')"><span class="sub-box"></span>Conectar o CRM no Claude / Codex (MCP) <small style="font-weight:400;color:var(--muted);">(libera junto a área Integrações, onde fica o passo a passo)</small></label>`;
+}
+// O MCP fica em Integrações → MCP: liberar o MCP marca junto a área Integrações.
+function subEnsureView(el, view) {
+  const box = el.closest('.sub-item, .sub-new');
+  const input = box && box.querySelector(`.sub-views:not(.sub-chatlines) input[value="${view}"]`);
+  if (input) input.checked = true;
 }
 function readSubExtraPerms(box) {
   const a = box.querySelector('.sub-ads-manage'), m = box.querySelector('.sub-mcp');
@@ -8330,6 +8346,7 @@ async function saveSubLogin(login, btn) {
   if (!views.length) return subMsg(btn, 'Marque pelo menos uma área.', false);
   if (item.querySelector('.sub-chatlines') && !item.querySelector('.sub-chatlines input:checked')) return subMsg(btn, 'Marque pelo menos um WhatsApp para o Chat.', false);
   const extra = readSubExtraPerms(item);
+  if (extra.mcp && !views.includes('integracoes')) { views.push('integracoes'); subEnsureView(btn, 'integracoes'); }
   const ok = await withSaveFeedback(btn, () => window._fb.updateSubLogin(login, name, { views, chatLines, funnelScope, ...extra }));
   if (!ok) return;
   const sl = SUB_LOGINS.find(x => x.login === login);
@@ -23539,13 +23556,19 @@ function refreshLeadsAfterLogin() {
   });
 }
 
+// A tela aparece quando o carregamento do login termina, mesmo se algo falhar no meio.
 async function restoreSession() {
+  try { return await restoreSessionInner(); }
+  finally { setTimeout(() => document.documentElement.classList.remove('crm-booting'), 400); }
+}
+async function restoreSessionInner() {
   if (!window._fbReady) {
     await new Promise(resolve => window.addEventListener('fbready', resolve, { once: true }));
   }
   const profile = await window._fb.restoreProfile();
   if (!profile) {
     document.getElementById('login-overlay').style.display = 'flex';
+    document.documentElement.classList.remove('crm-booting');
     return false;
   }
   applyProfileLocally(profile);
@@ -23575,6 +23598,8 @@ async function restoreSession() {
   syncMobileFilters(document.querySelector('.content').style.display !== 'none');
   updateSidebarForUser();
   refreshLeadsAfterLogin();
+  // Mostra a tela depois de aplicar o login e voltar para a última tela aberta.
+  setTimeout(() => document.documentElement.classList.remove('crm-booting'), 400);
   return true;
 }
 
@@ -23671,6 +23696,10 @@ function userAllowedViews() {
 function userCanView(view) {
   if (view === 'ajuda' || view === 'conta') return true;
   const v = userAllowedViews();
+  if (v && view === 'integracoes') {
+    const p = window._fb && window._fb.getProfile && window._fb.getProfile();
+    if (p && p.perms && p.perms.mcp) return true; // MCP liberado: Integrações → MCP precisa abrir
+  }
   return !v || v.includes(view);
 }
 function firstAllowedView() {
