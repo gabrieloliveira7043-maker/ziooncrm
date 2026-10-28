@@ -281,6 +281,38 @@ tr:hover td { background: var(--surface2); }
 }
 .status-pill.active { background: var(--green-dim); color: var(--green); }
 .status-pill.paused { background: var(--amber-dim); color: var(--amber); }
+/* Calendário */
+.cal-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+.cal-nav { display:flex; gap:4px; }
+.cal-title { font-weight:700; flex:1; min-width:160px; }
+.cal-modes { display:flex; gap:4px; }
+.cal-who { font-size:12px; margin-bottom:8px; }
+.cal-grid { border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--surface); }
+.cal-head, .cal-body { display:grid; grid-template-columns:52px repeat(var(--cal-cols), minmax(0, 1fr)); }
+.cal-head { border-bottom:1px solid var(--border); }
+.cal-head-day { padding:8px 4px; text-align:center; font-size:12px; font-weight:700; text-transform:capitalize; color:var(--muted); }
+.cal-head-day.today { color:var(--accent); }
+.cal-body { max-height:62vh; overflow-y:auto; position:relative; }
+.cal-hours { border-right:1px solid var(--border); }
+.cal-hour { font-size:11px; color:var(--muted2, var(--muted)); text-align:right; padding:2px 6px 0 0; box-sizing:border-box; }
+.cal-col { position:relative; border-right:1px solid var(--border); }
+.cal-col:last-child { border-right:0; }
+.cal-col.today { background:rgba(201,162,74,.05); }
+.cal-slot { position:absolute; left:0; right:0; border-top:1px solid var(--border); opacity:.6; }
+.cal-now { position:absolute; left:0; right:0; border-top:2px solid var(--red); z-index:2; }
+.cal-ev { position:absolute; z-index:1; background:var(--accent); color:#111; border-radius:6px; padding:2px 5px; font-size:11.5px; line-height:1.25; overflow:hidden; cursor:pointer; box-sizing:border-box; box-shadow:0 1px 2px rgba(0,0,0,.25); }
+.cal-ev b { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cal-ev span { opacity:.8; font-size:10.5px; }
+.cal-ev.declined { opacity:.45; text-decoration:line-through; }
+.cal-allday { background:var(--accent); color:#111; border-radius:5px; padding:1px 5px; margin:2px; font-size:11px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cal-list-day { margin-bottom:12px; }
+.cal-list-date { font-weight:700; text-transform:capitalize; margin-bottom:4px; color:var(--muted); font-size:13px; }
+.cal-list-date.today { color:var(--accent); }
+.cal-list-ev { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:var(--surface); margin-bottom:6px; cursor:pointer; }
+.cal-list-time { font-size:12.5px; color:var(--muted); white-space:nowrap; min-width:92px; }
+.cal-lead-tag { margin-left:6px; font-size:10.5px; padding:1px 6px; border-radius:6px; background:rgba(96,165,250,.14); color:#60a5fa; }
+@media (max-width: 700px) { .cal-head, .cal-body { grid-template-columns:40px repeat(var(--cal-cols), minmax(0, 1fr)); } .cal-head-day { font-size:10.5px; } .cal-ev { font-size:10.5px; } }
+
 .meta-toggle { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; cursor: pointer; font: inherit; color: inherit; }
 .meta-toggle:disabled { opacity: .5; cursor: wait; }
 .meta-toggle-act { font-size: 11px; color: var(--muted); text-decoration: underline; opacity: .75; }
@@ -2862,6 +2894,7 @@ html:root .chat-pill.chat-sum-pill { display: none; }
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('report'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 15l4-4 3 3 5-6"/></svg><span>Dashboard</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('analise'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6M12 2v3"/></svg><span>Atendimento</span></button>
     <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); switchView('clientes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16M9 7h2M13 7h2M9 11h2M13 11h2"/></svg><span>Clientes</span></button>
+    <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('calendario'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span>Calendário</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('automacoes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM19 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM5 7v4a4 4 0 0 0 4 4h6a4 4 0 0 1 4 4M19 3v6M16 6h6"/></svg><span>Automações</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('prospeccao'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6M11 8v6"/></svg><span>Prospecção</span></button>
     <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); switchView('agenteia'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 4h6M9 14h.01M15 14h.01M2 14h2M20 14h2"/></svg><span>Agente de IA</span></button>
@@ -2951,6 +2984,10 @@ html:root .chat-pill.chat-sum-pill { display: none; }
         <div class="nav-item" id="nav-contatos" onclick="if(window.abrirContatos) abrirContatos(); else switchView('contatos')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="23" y1="11" x2="17" y2="11"/><line x1="20" y1="8" x2="20" y2="14"/></svg>
           Contatos
+        </div>
+        <div class="nav-item" id="nav-calendario" onclick="switchView('calendario')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>
+          Calendário
         </div>
         <div class="nav-item" id="nav-automacoes" onclick="switchView('automacoes')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM19 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM5 7v4a4 4 0 0 0 4 4h6a4 4 0 0 1 4 4M19 3v6M16 6h6"/></svg>
@@ -3510,6 +3547,7 @@ html:root .chat-pill.chat-sum-pill { display: none; }
         <input type="hidden" id="lead-id">
         <div class="modal-footer">
           <button class="modal-btn-cancel" onclick="closeLeadModal()">Cancelar</button>
+          <button class="modal-btn-cancel" id="btn-lead-meeting" style="display:none;" onclick="openCalForLead(document.getElementById('lead-id').value)" title="Marcar uma reunião com este lead na sua agenda Google">Agendar reunião</button>
           <button class="modal-btn-save" onclick="saveLead()">Salvar lead</button>
         </div>
       </div>
@@ -3977,6 +4015,7 @@ html:root .chat-pill.chat-sum-pill { display: none; }
 
     <!-- Agente de IA (card do agente do cliente) -->
     <div id="agenteia-view" class="huv-view" style="display:none;"><div id="agenteia-body"></div></div>
+    <div id="calendario-view" class="huv-view" style="display:none;"><div id="calendario-body"></div></div>
 
     <!-- Prospecção View -->
     <div id="prospeccao-view" class="huv-view" style="display:none;"><div id="prospeccao-body"></div></div>
@@ -7739,7 +7778,7 @@ function switchView(view) {
     showToast('Seu login não tem acesso a esta área.', 'warning');
     view = firstAllowedView();
   }
-  ['report','analise','clientes','automacoes','agenteia','capi','historico','instagram','posts','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes','modelos'].forEach(v => {
+  ['report','analise','clientes','automacoes','agenteia','calendario','capi','historico','instagram','posts','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes','modelos'].forEach(v => {
     const el = document.getElementById('nav-' + v);
     if (el) el.classList.toggle('active', v === view);
   });
@@ -7766,6 +7805,9 @@ function switchView(view) {
   const agenteView = document.getElementById('agenteia-view');
   if (agenteView) agenteView.style.display = view === 'agenteia' ? 'block' : 'none';
   if (view === 'agenteia') renderAgenteIaView();
+  const calView = document.getElementById('calendario-view');
+  if (calView) calView.style.display = view === 'calendario' ? 'block' : 'none';
+  if (view === 'calendario') renderCalendarioView(true);
   const prospeccaoView = document.getElementById('prospeccao-view');
   if (prospeccaoView) prospeccaoView.style.display = view === 'prospeccao' ? 'block' : 'none';
   if (view === 'prospeccao') renderProspeccaoView();
@@ -17301,6 +17343,317 @@ function aiChecks(items, selected, cls) {
     `<label class="sub-view"><input type="checkbox" value="${escapeHtml(String(v))}" ${selected.map(String).includes(String(v)) ? 'checked' : ''}><span class="sub-box"></span>${escapeHtml(label)}</label>`).join('')}</div>`;
 }
 
+
+// ===== CALENDÁRIO: agenda Google de cada login (e da equipe, para o login principal) =====
+let _cal = { uid: '', mode: '', date: '', status: null, events: [], loading: false, error: '', act: '' };
+const CAL_H0 = 7, CAL_H1 = 22, CAL_ROW = 46;
+const calYmd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const calParse = ymd => { const [y, m, d] = String(ymd).split('-').map(Number); return new Date(y, m - 1, d); };
+const calAddDays = (ymd, n) => { const d = calParse(ymd); d.setDate(d.getDate() + n); return calYmd(d); };
+const calWeekStart = ymd => { const d = calParse(ymd); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return calYmd(d); };
+const calTime = iso => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+const calDayLabel = (ymd, long) => calParse(ymd).toLocaleDateString('pt-BR', long ? { weekday: 'long', day: '2-digit', month: 'long' } : { weekday: 'short', day: '2-digit', month: '2-digit' });
+const CAL_RSVP = { accepted: ['confirmou', 'var(--green)'], declined: ['recusou', 'var(--red)'], tentative: ['talvez', 'var(--amber)'], needsAction: ['sem resposta', 'var(--muted)'] };
+function calRange() {
+  const m = _cal.mode;
+  if (m === 'dia') return [_cal.date, calAddDays(_cal.date, 1)];
+  if (m === 'semana') { const s = calWeekStart(_cal.date); return [s, calAddDays(s, 7)]; }
+  return [_cal.date, calAddDays(_cal.date, 14)];
+}
+function calViewingMe() { return !_cal.uid || (_cal.status && _cal.uid === _cal.status.me.uid); }
+function calPerson() {
+  const st = _cal.status || {};
+  if (calViewingMe()) return st.me || {};
+  return (st.team || []).find(p => p.uid === _cal.uid) || {};
+}
+async function renderCalendarioView(reload) {
+  const box = document.getElementById('calendario-body');
+  if (!box) return;
+  if (!_cal.mode) _cal.mode = window.innerWidth < 760 ? 'lista' : 'semana';
+  if (!_cal.date) _cal.date = calYmd(new Date());
+  const act = isAdmin ? (flowAct() || '') : '';
+  if (!_cal.status || reload || _cal.act !== act) {
+    _cal.act = act;
+    box.innerHTML = '<div class="integ-muted" style="padding:20px;">Carregando a agenda...</div>';
+    try { _cal.status = await window._fb.adminApi('/cal/status', { act }); }
+    catch (e) { box.innerHTML = `<div class="integ-error" style="margin:20px;">Erro: ${escapeHtml(e.message)}</div>`; return; }
+    if (!_cal.uid || (!calViewingMe() && !(_cal.status.team || []).some(p => p.uid === _cal.uid))) _cal.uid = _cal.status.me.uid;
+  }
+  const st = _cal.status;
+  const person = calPerson();
+  const team = st.team || [];
+  const [from, to] = calRange();
+  const title = _cal.mode === 'dia' ? calDayLabel(_cal.date, true) : _cal.mode === 'semana' ? `${calParse(from).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} – ${calParse(calAddDays(to, -1)).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}` : `Próximos 14 dias a partir de ${calParse(from).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}`;
+  const selector = team.length ? `<select class="field-input" style="width:auto;padding:7px 10px;" onchange="_cal.uid=this.value; renderCalendarioView()">
+      <option value="${escapeHtml(st.me.uid)}" ${calViewingMe() ? 'selected' : ''}>Minha agenda</option>
+      ${team.map(p => `<option value="${escapeHtml(p.uid)}" ${_cal.uid === p.uid ? 'selected' : ''}>${escapeHtml(p.name)}${p.connected ? '' : ' (não conectou)'}</option>`).join('')}</select>` : '';
+  const head = `<div class="huv-header" style="margin-bottom:12px;">
+      <div style="flex:1;min-width:220px;">
+        <div class="huv-page-title" style="color:var(--text);">Calendário</div>
+        <div class="integ-muted" style="margin-top:4px;">Sua agenda Google dentro do CRM: veja as reuniões, crie convites com link do Meet e ligue a reunião ao lead. Pelo Claude ou Codex (MCP) também dá para pedir para marcar.</div>
+      </div>
+      ${person.connected ? `<button class="btn-add-lead" style="height:40px;padding:0 16px;" onclick="openCalNew()">+ Nova reunião</button>` : ''}
+    </div>`;
+  if (!st.configured) { box.innerHTML = head + '<div class="integ-card"><div class="integ-muted" style="color:var(--red);">O servidor ainda não tem as chaves do Google configuradas.</div></div>'; return; }
+  const toolbar = `<div class="cal-toolbar">
+      ${selector}
+      <div class="cal-nav"><button class="integ-btn" onclick="calMove(-1)" title="Anterior">‹</button><button class="integ-btn" onclick="calMove(0)">Hoje</button><button class="integ-btn" onclick="calMove(1)" title="Próximo">›</button></div>
+      <div class="cal-title">${escapeHtml(title)}</div>
+      <div class="cal-modes">${[['dia', 'Dia'], ['semana', 'Semana'], ['lista', 'Lista']].map(([k, l]) => `<button class="integ-tab ${_cal.mode === k ? 'active' : ''}" onclick="_cal.mode='${k}'; renderCalendarioView()">${l}</button>`).join('')}</div>
+    </div>`;
+  if (!person.connected) {
+    const mine = calViewingMe();
+    box.innerHTML = head + (team.length ? toolbar : '') + `<div class="integ-card" style="max-width:620px;">
+      <div class="integ-title" style="margin-bottom:6px;">${mine ? (person.expired ? 'A conexão com o Google expirou' : 'Conecte a sua agenda Google') : escapeHtml(person.name || 'Essa pessoa') + ' ainda não conectou a agenda'}</div>
+      <div class="integ-muted" style="margin-bottom:12px;">${mine ? 'O CRM passa a mostrar as suas reuniões e a criar convites na sua agenda (com link do Meet). O que você marcar aqui aparece no Google Agenda e vice-versa. Cada pessoa da equipe conecta a própria conta.' : 'Peça para essa pessoa abrir a aba Calendário com o próprio login e clicar em "Conectar minha conta Google".'}</div>
+      ${mine ? `<button class="integ-btn primary" onclick="calConnect()">${uiIco('calendar', 14)} Conectar minha conta Google</button>` : ''}
+    </div>`;
+    return;
+  }
+  box.innerHTML = head + toolbar + `<div class="cal-who integ-muted">${uiIco('calendar', 13)} ${escapeHtml(person.email || person.name || '')}${calViewingMe() ? ` · <a onclick="calDisconnect()" style="cursor:pointer;text-decoration:underline;">desconectar</a>` : ''}</div><div id="cal-grid"><div class="integ-muted" style="padding:16px;">Carregando reuniões...</div></div>`;
+  try {
+    const r = await window._fb.adminApi('/cal/events', { uid: _cal.uid, from: calParse(from).toISOString(), to: calParse(to).toISOString() });
+    _cal.events = r.events || [];
+  } catch (e) {
+    const g = document.getElementById('cal-grid');
+    if (g) g.innerHTML = `<div class="integ-error">Erro: ${escapeHtml(e.message)}</div>`;
+    if (/expirou|não está conectada/i.test(e.message)) { _cal.status = null; }
+    return;
+  }
+  calRenderGrid();
+}
+function calMove(dir) {
+  if (!dir) _cal.date = calYmd(new Date());
+  else _cal.date = calAddDays(_cal.date, dir * (_cal.mode === 'dia' ? 1 : _cal.mode === 'semana' ? 7 : 14));
+  renderCalendarioView();
+}
+function calEventsOn(ymd) {
+  return _cal.events.filter(e => e.allDay ? (ymd >= e.start && ymd < e.end) : calYmd(new Date(e.start)) === ymd);
+}
+function calRenderGrid() {
+  const g = document.getElementById('cal-grid');
+  if (!g) return;
+  const [from, to] = calRange();
+  const days = [];
+  for (let d = from; d < to; d = calAddDays(d, 1)) days.push(d);
+  const today = calYmd(new Date());
+  if (_cal.mode === 'lista') {
+    const withEv = days.filter(d => calEventsOn(d).length);
+    g.innerHTML = withEv.length ? withEv.map(d => `<div class="cal-list-day"><div class="cal-list-date ${d === today ? 'today' : ''}">${escapeHtml(calDayLabel(d, true))}</div>
+      ${calEventsOn(d).map(e => `<div class="cal-list-ev" onclick="openCalEvent('${escapeJsString(e.id)}')">
+        <span class="cal-list-time">${e.allDay ? 'Dia todo' : calTime(e.start) + ' – ' + calTime(e.end)}</span>
+        <span style="flex:1;min-width:0;"><b>${escapeHtml(e.title)}</b>${e.attendees.filter(a => !a.self).length ? `<span class="integ-muted"> · ${e.attendees.filter(a => !a.self).length} convidado(s)</span>` : ''}${e.leadDocId ? '<span class="cal-lead-tag">lead</span>' : ''}</span>
+        ${e.meet ? `<a class="integ-btn" href="${escapeHtml(e.meet)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Meet</a>` : ''}
+      </div>`).join('')}</div>`).join('') : '<div class="integ-empty">Nenhuma reunião neste período.</div>';
+    return;
+  }
+  const hours = [];
+  for (let h = CAL_H0; h < CAL_H1; h++) hours.push(h);
+  const allDay = days.map(d => calEventsOn(d).filter(e => e.allDay));
+  const hasAllDay = allDay.some(l => l.length);
+  const nowLine = d => {
+    if (d !== today) return '';
+    const n = new Date(), min = n.getHours() * 60 + n.getMinutes() - CAL_H0 * 60;
+    return min >= 0 && min <= (CAL_H1 - CAL_H0) * 60 ? `<div class="cal-now" style="top:${min / 60 * CAL_ROW}px;"></div>` : '';
+  };
+  const col = d => {
+    const evs = calEventsOn(d).filter(e => !e.allDay).map(e => {
+      const s = new Date(e.start), en = new Date(e.end);
+      const a = Math.max(0, s.getHours() * 60 + s.getMinutes() - CAL_H0 * 60);
+      const b = Math.min((CAL_H1 - CAL_H0) * 60, (calYmd(en) !== d ? 24 * 60 : en.getHours() * 60 + en.getMinutes()) - CAL_H0 * 60);
+      return { e, a, b: Math.max(b, a + 20) };
+    }).sort((x, y) => x.a - y.a);
+    // Reuniões que se sobrepõem dividem a largura da coluna.
+    const lanes = [];
+    evs.forEach(x => { let i = lanes.findIndex(end => end <= x.a); if (i < 0) { i = lanes.length; lanes.push(0); } lanes[i] = x.b; x.lane = i; });
+    evs.forEach(x => { x.n = Math.max(1, ...evs.filter(y => y.a < x.b && y.b > x.a).map(y => y.lane + 1)); });
+    return `<div class="cal-col ${d === today ? 'today' : ''}" style="height:${(CAL_H1 - CAL_H0) * CAL_ROW}px;" ondblclick="calNewAt('${d}', event)">
+      ${hours.map(h => `<div class="cal-slot" style="top:${(h - CAL_H0) * CAL_ROW}px;height:${CAL_ROW}px;"></div>`).join('')}
+      ${nowLine(d)}
+      ${evs.map(x => `<div class="cal-ev ${x.e.myStatus === 'declined' ? 'declined' : ''}" style="top:${x.a / 60 * CAL_ROW}px;height:${Math.max(20, (x.b - x.a) / 60 * CAL_ROW - 2)}px;left:calc(${x.lane / x.n * 100}% + 2px);width:calc(${100 / x.n}% - 4px);" onclick="openCalEvent('${escapeJsString(x.e.id)}')" title="${escapeHtml(x.e.title)}">
+        <b>${escapeHtml(x.e.title)}</b><span>${calTime(x.e.start)}${x.b - x.a >= 45 ? ' – ' + calTime(x.e.end) : ''}</span></div>`).join('')}
+    </div>`;
+  };
+  g.innerHTML = `<div class="cal-grid" style="--cal-cols:${days.length};">
+    <div class="cal-head"><div></div>${days.map(d => `<div class="cal-head-day ${d === today ? 'today' : ''}">${escapeHtml(calDayLabel(d))}</div>`).join('')}</div>
+    ${hasAllDay ? `<div class="cal-head"><div class="cal-hour">dia todo</div>${allDay.map(l => `<div>${l.map(e => `<div class="cal-allday" onclick="openCalEvent('${escapeJsString(e.id)}')">${escapeHtml(e.title)}</div>`).join('')}</div>`).join('')}</div>` : ''}
+    <div class="cal-body"><div class="cal-hours">${hours.map(h => `<div class="cal-hour" style="height:${CAL_ROW}px;">${String(h).padStart(2, '0')}:00</div>`).join('')}</div>${days.map(col).join('')}</div>
+  </div>
+  <div class="integ-muted" style="margin-top:6px;font-size:12px;">Dica: dois cliques num horário vazio criam uma reunião ali.</div>`;
+  const body = g.querySelector('.cal-body');
+  if (body && !_cal.scrolled) { body.scrollTop = Math.max(0, (8 - CAL_H0) * CAL_ROW); }
+}
+function calNewAt(d, ev) {
+  const r = ev.currentTarget.getBoundingClientRect();
+  const min = Math.floor((ev.clientY - r.top) / CAL_ROW * 2) * 30 + CAL_H0 * 60;
+  openCalNew({ date: d, time: `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}` });
+}
+async function calConnect() {
+  try {
+    const r = await window._fb.adminApi('/cal/connect-url', {});
+    const w = window.open(r.url, 'huvengcal', 'width=560,height=720');
+    if (!w) return showToast('O navegador bloqueou a janela. Libere pop-ups para o CRM e tente de novo.', 'warning', 7000);
+    const onMsg = ev => {
+      if (!ev.data || ev.data.huvenGcal === undefined) return;
+      window.removeEventListener('message', onMsg);
+      showToast(ev.data.msg || (ev.data.huvenGcal ? 'Agenda conectada.' : 'Não conectou.'), ev.data.huvenGcal ? 'success' : 'warning', 8000);
+      renderCalendarioView(true);
+    };
+    window.addEventListener('message', onMsg);
+    const t = setInterval(() => { if (w.closed) { clearInterval(t); setTimeout(() => renderCalendarioView(true), 800); } }, 1000);
+  } catch (e) { showToast('Erro: ' + e.message, 'error', 7000); }
+}
+async function calDisconnect() {
+  if (!await showConfirm('O CRM deixa de ver a sua agenda Google. As reuniões continuam na sua agenda.', 'Desconectar agenda', 'Desconectar', true)) return;
+  try { await window._fb.adminApi('/cal/disconnect', {}); showToast('Agenda desconectada.', 'success'); renderCalendarioView(true); }
+  catch (e) { showToast(e.message, 'error'); }
+}
+function calLeadsForPick() {
+  const act = isAdmin ? (flowAct() || '') : normalizeActValue((window._fb.getProfile() || {}).act);
+  return (getLeads() || []).filter(l => (!act || leadMatchesClient(l, act)) && l._docId && (typeof leadVisibleToMe !== 'function' || leadVisibleToMe(l)));
+}
+// Nova reunião. pre: { date, time, leadId }
+function openCalNew(pre) {
+  pre = pre || {};
+  const st = _cal.status || { me: {}, team: [] };
+  const lead = pre.leadId ? (getLeads() || []).find(l => l.id === pre.leadId) : null;
+  const owners = [st.me].concat((st.team || []).filter(p => p.connected)).filter(p => p && p.connected);
+  if (!owners.length) return showToast('Conecte a sua agenda Google na aba Calendário primeiro.', 'warning', 6000);
+  const ownerSel = owners.length > 1 ? `<label class="field-label">Agenda de</label><select class="field-input" id="cal-n-owner">${owners.map(p => `<option value="${escapeHtml(p.uid)}" ${p.uid === (_cal.uid || st.me.uid) ? 'selected' : ''}>${p.uid === st.me.uid ? 'Minha agenda' : escapeHtml(p.name)}</option>`).join('')}</select>` : `<input type="hidden" id="cal-n-owner" value="${escapeHtml(owners[0].uid)}">`;
+  const now = new Date(); now.setMinutes(now.getMinutes() < 30 ? 30 : 60, 0, 0);
+  const leads = calLeadsForPick();
+  openHuvenModal('Nova reunião', `
+    ${ownerSel}
+    <label class="field-label">Título</label><input class="field-input" id="cal-n-title" value="${escapeHtml(lead ? 'Reunião com ' + (lead.name || '') : '')}" placeholder="Ex.: Apresentação da proposta">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <label style="flex:1;min-width:130px;"><span class="field-label">Dia</span><input type="date" class="field-input" id="cal-n-date" value="${escapeHtml(pre.date || calYmd(now))}" onchange="calFreeHint()"></label>
+      <label style="flex:1;min-width:100px;"><span class="field-label">Hora</span><input type="time" class="field-input" id="cal-n-time" step="300" value="${escapeHtml(pre.time || now.toTimeString().slice(0, 5))}"></label>
+      <label style="flex:1;min-width:110px;"><span class="field-label">Duração</span><select class="field-input" id="cal-n-min" onchange="calFreeHint()">${[15, 30, 45, 60, 90, 120].map(m => `<option value="${m}" ${m === 30 ? 'selected' : ''}>${m < 60 ? m + ' min' : (m / 60) + ' h'}</option>`).join('')}</select></label>
+    </div>
+    <div id="cal-n-free" class="integ-muted" style="font-size:12px;margin:4px 0 6px;"><a style="cursor:pointer;text-decoration:underline;" onclick="calFreeHint(true)">Ver horários livres neste dia</a></div>
+    <label class="field-label">Lead do funil (opcional)</label>
+    <input class="field-input" id="cal-n-lead" list="cal-n-leads" placeholder="Digite o nome do lead" value="${escapeHtml(lead ? (lead.name || '') + (lead.phone ? ' · ' + lead.phone : '') : '')}" oninput="calLeadPicked()">
+    <datalist id="cal-n-leads">${leads.slice(0, 1500).map(l => `<option value="${escapeHtml((l.name || 'Lead') + (l.phone ? ' · ' + l.phone : ''))}"></option>`).join('')}</datalist>
+    <input type="hidden" id="cal-n-leadid" value="${escapeHtml(lead ? lead._docId || '' : '')}">
+    <label class="field-label">Convidados (e-mails, separados por vírgula)</label>
+    <input class="field-input" id="cal-n-guests" placeholder="cliente@empresa.com, colega@empresa.com" value="${escapeHtml(lead && lead.email ? lead.email : '')}">
+    <label class="field-label">Descrição (opcional)</label>
+    <textarea class="field-input" id="cal-n-desc" rows="3" placeholder="Pauta, link, observações"></textarea>
+    <label class="integ-toggle" style="margin-top:8px;"><input type="checkbox" id="cal-n-meet" checked> Criar link do Google Meet</label>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;">
+      <button class="btn-save" id="cal-n-btn" style="width:auto;padding:9px 16px;" onclick="saveCalNew()">Criar reunião</button>
+      <span class="integ-muted" style="font-size:12px;">Os convidados recebem o convite do Google por e-mail.</span>
+    </div>
+    <div id="cal-n-fb" style="font-size:13px;margin-top:8px;"></div>`, 520);
+  window._calLeadIdx = leads;
+}
+function calLeadPicked() {
+  const v = (document.getElementById('cal-n-lead') || {}).value || '';
+  const l = (window._calLeadIdx || []).find(x => (x.name || 'Lead') + (x.phone ? ' · ' + x.phone : '') === v);
+  const hid = document.getElementById('cal-n-leadid');
+  if (hid) hid.value = l ? l._docId : '';
+  if (l) {
+    const t = document.getElementById('cal-n-title'); if (t && !t.value.trim()) t.value = 'Reunião com ' + (l.name || '');
+    const g = document.getElementById('cal-n-guests'); if (g && l.email && !g.value.includes(l.email)) g.value = [g.value.trim(), l.email].filter(Boolean).join(', ');
+  }
+}
+async function calFreeHint(force) {
+  const box = document.getElementById('cal-n-free');
+  if (!box || (!force && !box.dataset.on)) return;
+  box.dataset.on = '1';
+  box.textContent = 'Procurando horários livres...';
+  try {
+    const r = await window._fb.adminApi('/cal/free', { uid: document.getElementById('cal-n-owner').value, day: document.getElementById('cal-n-date').value, from: '08:00', to: '20:00', minutes: Number(document.getElementById('cal-n-min').value) });
+    box.innerHTML = r.slots.length ? 'Livre: ' + r.slots.slice(0, 24).map(t => `<a style="cursor:pointer;display:inline-block;margin:2px 3px;padding:1px 7px;border:1px solid var(--border);border-radius:8px;" onclick="document.getElementById('cal-n-time').value='${t}'">${t}</a>`).join('') : 'Nenhum horário livre nesse dia (8h às 20h).';
+  } catch (e) { box.textContent = 'Não consegui ver os horários: ' + e.message; }
+}
+async function saveCalNew() {
+  const fb = document.getElementById('cal-n-fb'), btn = document.getElementById('cal-n-btn');
+  const v = id => (document.getElementById(id) || {}).value || '';
+  const title = v('cal-n-title').trim();
+  if (!title) { fb.style.color = 'var(--red)'; fb.textContent = 'Dê um título.'; return; }
+  if (!v('cal-n-date') || !v('cal-n-time')) { fb.style.color = 'var(--red)'; fb.textContent = 'Escolha o dia e a hora.'; return; }
+  const start = new Date(`${v('cal-n-date')}T${v('cal-n-time')}:00`);
+  if (start.getTime() < Date.now() - 5 * 60000) { fb.style.color = 'var(--red)'; fb.textContent = 'Esse horário já passou.'; return; }
+  const guests = v('cal-n-guests').split(/[,;\s]+/).map(x => x.trim()).filter(Boolean);
+  const bad = guests.filter(x => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x));
+  if (bad.length) { fb.style.color = 'var(--red)'; fb.textContent = 'E-mail inválido: ' + bad.join(', '); return; }
+  btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'Criando...';
+  try {
+    const r = await window._fb.adminApi('/cal/create', { uid: v('cal-n-owner'), title, start: start.toISOString(), minutes: Number(v('cal-n-min')), guests, description: v('cal-n-desc'), meet: document.getElementById('cal-n-meet').checked, leadDocId: v('cal-n-leadid'), inviteLead: false });
+    const lid = v('cal-n-leadid');
+    closeHuvenModal();
+    showToast(`Reunião criada: ${r.event.title}${guests.length ? ' · convite enviado' : ''}`, 'success', 6000);
+    if (lid) { const l = (_leadsCache || []).find(x => x._docId === lid); if (l) l.nextMeeting = { eventId: r.event.id, at: r.event.start, end: r.event.end, title: r.event.title, meet: r.event.meet }; if (typeof renderKanban === 'function' && document.getElementById('crm-view').style.display !== 'none') renderKanban(); }
+    if (document.getElementById('calendario-view') && document.getElementById('calendario-view').style.display !== 'none') { _cal.date = calYmd(start); renderCalendarioView(); }
+  } catch (e) { btn.disabled = false; fb.style.color = 'var(--red)'; fb.textContent = 'Erro: ' + e.message; }
+}
+function openCalEvent(id) {
+  const e = _cal.events.find(x => x.id === id);
+  if (!e) return;
+  const others = e.attendees.filter(a => !a.self);
+  const lead = e.leadDocId ? (_leadsCache || []).find(l => l._docId === e.leadDocId) : null;
+  const when = e.allDay ? calDayLabel(e.start, true) + ' (dia todo)' : `${calDayLabel(calYmd(new Date(e.start)), true)}, ${calTime(e.start)} – ${calTime(e.end)}`;
+  const s = new Date(e.start);
+  openHuvenModal(e.title, `
+    <div style="margin-bottom:10px;">${uiIco('calendar', 14)} ${escapeHtml(when)}</div>
+    ${e.meet ? `<a class="integ-btn primary" href="${escapeHtml(e.meet)}" target="_blank" rel="noopener" style="display:inline-block;margin-bottom:10px;">Entrar no Google Meet</a>` : ''}
+    ${e.location ? `<div class="integ-muted" style="margin-bottom:8px;">Local: ${escapeHtml(e.location)}</div>` : ''}
+    ${lead ? `<div style="margin-bottom:8px;">Lead: <a style="cursor:pointer;text-decoration:underline;" onclick="closeHuvenModal(); switchView('crm'); editLead('${escapeJsString(lead.id)}')">${escapeHtml(lead.name || 'Lead')}</a></div>` : ''}
+    ${others.length ? `<div class="field-label" style="margin-top:6px;">Convidados</div>${others.map(a => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:3px 0;"><span>${escapeHtml(a.name || a.email)}${a.organizer ? ' <span class="integ-muted">(organizador)</span>' : ''}</span><span style="color:${(CAL_RSVP[a.status] || CAL_RSVP.needsAction)[1]};">${(CAL_RSVP[a.status] || CAL_RSVP.needsAction)[0]}</span></div>`).join('')}` : ''}
+    ${e.description ? `<div class="field-label" style="margin-top:8px;">Descrição</div><div class="integ-muted" style="white-space:pre-wrap;font-size:13px;max-height:160px;overflow:auto;">${escapeHtml(e.description)}</div>` : ''}
+    ${e.allDay ? '' : `<details style="margin-top:12px;"><summary style="cursor:pointer;">Remarcar</summary>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:flex-end;">
+        <label><span class="field-label">Dia</span><input type="date" class="field-input" id="cal-e-date" value="${calYmd(s)}"></label>
+        <label><span class="field-label">Hora</span><input type="time" class="field-input" id="cal-e-time" step="300" value="${s.toTimeString().slice(0, 5)}"></label>
+        <button class="integ-btn primary" onclick="calReschedule('${escapeJsString(e.id)}')">Salvar novo horário</button>
+      </div></details>`}
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+      ${e.link ? `<a class="integ-btn" href="${escapeHtml(e.link)}" target="_blank" rel="noopener">Abrir no Google Agenda</a>` : ''}
+      ${e.mine || !e.organizer ? `<button class="integ-btn danger" onclick="calCancel('${escapeJsString(e.id)}')">Cancelar reunião</button>` : ''}
+    </div>
+    <div id="cal-e-fb" style="font-size:13px;margin-top:8px;"></div>`, 500);
+}
+async function calReschedule(id) {
+  const fb = document.getElementById('cal-e-fb');
+  const d = document.getElementById('cal-e-date').value, t = document.getElementById('cal-e-time').value;
+  if (!d || !t) return;
+  const e = _cal.events.find(x => x.id === id);
+  if (e && e.attendees.some(a => !a.self) && !await showConfirm('Os convidados recebem o aviso do novo horário pelo Google.', 'Remarcar reunião', 'Remarcar')) return;
+  fb.style.color = 'var(--muted)'; fb.textContent = 'Salvando...';
+  try {
+    await window._fb.adminApi('/cal/update', { uid: _cal.uid, eventId: id, start: new Date(`${d}T${t}:00`).toISOString() });
+    closeHuvenModal(); showToast('Reunião remarcada.', 'success'); renderCalendarioView();
+  } catch (err) { fb.style.color = 'var(--red)'; fb.textContent = 'Erro: ' + err.message; }
+}
+async function calCancel(id) {
+  const e = _cal.events.find(x => x.id === id);
+  if (!await showConfirm(e && e.attendees.some(a => !a.self) ? 'A reunião sai da agenda e os convidados recebem o cancelamento pelo Google.' : 'A reunião sai da agenda.', 'Cancelar reunião', 'Cancelar reunião', true)) return;
+  try {
+    await window._fb.adminApi('/cal/cancel', { uid: _cal.uid, eventId: id });
+    if (e && e.leadDocId) { const l = (_leadsCache || []).find(x => x._docId === e.leadDocId); if (l && l.nextMeeting && l.nextMeeting.eventId === id) l.nextMeeting = null; }
+    closeHuvenModal(); showToast('Reunião cancelada.', 'success'); renderCalendarioView();
+  } catch (err) { showToast(err.message, 'error', 7000); }
+}
+// Card do lead: botão "Agendar reunião" (carrega a agenda se a aba ainda não foi aberta).
+async function openCalForLead(leadId) {
+  try {
+    if (!_cal.status) _cal.status = await window._fb.adminApi('/cal/status', { act: isAdmin ? (flowAct() || '') : '' });
+  } catch (e) { return showToast('Erro: ' + e.message, 'error'); }
+  if (!_cal.status.me.connected && !(_cal.status.team || []).some(p => p.connected)) {
+    if (await showConfirm('Para marcar reuniões pelo CRM, conecte a sua agenda Google na aba Calendário.', 'Agenda não conectada', 'Ir para o Calendário')) { closeLeadModal(); switchView('calendario'); }
+    return;
+  }
+  openCalNew({ leadId });
+}
+function leadMeetingChip(lead) {
+  const m = lead && lead.nextMeeting;
+  if (!m || !m.at || Date.parse(m.end || m.at) < Date.now()) return '';
+  const d = new Date(m.at);
+  return `<span class="kc-chip" style="background:rgba(96,165,250,.14);color:#60a5fa;" title="${escapeHtml(m.title || 'Reunião')}${m.with ? ' · agenda de ' + escapeHtml(m.with) : ''}">${uiIco('calendar', 11)} ${d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>`;
+}
+window.renderCalendarioView = renderCalendarioView; window.openCalNew = openCalNew; window.openCalForLead = openCalForLead;
+
 function openAiAgentFromNav() { switchView('agenteia'); }
 window.openAiAgentFromNav = openAiAgentFromNav;
 
@@ -19960,6 +20313,8 @@ function renderKanban() {
       const autoChip = automationCardChip(lead);
       if (autoChip) chips.push(autoChip);
       const att = waLines(lead.act).length > 1 || (waLines(lead.act)[0] || {}).attendant ? leadAttendant(lead) : null;
+      const meetChip = leadMeetingChip(lead);
+      if (meetChip) chips.push(meetChip);
       if (att) chips.push(`<span class="kc-chip" style="background:var(--blue-dim);color:var(--blue);" title="Responsável: ${att.api ? 'atendido pela API oficial' : 'WhatsApp que atende este lead'}">${uiIco('user', 11)} ${escapeHtml(limitText(att.name, 24))}${att.api ? ' · API' : ''}</span>`);
       if (lead.aiSummary && leadSummaryOn(lead.act)) chips.push(aiSummaryChip(lead.aiSummary));
       if (leadNoWhatsApp(lead)) chips.push(`<span class="kc-chip" style="background:rgba(248,113,113,.14);color:var(--red);" title="A automação tentou enviar e este número não tem WhatsApp. Corrija o telefone no card.">${uiIco('alert', 11)} Sem WhatsApp</span>`);
@@ -20283,6 +20638,8 @@ async function commitCardOrder(stageId, orderedIds, movedId) {
 function openLeadModal() {
   const act = crmClientFilter || (activeClient ? activeClient.account : '');
   const clinica = isClinicaClient(act);
+  const meetBtn = document.getElementById('btn-lead-meeting');
+  if (meetBtn) meetBtn.style.display = 'none';
   document.getElementById('lead-id').value = '';
   document.getElementById('lead-name').value = '';
   document.getElementById('lead-phone').value = '';
@@ -20317,6 +20674,8 @@ function openLeadModal() {
 function editLead(id) {
   let lead = getLeads().find(l => l.id === id);
   if (!lead) return;
+  const meetBtn = document.getElementById('btn-lead-meeting');
+  if (meetBtn) meetBtn.style.display = lead._docId && userCanView('calendario') ? '' : 'none';
   const clinica = isClinicaClient(lead.act);
   document.getElementById('lead-id').value = lead.id;
   document.getElementById('lead-name').value = lead.name;
@@ -20373,7 +20732,7 @@ function auditMove(lead, fromStage, toLabel, how) {
   if (!lead) return;
   auditLog(lead.act, 'mover', `Moveu "${lead.name || 'lead'}" de ${auditStageLabel(lead.act, fromStage)} para ${toLabel}${how ? ' (' + how + ')' : ''}`, { leadId: lead.id || '' });
 }
-const AUDIT_TYPES = { criar: 'Lead criado', editar: 'Lead editado', mover: 'Movido', excluir: 'Excluído', automacao: 'Automações', campanha: 'Campanhas', whatsapp: 'WhatsApp', contatos: 'Contatos', pipeline: 'Pipelines e colunas', sistema: 'Sistema (automático)' };
+const AUDIT_TYPES = { criar: 'Lead criado', editar: 'Lead editado', mover: 'Movido', excluir: 'Excluído', automacao: 'Automações', campanha: 'Campanhas', whatsapp: 'WhatsApp', contatos: 'Contatos', pipeline: 'Pipelines e colunas', agenda: 'Agenda', sistema: 'Sistema (automático)' };
 let _auditCache = { act: '', list: [] };
 
 async function openAuditLog() {
@@ -22461,7 +22820,7 @@ function onMobileClientChange() {
 
 // ===== Logins extras do cliente: o admin escolhe quais áreas cada login enxerga =====
 const SUB_LOGIN_VIEWS = [
-  ['report', 'Dashboard'], ['analise', 'Atendimento'], ['crm', 'Funil de vendas'], ['chat', 'Chat'], ['contatos', 'Contatos'],
+  ['report', 'Dashboard'], ['analise', 'Atendimento'], ['crm', 'Funil de vendas'], ['chat', 'Chat'], ['contatos', 'Contatos'], ['calendario', 'Calendário'],
   ['automacoes', 'Automações'], ['capi', 'Conversões Meta'], ['historico', 'Histórico'], ['instagram', 'Instagram'], ['posts', 'Postagens'], ['prospeccao', 'Prospecção'], ['campanhas', 'Campanhas'], ['cadencia', 'Cadência'], ['whatsapp', 'Conexões'], ['integracoes', 'Integrações'], ['modelos', 'Modelos API oficial']
 ];
 let SUB_LOGINS = [];
