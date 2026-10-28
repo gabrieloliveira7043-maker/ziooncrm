@@ -1898,6 +1898,9 @@ html:root .chat-pill.chat-sum-pill { display: none; }
 .mbox-wrap .chat-qr-pop { top: 100%; bottom: auto; left: 0; right: 0; margin: 4px 0 0; }
 .cad-li > div:nth-child(3) { flex: 1 1 160px; }
 @media (max-width: 640px) { .cad-li { flex-wrap: wrap; } .cad-li-act { width: 100%; align-items: flex-start !important; } .cad-li-act > div { justify-content: flex-start !important; } }
+.mcp-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; line-height: 1.5; color: var(--text); }
+.mcp-steps li::marker { font-weight: 700; color: var(--muted); }
+.mcp-adv summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); }
 .cad-drafts { border: 1px dashed var(--border2); border-radius: 10px; padding: 10px 12px; margin-bottom: 16px; }
 .wa-alert-mute { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; cursor: pointer; opacity: .9; }
 #cadencia-view > div { max-width: 1240px !important; }
@@ -14137,6 +14140,8 @@ function renderIntegracoesView() {
 let _mcpInfo = null, _mcpNewKey = null;
 const MCP_SERVER_NAME = 'crm-zioon';
 const MCP_KEY_ENV = 'ZIOON_MCP_KEY';
+// Nome sugerido para o conector no Claude: "CRM Huven" / "CRM Zioon".
+function mcpBrandName() { const b = MCP_SERVER_NAME.replace(/^crm-/, ''); return 'CRM ' + b.charAt(0).toUpperCase() + b.slice(1); }
 async function renderIntegMcp(skipLoad) {
   const body = document.getElementById('integ-body');
   if (!body) return;
@@ -14164,15 +14169,28 @@ async function renderIntegMcp(skipLoad) {
       <div class="integ-url"><code>${escapeHtml(url)}</code><button class="integ-btn" onclick="copyText('${u}', 'Endereço copiado')">Copiar</button></div>
     </div>
     <div class="integ-card">
-      <div class="integ-title" style="margin-bottom:8px;">Como conectar</div>
-      <div class="integ-muted" style="margin-bottom:6px;"><b>Claude (site, app ou desktop):</b> Configurações → Conectores → Adicionar conector personalizado → cole o endereço acima → Conectar. Abre a tela de login do CRM: entre com o seu login e senha. Não precisa de chave.</div>
-      <div class="integ-muted" style="margin:12px 0 6px;"><b>Claude Code</b> (no terminal; ao usar, ele abre o login do CRM):</div>
-      ${code(`claude mcp add --transport http ${MCP_SERVER_NAME} ${url}`)}
-      <div class="integ-muted" style="margin:12px 0 6px;"><b>Codex</b>: gere uma chave abaixo e coloque no arquivo <code>~/.codex/config.toml</code>:</div>
-      ${code(`[mcp_servers.${MCP_SERVER_NAME.replace(/-/g, '_')}]\nurl = "${url}"\nbearer_token_env_var = "${MCP_KEY_ENV}"`)}
-      <div class="integ-muted" style="margin:8px 0 6px;">e deixe a chave na variável de ambiente (no terminal, antes de abrir o Codex):</div>
-      ${code(`export ${MCP_KEY_ENV}="${key}"`)}
-      <div class="integ-muted" style="margin-top:12px;"><b>Outros assistentes:</b> use o endereço acima com o cabeçalho <code>Authorization: Bearer ${escapeHtml(key)}</code>, ou o login pelo navegador (OAuth), se o assistente tiver.</div>
+      <div class="integ-title" style="margin-bottom:4px;">Como conectar no app do Claude</div>
+      <div class="integ-muted" style="margin-bottom:10px;">Vale para o app do celular, o app do computador e o site claude.ai. Faz uma vez só, não precisa de chave.</div>
+      <ol class="mcp-steps">
+        <li><b>Copie o endereço</b> do servidor MCP aqui em cima (botão <b>Copiar</b>).</li>
+        <li>No Claude, abra <b>Configurações</b> → <b>Conectores</b>.</li>
+        <li>Toque em <b>Adicionar conector personalizado</b>.</li>
+        <li>Em <b>Nome</b>, escreva <b>${escapeHtml(mcpBrandName())}</b>. Em <b>URL</b>, cole o endereço copiado. Toque em <b>Adicionar</b>.</li>
+        <li>No conector que apareceu na lista, toque em <b>Conectar</b>. Abre a tela <b>"Conectar ao CRM"</b>: entre com o <b>seu login e senha do CRM</b> e toque em <b>Entrar e permitir</b>.</li>
+        <li>Pronto: em uma conversa nova, peça em português, por exemplo <i>"quantos leads chegaram essa semana?"</i>. Se o Claude não usar o CRM, toque no <b>+</b> (ou em <b>Ferramentas</b>) da conversa e confira se o <b>${escapeHtml(mcpBrandName())}</b> está ligado.</li>
+      </ol>
+      <div class="integ-muted" style="margin-top:10px;">O Claude enxerga só o que o login usado na conexão pode ver. Para conectar outra pessoa da equipe, ela faz esses passos no Claude dela, com o login dela.</div>
+      <div class="integ-muted" style="margin-top:8px;"><b>Deu "não foi possível conectar"?</b> Apague o conector na lista do Claude e adicione de novo. Se continuar, chame o suporte.</div>
+      <details class="mcp-adv" style="margin-top:14px;">
+        <summary>Claude Code, Codex e outros assistentes (para quem usa no computador)</summary>
+        <div class="integ-muted" style="margin:12px 0 6px;"><b>Claude Code</b> (no terminal; ao usar, ele abre o login do CRM):</div>
+        ${code(`claude mcp add --transport http ${MCP_SERVER_NAME} ${url}`)}
+        <div class="integ-muted" style="margin:12px 0 6px;"><b>Codex</b>: gere uma chave abaixo e coloque no arquivo <code>~/.codex/config.toml</code>:</div>
+        ${code(`[mcp_servers.${MCP_SERVER_NAME.replace(/-/g, '_')}]\nurl = "${url}"\nbearer_token_env_var = "${MCP_KEY_ENV}"`)}
+        <div class="integ-muted" style="margin:8px 0 6px;">e deixe a chave na variável de ambiente (no terminal, antes de abrir o Codex):</div>
+        ${code(`export ${MCP_KEY_ENV}="${key}"`)}
+        <div class="integ-muted" style="margin-top:12px;"><b>Outros assistentes:</b> use o endereço acima com o cabeçalho <code>Authorization: Bearer ${escapeHtml(key)}</code>, ou o login pelo navegador (OAuth), se o assistente tiver.</div>
+      </details>
     </div>
     <div class="integ-card">
       <div class="integ-card-head" style="margin-bottom:6px;">
