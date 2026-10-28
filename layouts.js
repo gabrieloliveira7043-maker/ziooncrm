@@ -326,6 +326,10 @@
       if (r && r.prefs && r.prefs.theme) {
         var np = { theme: r.prefs.theme, bg: r.prefs.bg || 'por-do-sol', calm: !!r.prefs.calm };
         if (JSON.stringify(np) !== JSON.stringify({ theme: prefs.theme, bg: prefs.bg, calm: !!prefs.calm })) { store(np); apply(np); }
+      } else if (r && prefs.theme !== 'atual') {
+        // Este login nunca escolheu um layout: fica no visual de sempre, mesmo que outra pessoa tenha escolhido outro neste aparelho.
+        var def = { theme: 'atual', bg: 'por-do-sol', calm: false };
+        store(def); apply(def);
       }
     }).catch(function () {});
   }
