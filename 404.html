@@ -1889,6 +1889,17 @@ html:root .chat-pill.chat-sum-pill { display: none; }
 .cw-item.cw-media { background: var(--amber-dim); border-color: var(--amber); }
 .cw-item.cw-poll { background: var(--purple-dim); border-color: var(--purple); }
 .cw-item.cw-event { background: var(--green-dim); border-color: var(--green); }
+.cw-item { position: relative; }
+.cw-item .cw-time { padding-right: 24px; }
+.cw-item.draft { border-style: dashed; }
+.cw-del { position: absolute; top: 5px; right: 5px; width: 24px; height: 24px; border-radius: 7px; border: 0; background: transparent; color: var(--text); opacity: .55; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.cw-del:hover, .cw-del:focus-visible { opacity: 1; color: #E0503F; background: rgba(224,80,63,.14); }
+.mbox-wrap { position: relative; }
+.mbox-wrap .chat-qr-pop { top: 100%; bottom: auto; left: 0; right: 0; margin: 4px 0 0; }
+.cad-li > div:nth-child(3) { flex: 1 1 160px; }
+@media (max-width: 640px) { .cad-li { flex-wrap: wrap; } .cad-li-act { width: 100%; align-items: flex-start !important; } .cad-li-act > div { justify-content: flex-start !important; } }
+.cad-drafts { border: 1px dashed var(--border2); border-radius: 10px; padding: 10px 12px; margin-bottom: 16px; }
+.wa-alert-mute { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; cursor: pointer; opacity: .9; }
 #cadencia-view > div { max-width: 1240px !important; }
 @media (max-width: 900px) {
   .cw-grid { grid-template-columns: 1fr; }
@@ -2625,15 +2636,16 @@ html:root .chat-pill.chat-sum-pill { display: none; }
         callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       }, error => console.warn('Cadência indisponível:', error));
     },
-    async createGroupSchedules(items) {
+    // opts.draft: guarda como rascunho (sem "dueAt", o servidor não envia).
+    async createGroupSchedules(items, opts = {}) {
       for (let i = 0; i < items.length; i += 400) {
         const batch = writeBatch(db);
         items.slice(i, i + 400).forEach(item => {
           batch.set(doc(collection(db, 'group_schedules')), {
             ...item,
             act: normalizeAct(item.act),
-            status: 'scheduled',
-            dueAt: item.sendAt,
+            status: opts.draft ? 'draft' : 'scheduled',
+            ...(opts.draft ? {} : { dueAt: item.sendAt }),
             createdAt: new Date().toISOString(),
             createdBy: currentProfile ? currentProfile.login : ''
           });
@@ -2651,7 +2663,8 @@ html:root .chat-pill.chat-sum-pill { display: none; }
     async updateGroupSchedules(updates) {
       for (let i = 0; i < updates.length; i += 400) {
         const batch = writeBatch(db);
-        updates.slice(i, i + 400).forEach(u => batch.update(doc(db, 'group_schedules', u.id), { ...u.data, updatedAt: new Date().toISOString() }));
+        // dueAt: null = tira da fila do servidor (rascunho).
+        updates.slice(i, i + 400).forEach(u => batch.update(doc(db, 'group_schedules', u.id), { ...u.data, ...(u.data.dueAt === null ? { dueAt: deleteField() } : {}), updatedAt: new Date().toISOString() }));
         await batch.commit();
       }
     },
@@ -7477,6 +7490,8 @@ function openHuvenModal(title, html, width) {
 
 function closeHuvenModal() {
   const el = document.getElementById('huven-modal');
+  // Fechou a janela de agendar mensagem: não reabre depois.
+  if (el && el.querySelector('#sched-text') && typeof resumeClear === 'function') resumeClear('chatsched');
   if (el) el.remove();
 }
 
@@ -7793,6 +7808,7 @@ function switchView(view) {
     showToast('Seu login não tem acesso a esta área.', 'warning');
     view = firstAllowedView();
   }
+  try { localStorage.setItem('crm_last_view', JSON.stringify({ view, at: Date.now() })); } catch (e) {}
   ['report','analise','clientes','automacoes','agenteia','calendario','capi','historico','instagram','posts','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes','modelos'].forEach(v => {
     const el = document.getElementById('nav-' + v);
     if (el) el.classList.toggle('active', v === view);
@@ -8367,7 +8383,8 @@ function renderCampaignsView() {
 
 function onCampaignClientChange() {
   const act = campaignAct();
-  closeCampaignEditor();
+  // Voltar para Disparo não fecha a campanha que estava sendo montada; só trocar de cliente fecha.
+  if (_campaignDraft && _campaignDraft.act !== act) closeCampaignEditor(true);
   if (_campaignsUnsubscribe && _campaignsAct !== act) { _campaignsUnsubscribe(); _campaignsUnsubscribe = null; }
   const list = document.getElementById('campaign-list');
   if (!act) { list.innerHTML = '<div class="integ-empty">Escolha o cliente no topo do menu para ver e criar campanhas.</div>'; return; }
@@ -8376,9 +8393,12 @@ function onCampaignClientChange() {
     list.innerHTML = '<div style="font-size:13px;color:var(--muted);">Carregando...</div>';
     _campaignsUnsubscribe = window._fb.listenCampaigns(act, renderCampaignList);
   }
+  if (!_campaignDraft) campaignResumeOpen(act);
 }
 
 function renderCampaignList(campaigns) {
+  // Campanha reaproveitada/em edição que estava aberta: só dá para reabrir depois que a lista chega.
+  if (!_campaignDraft && _campaignsAct) setTimeout(() => { if (!_campaignDraft) campaignResumeOpen(_campaignsAct); }, 0);
   _campaignsCache = campaigns;
   const list = document.getElementById('campaign-list');
   if (!list) return;
@@ -8706,6 +8726,7 @@ function openCampaignEditor(copyFrom, opts = {}) {
   const section = 'font-size:13px;font-weight:600;color:var(--text);margin:18px 0 6px;';
   _campaignDraft = { act, source: 'crm', recipients: [], label: '', media: null, copyFrom: copyFrom || null, cloudPreset: (copyFrom && copyFrom.cloudTemplate) || null };
   _campaignDraft.mode = campInitialMode(act, copyFrom);
+  _campaignDraft.editing = editing;
   ensureWaSettings(act).then(() => { if (_campaignDraft && _campaignDraft.act === act) { _campaignDraft.mode = campInitialMode(act, copyFrom); renderCampMode(); } });
   // Marcou/desmarcou uma linha oficial: mostra ou esconde a escolha do modelo.
   if (!editor._cloudHook) { editor._cloudHook = true; editor.addEventListener('change', ev => { if (ev.target && ev.target.name === 'camp-lines') renderCampCloudBox(); }); }
@@ -8814,6 +8835,7 @@ function openCampaignEditor(copyFrom, opts = {}) {
       <span id="camp-feedback" style="font-size:12px;"></span>
     </div>`;
   editor.style.display = 'block';
+  resumeWatch(editor, campaignResumeSave);
   renderCampMode();
   editor.querySelectorAll('#camp-daily,#camp-hourly,#camp-start,#camp-end,#camp-warmup').forEach(el => el.addEventListener('change', renderCampaignSummary));
   if (editing) {
@@ -8962,10 +8984,57 @@ function updateCampaignPickRecipients() {
 }
 
 
-function closeCampaignEditor() {
+// keepResume: fechou só porque trocou de cliente; o rascunho automático continua guardado no aparelho.
+function closeCampaignEditor(keepResume) {
   const editor = document.getElementById('campaign-editor');
   if (editor) { editor.style.display = 'none'; editor.innerHTML = ''; }
   _campaignDraft = null;
+  if (!keepResume) resumeClear('campanha');
+}
+
+function campaignResumeSave() {
+  const d = _campaignDraft, editor = document.getElementById('campaign-editor');
+  if (!d || !editor || editor.style.display === 'none') return;
+  const keepList = ['sheet', 'contacts', 'groups'].includes(d.source) && (d.recipients || []).length <= 5000;
+  resumeSet('campanha', {
+    act: d.act,
+    state: {
+      copyFromId: d.copyFrom ? d.copyFrom.id : '', editing: !!d.editing, mode: d.mode, mediaType: d.mediaType, media: d.media,
+      source: d.source, label: d.label, recipients: keepList ? d.recipients : null, editContacts: d.editContacts || '',
+      pick: d.pick ? { selected: [...d.pick.selected], tags: [...d.pick.tags] } : null
+    },
+    fields: resumeFields(editor)
+  });
+}
+function campaignResumeOpen(act) {
+  const r = resumeGet('campanha');
+  if (!r || r.act !== act || !r.state) return;
+  const s = r.state;
+  const copy = s.copyFromId ? (_campaignsCache || []).find(c => c.id === s.copyFromId) : null;
+  if (s.copyFromId && !copy) return;
+  openCampaignEditor(copy, { edit: s.editing });
+  const d = _campaignDraft;
+  if (!d) return;
+  if (s.mode && s.mode !== d.mode) { d.mode = s.mode; renderCampMode(); }
+  if (s.mediaType) selectCampaignMediaType(s.mediaType);
+  if (s.media) {
+    d.media = s.media;
+    const st = document.getElementById('camp-media-status');
+    if (st) st.innerHTML = `<span style="color:#34d399;">✓ ${escapeHtml(s.media.fileName || 'arquivo')}</span>`;
+  }
+  const editor = document.getElementById('campaign-editor');
+  resumeApplyFields(editor, r.fields);
+  if (s.editing && s.editContacts) setCampEditContacts(s.editContacts);
+  if (s.source === 'pick' && s.pick) {
+    selectCampaignSource('pick');
+    d.pick.selected = new Set(s.pick.selected); d.pick.tags = new Set(s.pick.tags);
+    renderCampaignPickerList();
+  } else if (s.source && s.recipients && s.recipients.length) {
+    selectCampaignSource(s.source);
+    setCampaignRecipients(s.recipients, s.label || 'Lista que você tinha montado');
+  } else if (s.source) selectCampaignSource(s.source);
+  if (typeof renderCampaignSummary === 'function') renderCampaignSummary();
+  resumeNotice('Reabrimos a campanha que você estava montando.', () => closeCampaignEditor());
 }
 
 function selectCampaignMediaType(type) {
@@ -9475,6 +9544,7 @@ const CADENCE_EVENT_REMINDERS = [
   { key: 'start', label: 'Na hora de começar', minutes: 0, checked: true, title: '🔴 *Começou: {nome}*' }
 ];
 const CADENCE_STATUS = {
+  draft: ['Rascunho', '#a78bfa'],
   scheduled: ['Agendada', '#60a5fa'],
   sent: ['Enviada', '#34d399'],
   failed: ['Não enviada', '#f87171'],
@@ -9514,7 +9584,8 @@ function renderCadenceView() {
 
 function onCadenceClientChange() {
   const act = cadenceAct();
-  closeCadenceEditor();
+  // Voltar para a Cadência não fecha o envio que estava sendo montado; só trocar de cliente fecha.
+  if (_cadenceDraft && _cadenceDraft.act !== act) closeCadenceEditor(true);
   if (_cadenceUnsubscribe && _cadenceAct !== act) { _cadenceUnsubscribe(); _cadenceUnsubscribe = null; }
   const list = document.getElementById('cadence-list');
   if (!act) { list.innerHTML = '<div class="integ-empty">Escolha o cliente no topo do menu para ver e programar envios.</div>'; return; }
@@ -9523,6 +9594,7 @@ function onCadenceClientChange() {
     list.innerHTML = '<div style="font-size:13px;color:var(--muted);">Carregando...</div>';
     _cadenceUnsubscribe = window._fb.listenGroupSchedules(act, items => { _cadenceItems = items; renderCadenceList(); });
   }
+  if (!_cadenceDraft) cadenceResumeOpen(act);
 }
 
 function cadenceDayLabel(date) {
@@ -9593,18 +9665,20 @@ function renderCadenceWeek() {
   const items = _cadenceItems.filter(i => i.status !== 'cancelled');
   const kindOf = i => i.eventName ? 'event' : i.type === 'poll' ? 'poll' : ['image', 'video', 'audio'].includes(i.type) ? 'media' : 'text';
   const typeName = i => i.eventName ? 'Evento' : CADENCE_TYPES[i.type] || 'Texto';
-  const preview = i => i.type === 'poll' && i.poll ? i.poll.question : (i.text || (i.media && i.media.fileName) || typeName(i));
-  const statusMark = { sent: '✓ enviada', failed: '! não enviada', scheduled: '' };
+  const preview = i => i.type === 'poll' && i.poll ? i.poll.question : (cadenceShownText(i) || (i.media && i.media.fileName) || typeName(i));
+  const statusMark = { sent: '✓ enviada', failed: '! não enviada', scheduled: '', draft: 'rascunho' };
+  const editable = i => i.status === 'scheduled' || i.status === 'draft';
   list.innerHTML = `<div class="cw-grid">${days.map(d => {
     const dayItems = items.filter(i => new Date(i.sendAt).toDateString() === d.toDateString()).sort((a, b) => String(a.sendAt).localeCompare(String(b.sendAt)));
     const isToday = d.toDateString() === today;
     return `<section class="cw-day ${isToday ? 'today' : ''}">
       <div class="cw-day-head"><span class="cw-wd">${d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span><span class="cw-num">${d.getDate()}</span></div>
-      ${dayItems.length ? dayItems.map(i => `<button class="cw-item cw-${kindOf(i)} ${i.status !== 'scheduled' ? 'done' : ''}" ${i.status === 'scheduled' ? `onclick="editCadenceItem('${escapeJsString(i.id)}')" title="Editar envio"` : `title="${escapeHtml(statusMark[i.status] || i.status)}"`}>
+      ${dayItems.length ? dayItems.map(i => `<div class="cw-item cw-${kindOf(i)} ${editable(i) ? '' : 'done'} ${i.status === 'draft' ? 'draft' : ''}" ${editable(i) ? `role="button" tabindex="0" onclick="editCadenceItem('${escapeJsString(i.id)}')" onkeydown="if(event.key==='Enter')editCadenceItem('${escapeJsString(i.id)}')" title="${i.status === 'draft' ? 'Rascunho: editar ou ativar' : 'Editar envio'}"` : `title="${escapeHtml(statusMark[i.status] || i.status)}"`}>
+          <button type="button" class="cw-del" title="Excluir esta mensagem" aria-label="Excluir esta mensagem" onclick="event.stopPropagation();deleteCadenceOne('${escapeJsString(i.id)}')">${uiIco('trash', 14)}</button>
           <span class="cw-time">${new Date(i.sendAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}<em>${escapeHtml(typeName(i))}</em></span>
           <span class="cw-text">${escapeHtml(limitText(preview(i), 90))}</span>
           <span class="cw-group">${escapeHtml(i.groupName || i.groupId || '')}${statusMark[i.status] ? ' · ' + statusMark[i.status] : ''}</span>
-        </button>`).join('') : '<div class="cw-empty">Nada programado</div>'}
+        </div>`).join('') : '<div class="cw-empty">Nada programado</div>'}
     </section>`;
   }).join('')}</div>`;
 }
@@ -9613,7 +9687,7 @@ function renderCadenceListView() {
   const list = document.getElementById('cadence-list');
   if (!list) return;
   const upcoming = _cadenceItems.filter(i => i.status === 'scheduled').sort((a, b) => String(a.sendAt).localeCompare(String(b.sendAt)));
-  const history = _cadenceItems.filter(i => i.status !== 'scheduled').sort((a, b) => String(b.sendAt).localeCompare(String(a.sendAt))).slice(0, 100);
+  const history = _cadenceItems.filter(i => i.status !== 'scheduled' && i.status !== 'draft').sort((a, b) => String(b.sendAt).localeCompare(String(a.sendAt))).slice(0, 100);
   const existing = new Set(_cadenceItems.map(i => i.id));
   [..._cadenceSelected].forEach(id => { if (!existing.has(id)) _cadenceSelected.delete(id); });
 
@@ -9633,7 +9707,7 @@ function renderCadenceListView() {
       const first = items[0];
       const groups = [...new Set(items.map(i => i.groupName || i.groupId))];
       const time = new Date(first.sendAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      const preview = first.text ? escapeHtml(first.text.length > 90 ? first.text.slice(0, 90) + '…' : first.text) : CADENCE_TYPES[first.type] || 'Texto';
+      const preview = first.text ? escapeHtml(limitText(cadenceShownText(first), 90)) : CADENCE_TYPES[first.type] || 'Texto';
       return `
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:8px;">
         <div style="flex:1;min-width:200px;">
@@ -9642,6 +9716,7 @@ function renderCadenceListView() {
         </div>
         <button style="${wbtn}" onclick="editCadenceSeries(${index})">Editar série</button>
         <button style="${wbtn}background:transparent;" onclick="selectCadenceSeries(${index})">Selecionar</button>
+        <button style="${wbtn}background:transparent;" onclick="draftCadenceSeries(${index})">Passar para rascunho</button>
         <button style="${wbtn}background:transparent;color:#f87171;border-color:#f87171;" onclick="deleteCadenceSeries(${index})">Excluir todos (${items.length})</button>
       </div>`;
     }).join('')}` : '';
@@ -9653,20 +9728,20 @@ function renderCadenceListView() {
     const id = escapeJsString(i.id);
     const preview = i.type === 'poll' && i.poll
       ? `${uiIco('chart', 13)} ${escapeHtml(i.poll.question || '')}<div style="font-size:12px;color:var(--muted);margin-top:2px;">${(i.poll.options || []).map(o => '○ ' + escapeHtml(o)).join('  ')}${i.poll.multiple ? ' · várias respostas' : ''}</div>`
-      : i.text ? escapeHtml(i.text.length > 140 ? i.text.slice(0, 140) + '…' : i.text) : '<span style="color:var(--muted);">(sem texto)</span>';
+      : i.text ? escapeHtml(limitText(cadenceShownText(i), 140)) : '<span style="color:var(--muted);">(sem texto)</span>';
     const actions = i.status === 'scheduled'
-      ? `<button style="${wbtn}" onclick="editCadenceItem('${id}')">Editar</button><button style="${wbtn}background:transparent;" onclick="duplicateCadenceItem('${id}')">Duplicar</button><button style="${wbtn}background:transparent;" onclick="cancelCadenceItem('${id}')">Cancelar</button>`
+      ? `<button style="${wbtn}" onclick="editCadenceItem('${id}')">Editar</button><button style="${wbtn}background:transparent;" onclick="duplicateCadenceItem('${id}')">Duplicar</button><button style="${wbtn}background:transparent;" onclick="toDraftCadenceIds(['${id}'])">Rascunho</button><button style="${wbtn}background:transparent;" onclick="cancelCadenceItem('${id}')">Cancelar</button>`
       : `<button style="${wbtn}" onclick="duplicateCadenceItem('${id}')">Duplicar</button><button style="${wbtn}background:transparent;color:#f87171;border-color:#f87171;" onclick="deleteCadenceItem('${id}')">Excluir</button>`;
     return `
-      <div style="display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid ${_cadenceSelected.has(i.id) ? 'var(--accent)' : 'var(--border)'};border-radius:8px;padding:12px 14px;margin-bottom:8px;">
+      <div class="cad-li" style="display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid ${_cadenceSelected.has(i.id) ? 'var(--accent)' : 'var(--border)'};border-radius:8px;padding:12px 14px;margin-bottom:8px;">
         <input type="checkbox" style="margin-top:4px;cursor:pointer;" ${_cadenceSelected.has(i.id) ? 'checked' : ''} onchange="toggleCadenceSelected('${id}', this.checked)">
         <div style="font-size:15px;font-weight:600;color:var(--text);min-width:52px;">${when.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
         <div style="flex:1;min-width:0;">
-          <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">${escapeHtml(i.groupName || i.groupId)} · ${i.eventName ? uiIco('calendar', 13) + ' Evento: ' + escapeHtml(i.eventName) + (i.eventStep ? ' (' + escapeHtml(i.eventStep) + ')' : '') : (CADENCE_TYPES[i.type] || 'Texto')}${i.mentionAll ? ' · marca todos' : ''}${i.media && i.media.fileName ? ' · ' + escapeHtml(i.media.fileName) : ''}</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">${escapeHtml(i.groupName || i.groupId)} · ${i.eventName ? uiIco('calendar', 13) + ' Evento: ' + escapeHtml(i.eventName) + (i.eventStep ? ' (' + escapeHtml(i.eventStep) + ')' : '') : (CADENCE_TYPES[i.type] || 'Texto')}${i.mentionAll ? ' · marca todos' : ''}${(i.mentioned || []).length ? ` · marca ${i.mentioned.length} pessoa(s)` : ''}${i.media && i.media.fileName ? ' · ' + escapeHtml(i.media.fileName) : ''}</div>
           <div style="font-size:13px;color:var(--text);white-space:pre-wrap;word-break:break-word;">${preview}</div>
           ${i.error ? `<div style="font-size:11px;color:#f87171;margin-top:4px;">${escapeHtml(i.error)}</div>` : ''}
         </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+        <div class="cad-li-act" style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
           <span style="font-size:11px;font-weight:600;color:${late ? '#fbbf24' : color};white-space:nowrap;">● ${late ? 'Aguardando o servidor' : label}</span>
           <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">${actions}</div>
         </div>
@@ -9693,10 +9768,11 @@ function renderCadenceListView() {
       <span style="font-size:12px;color:var(--muted);">${_cadenceSelected.size} selecionado(s)</span>
       ${_cadenceSelected.size ? `
         <button style="${wbtn}background:transparent;color:#f87171;border-color:#f87171;" onclick="deleteSelectedCadence()">Excluir selecionados (${_cadenceSelected.size})</button>
+        <button style="${wbtn}background:transparent;" onclick="toDraftCadenceIds([..._cadenceSelected])">Passar para rascunho</button>
         <button style="${wbtn}background:transparent;" onclick="_cadenceSelected.clear();renderCadenceList()">Limpar seleção</button>` : ''}
     </div>` : '';
 
-  list.innerHTML = seriesHtml + bulkBar + (upcoming.length
+  list.innerHTML = cadenceDraftsHtml() + seriesHtml + bulkBar + (upcoming.length
       ? groupByDay(upcoming)
       : '<div style="font-size:13px;color:var(--muted);">Nenhum envio programado. Clique em "Programar envio".</div>')
     + (history.length ? `
@@ -9758,6 +9834,124 @@ async function deleteCadenceItem(id) {
   catch (e) { showToast('Erro: ' + e.message, 'warning'); }
 }
 
+// Lixeira em cada mensagem da semana.
+async function deleteCadenceOne(id) {
+  const item = _cadenceItems.find(i => i.id === id);
+  if (!item) return;
+  const when = new Date(item.sendAt).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const msg = item.status === 'scheduled' ? `O envio de ${when} no grupo "${item.groupName || item.groupId}" será excluído e não vai mais sair.` : `A mensagem de ${when} no grupo "${item.groupName || item.groupId}" será excluída.`;
+  if (!await showConfirm(msg, 'Excluir mensagem', 'Excluir', true)) return;
+  try { await window._fb.deleteGroupSchedule(id); _cadenceSelected.delete(id); showToast('Mensagem excluída.', 'success'); }
+  catch (e) { showToast('Erro: ' + e.message, 'warning'); }
+}
+
+// Texto como a pessoa vê: "@5511..." volta a ser "@Nome" de quem foi marcado.
+function cadenceShownText(i) {
+  return mboxShow(i && i.text || '', i && i.mentions);
+}
+
+// ----- Rascunhos: ficam guardados (sem sair) até alguém ativar -----
+async function toDraftCadenceIds(ids) {
+  const list = ids.map(id => _cadenceItems.find(i => i.id === id)).filter(i => i && i.status === 'scheduled');
+  if (!list.length) { showToast('Só envios agendados passam para rascunho.', 'info'); return; }
+  try {
+    await window._fb.updateGroupSchedules(list.map(i => ({ id: i.id, data: { status: 'draft', dueAt: null } })));
+    list.forEach(i => _cadenceSelected.delete(i.id));
+    showToast(`${list.length} envio(s) foram para Rascunhos. Eles não saem até você ativar.`, 'success');
+  } catch (e) { showToast('Erro: ' + e.message, 'warning'); }
+}
+function draftCadenceSeries(index) {
+  const entry = _cadenceSeriesList[index];
+  if (entry) toDraftCadenceIds(entry[1].map(i => i.id));
+}
+
+// Ativa rascunhos. Se o 1º envio já passou, pergunta a nova data de início e move todos juntos (os intervalos continuam iguais).
+async function activateCadenceIds(ids) {
+  const items = ids.map(id => _cadenceItems.find(i => i.id === id)).filter(i => i && i.status === 'draft').sort((a, b) => String(a.sendAt).localeCompare(String(b.sendAt)));
+  if (!items.length) return false;
+  const first = new Date(items[0].sendAt);
+  let shift = 0;
+  if (!(first.getTime() > Date.now() + 60000)) {
+    const start = await askCadenceStart(first, items.length);
+    if (!start) return false;
+    shift = start.getTime() - first.getTime();
+  }
+  const updates = items.map(i => { const at = new Date(new Date(i.sendAt).getTime() + shift).toISOString(); return { id: i.id, data: { status: 'scheduled', sendAt: at, dueAt: at } }; });
+  try {
+    await window._fb.updateGroupSchedules(updates);
+    showToast(`${updates.length} envio(s) ativado(s). Agora saem no horário.`, 'success');
+    return true;
+  } catch (e) { showToast('Erro: ' + e.message, 'warning'); return false; }
+}
+
+let _cadStartResolve = null;
+function askCadenceStart(first, count) {
+  const tomorrow = new Date(Date.now() + 86400000);
+  return new Promise(resolve => {
+    _cadStartResolve = resolve;
+    openHuvenModal('Quando começar?', `
+      <div class="integ-muted" style="font-size:12.5px;margin-bottom:10px;line-height:1.5;">O ${count > 1 ? '1º envio deste rascunho' : 'envio deste rascunho'} estava para ${escapeHtml(first.toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}, que já passou. Escolha quando ${count > 1 ? 'a série começa: os outros envios andam junto, com os mesmos intervalos' : 'ele sai'}.</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+        <div><label class="field-label">Data</label><input type="date" class="field-input" id="cad-start-date" value="${toLocalDateInput(tomorrow)}"></div>
+        <div><label class="field-label">Hora</label><input type="time" class="field-input" id="cad-start-time" value="${toLocalTimeInput(first)}"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:14px;">
+        <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="pickCadenceStart()">Ativar</button>
+        <span id="cad-start-fb" style="font-size:12px;color:#f87171;"></span>
+      </div>`, 420);
+  });
+}
+function pickCadenceStart() {
+  const at = new Date(`${document.getElementById('cad-start-date').value}T${document.getElementById('cad-start-time').value}`);
+  if (isNaN(at.getTime()) || at.getTime() <= Date.now() + 60000) { document.getElementById('cad-start-fb').textContent = 'Escolha uma data e hora no futuro.'; return; }
+  const r = _cadStartResolve; _cadStartResolve = null;
+  closeHuvenModal();
+  if (r) r(at);
+}
+
+// Rascunhos agrupados como foram montados (mesma série).
+let _cadenceDraftGroups = [];
+function cadenceDraftsHtml() {
+  const drafts = _cadenceItems.filter(i => i.status === 'draft').sort((a, b) => String(a.sendAt).localeCompare(String(b.sendAt)));
+  const map = new Map();
+  drafts.forEach(i => { const k = cadenceSeriesKey(i); if (!map.has(k)) map.set(k, []); map.get(k).push(i); });
+  _cadenceDraftGroups = [...map.values()];
+  if (!_cadenceDraftGroups.length) return '';
+  const fmt = d => new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return `<div class="cad-drafts">
+    <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">Rascunhos (${drafts.length})</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">Guardados para usar depois: não saem até você ativar.</div>
+    ${_cadenceDraftGroups.map((items, index) => {
+      const first = items[0];
+      const groups = [...new Set(items.map(i => i.groupName || i.groupId))];
+      const preview = first.type === 'poll' && first.poll ? first.poll.question : first.eventName ? 'Evento: ' + first.eventName : (cadenceShownText(first) || (first.media && first.media.fileName) || CADENCE_TYPES[first.type] || 'Texto');
+      return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px;">
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:3px;">${escapeHtml(groups.join(', '))} · ${items.length > 1 ? `${items.length} envios, de ${fmt(first.sendAt)} a ${fmt(items[items.length - 1].sendAt)}` : fmt(first.sendAt)}</div>
+          <div style="font-size:13px;color:var(--text);white-space:pre-wrap;word-break:break-word;">${escapeHtml(limitText(preview, 120))}</div>
+        </div>
+        <button style="${wbtn}" onclick="activateCadenceDraft(${index})">Ativar</button>
+        <button style="${wbtn}background:transparent;" onclick="editCadenceDraft(${index})">Editar</button>
+        <button style="${wbtn}background:transparent;color:#f87171;border-color:#f87171;" onclick="deleteCadenceDraft(${index})">Excluir</button>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+function activateCadenceDraft(index) {
+  const items = _cadenceDraftGroups[index];
+  if (items) activateCadenceIds(items.map(i => i.id));
+}
+function editCadenceDraft(index) {
+  const items = _cadenceDraftGroups[index];
+  if (!items) return;
+  if (items.length === 1) { openCadenceEditor(items[0], { mode: 'edit-item' }); return; }
+  openCadenceEditor(items[0], { mode: 'edit-series', ids: items.map(i => i.id), groupIds: items.map(i => i.groupId), groupNames: [...new Set(items.map(i => i.groupName || i.groupId))] });
+}
+function deleteCadenceDraft(index) {
+  const items = _cadenceDraftGroups[index];
+  if (items) deleteCadenceIds(items.map(i => i.id), 'deste rascunho');
+}
+
 function duplicateCadenceItem(id) {
   const item = _cadenceItems.find(i => i.id === id);
   if (item) openCadenceEditor(item);
@@ -9784,10 +9978,12 @@ async function openCadenceEditor(copyFrom, options = {}) {
     type: copyFrom ? copyFrom.type || 'text' : 'text',
     media: copyFrom && copyFrom.media ? copyFrom.media : null,
     pollSeed: copyFrom && copyFrom.poll ? copyFrom.poll.options : null,
-    preselect: copyFrom ? [...new Set((options.groupIds || [copyFrom.groupId]))] : [],
-    line: (copyFrom && copyFrom.line) || waDefaultLine(act)
+    preselect: copyFrom ? [...new Set((options.groupIds || [copyFrom.groupId]))].filter(Boolean) : [],
+    line: (copyFrom && copyFrom.line) || waDefaultLine(act),
+    isDraft: !!(copyFrom && mode !== 'new' && copyFrom.status === 'draft'),
+    groupNames: options.groupNames || []
   };
-  const title = mode === 'edit-item' ? 'Editar envio' : mode === 'edit-series' ? `Editar série (${_cadenceDraft.editIds.length} envios)` : copyFrom ? 'Duplicar envio' : 'Programar envio';
+  const title = options.title ? options.title : _cadenceDraft.isDraft ? (mode === 'edit-series' ? `Rascunho (${_cadenceDraft.editIds.length} envios)` : 'Rascunho') : mode === 'edit-item' ? 'Editar envio' : mode === 'edit-series' ? `Editar série (${_cadenceDraft.editIds.length} envios)` : copyFrom ? 'Duplicar envio' : 'Programar envio';
   editor.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
       <div style="font-size:15px;font-weight:600;color:var(--text);">${title}</div>
@@ -9854,72 +10050,95 @@ async function openCadenceEditor(copyFrom, options = {}) {
       <label class="field-label" style="margin-top:8px;">Mensagens que serão enviadas</label>
       ${CADENCE_EVENT_REMINDERS.map(r => `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;margin:3px 0;"><input type="checkbox" class="cad-event-reminder" value="${r.key}" ${r.checked ? 'checked' : ''} onchange="renderCadencePreview()"> ${escapeHtml(r.label)}</label>`).join('')}
     </div>
-    <textarea class="field-input" id="cad-text" rows="5" style="resize:vertical;width:100%;box-sizing:border-box;" placeholder="Texto da mensagem" oninput="updateCadenceMentionState()"></textarea>
+    <textarea class="field-input" id="cad-text" rows="5" style="resize:vertical;width:100%;box-sizing:border-box;" placeholder="Texto da mensagem (digite @ para marcar alguém do grupo)" oninput="updateCadenceMentionState()"></textarea>
+    <div id="cad-at-hint" style="${hint}margin-bottom:0;">Digite <b>@</b> e escolha a pessoa na lista: ela é marcada de verdade no grupo (recebe o aviso). A lista mostra o nome salvo no WhatsApp.</div>
     <label id="cad-mention-box" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);margin-top:8px;cursor:pointer;">
       <input type="checkbox" id="cad-mention" ${copyFrom && copyFrom.mentionAll ? 'checked' : ''}> Marcar todos do grupo (notifica cada participante) <span id="cad-mention-hint" style="color:var(--muted);font-size:11px;"></span>
     </label>
 
     <div id="cad-preview" style="margin-top:14px;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text);"></div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;">
-      <button style="${wbtn}" onclick="saveCadence()">${mode === 'new' ? 'Programar' : 'Salvar alterações'}</button>
+      ${mode === 'new' ? `<button style="${wbtn}" onclick="saveCadence()">Programar</button><button style="${wbtn}background:transparent;" onclick="saveCadence('draft')">Salvar como rascunho</button>`
+        : _cadenceDraft.isDraft ? `<button style="${wbtn}" onclick="saveCadence('activate')">Salvar e ativar</button><button style="${wbtn}background:transparent;" onclick="saveCadence('draft')">Salvar rascunho</button>`
+        : `<button style="${wbtn}" onclick="saveCadence()">Salvar alterações</button><button style="${wbtn}background:transparent;" onclick="saveCadence('draft')">Passar para rascunho</button>`}
       <span id="cad-feedback" style="font-size:12px;"></span>
     </div>`;
   editor.style.display = 'block';
   editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  document.getElementById('cad-text').value = copyFrom ? copyFrom.text || '' : '';
+  document.getElementById('cad-text').value = copyFrom ? cadenceShownText(copyFrom) : '';
+  mboxSetup('cad-text', { load: cadenceMentionLoad, picks: copyFrom && Array.isArray(copyFrom.mentions) ? copyFrom.mentions : [] });
   selectCadenceType(_cadenceDraft.type, true);
   if (_cadenceDraft.media) {
     document.getElementById('cad-media-status').innerHTML = `<span style="color:#34d399;">✓ ${escapeHtml(_cadenceDraft.media.fileName || 'arquivo')} (o mesmo do envio original)</span>`;
   }
+  if (options.onReady) options.onReady();
   renderCadencePreview();
+  resumeWatch(editor, cadenceResumeSave);
   if (mode !== 'edit-series') await loadCadenceGroups(false);
 }
 
-async function saveCadenceEdit(setFb) {
+async function saveCadenceEdit(setFb, target) {
   const draft = _cadenceDraft;
-  const text = document.getElementById('cad-text').value.trim();
+  const asDraft = target === 'draft';
+  const mt = cadenceMentionsOut();
+  const text = mt.text.trim();
   const type = draft.type;
   let content;
   if (type === 'poll') {
     const p = readCadencePoll();
     if (p.error) { setFb('#f87171', p.error); return; }
-    content = { type, text: p.poll.question, poll: p.poll, media: null, mentionAll: false };
+    content = { type, text: p.poll.question, poll: p.poll, media: null, mentionAll: false, mentioned: [], mentions: [] };
   } else {
     if (type === 'text' && !text) { setFb('#f87171', 'Escreva a mensagem.'); return; }
     if (type !== 'text' && !draft.media) { setFb('#f87171', 'Envie o arquivo.'); return; }
     content = {
       type, text, poll: null,
       media: type === 'text' ? null : draft.media,
-      mentionAll: !!document.getElementById('cad-mention').checked && !!text
+      mentionAll: (!!document.getElementById('cad-mention').checked || mt.mentionAll) && !!text,
+      mentioned: text ? mt.mentioned : [], mentions: text ? mt.mentions : []
     };
   }
   const time = document.getElementById('cad-time').value;
   if (!/^\d{2}:\d{2}$/.test(time)) { setFb('#f87171', 'Escolha a hora.'); return; }
   const [hh, mm] = time.split(':').map(Number);
+  const status = asDraft ? 'draft' : 'scheduled';
   const updates = [];
   if (draft.mode === 'edit-item') {
     const when = new Date(`${document.getElementById('cad-date').value}T${time}`);
-    if (isNaN(when.getTime()) || when <= new Date()) { setFb('#f87171', 'Escolha uma data e hora no futuro.'); return; }
+    if (isNaN(when.getTime())) { setFb('#f87171', 'Escolha a data e a hora.'); return; }
+    if (!asDraft && when <= new Date()) { setFb('#f87171', 'Escolha uma data e hora no futuro.'); return; }
     const groups = [...document.querySelectorAll('.cad-group:checked')];
     if (groups.length !== 1) { setFb('#f87171', 'Marque um grupo.'); return; }
-    updates.push({ id: draft.editIds[0], data: { ...content, groupId: groups[0].value, groupName: groups[0].getAttribute('data-subject'), sendAt: when.toISOString(), dueAt: when.toISOString() } });
+    const iso = when.toISOString();
+    updates.push({ id: draft.editIds[0], data: { ...content, groupId: groups[0].value, groupName: groups[0].getAttribute('data-subject'), sendAt: iso, status, dueAt: asDraft ? null : iso } });
   } else {
+    // Série em rascunho sendo ativada: grava o conteúdo e depois ativa (se a 1ª data já passou, pergunta quando começar).
+    const activating = !asDraft && draft.isDraft;
     let skipped = 0;
     draft.editIds.forEach(id => {
       const item = _cadenceItems.find(i => i.id === id);
-      if (!item || item.status !== 'scheduled') return;
+      if (!item || !['scheduled', 'draft'].includes(item.status)) return;
       const when = new Date(item.sendAt);
       when.setHours(hh, mm, 0, 0);
-      if (when <= new Date()) { skipped += 1; return; }
-      updates.push({ id, data: { ...content, sendAt: when.toISOString(), dueAt: when.toISOString() } });
+      if (!asDraft && !activating && when <= new Date()) { skipped += 1; return; }
+      const iso = when.toISOString();
+      updates.push({ id, data: activating ? { ...content, sendAt: iso } : { ...content, sendAt: iso, status, dueAt: asDraft ? null : iso } });
     });
-    if (!updates.length) { setFb('#f87171', 'Nenhum envio futuro para atualizar.'); return; }
+    if (!updates.length) { setFb('#f87171', 'Nenhum envio para atualizar.'); return; }
     if (skipped) showToast(`${skipped} envio(s) de hoje ficariam no passado com o novo horário e não foram alterados.`, 'info');
+    if (activating) {
+      setFb('var(--muted)', 'Salvando...');
+      try { await window._fb.updateGroupSchedules(updates); } catch (e) { setFb('#f87171', 'Erro: ' + e.message); return; }
+      updates.forEach(u => { const it = _cadenceItems.find(i => i.id === u.id); if (it) Object.assign(it, u.data); });
+      if (await activateCadenceIds(updates.map(u => u.id))) closeCadenceEditor();
+      else setFb('var(--muted)', 'O conteúdo ficou salvo no rascunho. Ative quando quiser.');
+      return;
+    }
   }
   setFb('var(--muted)', 'Salvando...');
   try {
     await window._fb.updateGroupSchedules(updates);
-    showToast(`${updates.length} envio(s) atualizado(s).`, 'success');
+    showToast(asDraft ? `${updates.length} envio(s) salvo(s) em Rascunhos. Eles não saem até você ativar.` : `${updates.length} envio(s) atualizado(s).`, 'success');
     closeCadenceEditor();
   } catch (e) {
     setFb('#f87171', 'Erro: ' + e.message);
@@ -9973,10 +10192,12 @@ async function loadCadenceGroups(refresh) {
   }
 }
 
-function closeCadenceEditor() {
+// keepResume: fechou só porque trocou de cliente; o rascunho automático continua guardado no aparelho.
+function closeCadenceEditor(keepResume) {
   const editor = document.getElementById('cadence-editor');
   if (editor) { editor.style.display = 'none'; editor.innerHTML = ''; }
   _cadenceDraft = null;
+  if (!keepResume) resumeClear('cadencia');
 }
 
 // Marca ou desmarca de uma vez os grupos que aparecem na lista (com busca digitada, só os encontrados).
@@ -10137,6 +10358,8 @@ function cadenceOccurrences() {
 }
 
 function renderCadencePreview() {
+  // Trocou os grupos: a lista do @ é buscada de novo (fica guardada por grupo).
+  if (_mbox['cad-text']) _mbox['cad-text'].list = null;
   const box = document.getElementById('cad-preview');
   if (!box || !_cadenceDraft) return;
   if (_cadenceDraft.mode === 'new' && _cadenceDraft.type === 'event') {
@@ -10175,21 +10398,24 @@ function renderCadencePreview() {
     ${total > CADENCE_MAX_ITEMS ? `<div style="color:#f87171;font-size:12px;margin-top:4px;">Máximo de ${CADENCE_MAX_ITEMS} envios por vez.</div>` : ''}`;
 }
 
-async function saveCadence() {
+// target: 'draft' guarda sem programar; 'activate' (rascunho aberto) salva e ativa.
+async function saveCadence(target) {
   const fb = document.getElementById('cad-feedback');
   const setFb = (color, text) => { fb.style.color = color; fb.textContent = text; };
-  if (_cadenceDraft.mode === 'edit-item' || _cadenceDraft.mode === 'edit-series') return saveCadenceEdit(setFb);
+  if (_cadenceDraft.mode === 'edit-item' || _cadenceDraft.mode === 'edit-series') return saveCadenceEdit(setFb, target);
+  const asDraft = target === 'draft';
+  const mt = cadenceMentionsOut();
   const groups = [...document.querySelectorAll('.cad-group:checked')].map(cb => ({ id: cb.value, name: cb.getAttribute('data-subject') }));
   const type = _cadenceDraft.type;
   const seriesId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
   if (!groups.length) { setFb('#f87171', 'Escolha pelo menos um grupo.'); return; }
-  const mentionChecked = !!document.getElementById('cad-mention').checked;
+  const mentionChecked = !!document.getElementById('cad-mention').checked || mt.mentionAll;
 
   // Evento: anúncio + lembretes calculados pela data do evento.
   if (type === 'event') {
     const ev = buildCadenceEventMessages();
     if (ev.error) { setFb('#f87171', ev.error); return; }
-    const future = ev.messages.filter(m => m.at > new Date());
+    const future = ev.messages.filter(m => asDraft || m.at > new Date());
     if (!future.length) { setFb('#f87171', 'Todas as mensagens do evento ficariam no passado. Confira as datas.'); return; }
     const items = [];
     future.forEach(m => groups.forEach(g => items.push({
@@ -10197,12 +10423,12 @@ async function saveCadence() {
       type: 'text', text: m.text, media: null, mentionAll: mentionChecked,
       eventName: ev.name, eventStep: m.key === 'announce' ? 'Anúncio' : m.label, sendAt: m.at.toISOString()
     })));
-    return await createCadenceItems(items, setFb);
+    return await createCadenceItems(items, setFb, asDraft);
   }
 
-  const dates = cadenceOccurrences().filter(d => d > new Date());
-  const text = document.getElementById('cad-text').value.trim();
-  if (!dates.length) { setFb('#f87171', 'Escolha uma data e hora no futuro.'); return; }
+  const dates = cadenceOccurrences().filter(d => asDraft || d > new Date());
+  const text = mt.text.trim();
+  if (!dates.length) { setFb('#f87171', asDraft ? 'Escolha a data e a hora.' : 'Escolha uma data e hora no futuro.'); return; }
   if (document.getElementById('cad-repeat').value !== 'none' && !document.getElementById('cad-until').value) { setFb('#f87171', 'Escolha até quando repetir.'); return; }
 
   // Enquete: pergunta + opções.
@@ -10214,7 +10440,7 @@ async function saveCadence() {
       seriesId, act: _cadenceDraft.act, groupId: g.id, groupName: g.name,
       type: 'poll', text: p.poll.question, poll: p.poll, media: null, mentionAll: false, sendAt: d.toISOString()
     })));
-    return await createCadenceItems(items, setFb);
+    return await createCadenceItems(items, setFb, asDraft);
   }
 
   if (type === 'text' && !text) { setFb('#f87171', 'Escreva a mensagem.'); return; }
@@ -10229,22 +10455,248 @@ async function saveCadence() {
     text,
     media: type === 'text' ? null : _cadenceDraft.media,
     mentionAll: mentionChecked && !!text,
+    mentioned: text ? mt.mentioned : [],
+    mentions: text ? mt.mentions : [],
     sendAt: d.toISOString()
   })));
-  return await createCadenceItems(items, setFb);
+  return await createCadenceItems(items, setFb, asDraft);
 }
 
-async function createCadenceItems(items, setFb) {
+async function createCadenceItems(items, setFb, asDraft) {
   items.forEach(i => { if (!i.line) i.line = (_cadenceDraft && _cadenceDraft.line) || waDefaultLine(_cadenceDraft.act); });
   if (items.length > CADENCE_MAX_ITEMS) { setFb('#f87171', `São ${items.length} envios; o máximo é ${CADENCE_MAX_ITEMS} por vez.`); return; }
-  setFb('var(--muted)', 'Programando...');
+  setFb('var(--muted)', asDraft ? 'Salvando...' : 'Programando...');
   try {
-    await window._fb.createGroupSchedules(items);
-    showToast(`${items.length} envio(s) programado(s).`, 'success');
+    await window._fb.createGroupSchedules(items, { draft: !!asDraft });
+    showToast(asDraft ? `${items.length} envio(s) salvo(s) em Rascunhos. Eles não saem até você ativar.` : `${items.length} envio(s) programado(s).`, 'success');
     closeCadenceEditor();
   } catch (e) {
     setFb('#f87171', 'Erro: ' + e.message);
   }
+}
+
+// ===== @ NAS MENSAGENS PROGRAMADAS PARA GRUPOS (Cadência e agendadas do Chat) =====
+// Ao digitar @ aparece a lista de pessoas do grupo (nome salvo no WhatsApp ou no funil). O texto mostra "@Nome";
+// ao salvar vira "@numero" + a lista "mentioned", que é como o WhatsApp marca de verdade (a pessoa recebe o aviso).
+const _mbox = {};
+function mboxSetup(taId, opts) {
+  const ta = document.getElementById(taId);
+  if (!ta) return;
+  _mbox[taId] = { load: opts.load, picks: (opts.picks || []).filter(m => m && m.label && m.phone).map(m => ({ label: m.label, phone: m.phone })), list: null, error: '', loading: false, sel: 0, open: false, items: [] };
+  if (ta.dataset.mbox) return;
+  ta.dataset.mbox = '1';
+  const wrap = document.createElement('div');
+  wrap.className = 'mbox-wrap';
+  ta.parentNode.insertBefore(wrap, ta);
+  wrap.appendChild(ta);
+  const pop = document.createElement('div');
+  pop.className = 'chat-qr-pop';
+  pop.id = taId + '-mpop';
+  wrap.appendChild(pop);
+  ta.addEventListener('input', () => mboxInput(taId));
+  ta.addEventListener('keydown', e => mboxKey(taId, e));
+  ta.addEventListener('blur', () => setTimeout(() => mboxClose(taId), 180));
+}
+function mboxQuery(ta) {
+  const m = ta.value.slice(0, ta.selectionStart).match(/(^|\s)@([^\s@]{0,30})$/);
+  return m ? m[2] : null;
+}
+function mboxInput(taId) {
+  const st = _mbox[taId], ta = document.getElementById(taId);
+  if (!st || !ta) return;
+  if (mboxQuery(ta) === null) { mboxClose(taId); return; }
+  if (!st.open) st.sel = 0;
+  st.open = true;
+  if (!st.list && !st.loading) {
+    st.loading = true; st.error = '';
+    Promise.resolve().then(st.load)
+      .then(list => { st.list = list || []; })
+      .catch(e => { st.error = (e && e.message) || 'Não consegui buscar as pessoas do grupo.'; })
+      .finally(() => { st.loading = false; if (st.open) mboxRender(taId); });
+  }
+  mboxRender(taId);
+}
+function mboxRender(taId) {
+  const st = _mbox[taId], ta = document.getElementById(taId), pop = document.getElementById(taId + '-mpop');
+  if (!st || !ta || !pop) return;
+  const q = mboxQuery(ta);
+  if (q === null) { mboxClose(taId); return; }
+  const t = prosNorm(q);
+  st.items = st.list ? [{ all: true, name: 'todos', phone: '' }].concat(st.list).filter(m => !t || prosNorm((m.all ? 'todos' : m.name || '') + ' ' + (m.phone || '')).includes(t)).slice(0, 40) : [];
+  st.sel = Math.min(st.sel, Math.max(st.items.length - 1, 0));
+  const msg = text => `<div class="chat-qr-item" style="cursor:default;"><div style="white-space:normal;">${escapeHtml(text)}</div></div>`;
+  pop.innerHTML = st.loading && !st.list ? msg('Buscando as pessoas do grupo...')
+    : st.error && !st.list ? msg(st.error)
+    : st.items.length ? st.items.map((m, i) => `<div class="chat-qr-item ${i === st.sel ? 'sel' : ''}" onmousedown="event.preventDefault();mboxPick('${taId}', ${i})"><b>@${escapeHtml(m.all ? 'todos' : (m.name || chatFormatPhone(m.phone)))}</b><div>${m.all ? 'Marca todo mundo do grupo' : escapeHtml(m.name ? chatFormatPhone(m.phone) : 'sem nome salvo no WhatsApp')}</div></div>`).join('')
+    : msg('Ninguém com esse nome no grupo.');
+  pop.classList.add('open');
+}
+function mboxPick(taId, i) {
+  const st = _mbox[taId], ta = document.getElementById(taId);
+  if (!st || !ta) return;
+  const q = mboxQuery(ta);
+  const m = st.items[i];
+  if (!m || q === null) return;
+  const label = '@' + (m.all ? 'todos' : m.name ? m.name.trim().split(/\s+/).slice(0, 2).join(' ') : m.phone);
+  const start = ta.selectionStart - q.length - 1;
+  ta.value = ta.value.slice(0, start) + label + ' ' + ta.value.slice(ta.selectionStart);
+  const pos = start + label.length + 1;
+  ta.setSelectionRange(pos, pos);
+  if (!m.all && !st.picks.some(x => x.label === label && x.phone === m.phone)) st.picks.push({ label, phone: m.phone });
+  mboxClose(taId);
+  ta.focus();
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
+function mboxKey(taId, e) {
+  const st = _mbox[taId];
+  if (!st || !st.open) return;
+  if (e.key === 'Escape') { e.preventDefault(); mboxClose(taId); return; }
+  if (!st.items.length) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); st.sel = (st.sel + 1) % st.items.length; mboxRender(taId); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); st.sel = (st.sel - 1 + st.items.length) % st.items.length; mboxRender(taId); }
+  else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); mboxPick(taId, st.sel); }
+}
+function mboxClose(taId) {
+  const st = _mbox[taId];
+  if (st) st.open = false;
+  const pop = document.getElementById(taId + '-mpop');
+  if (pop) pop.classList.remove('open');
+}
+// Na hora de salvar: "@Nome" escolhido na lista vira "@numero" (nomes maiores primeiro, "@Ana Paula" antes de "@Ana").
+function mboxApply(taId, text) {
+  const st = _mbox[taId];
+  const out = { text: String(text || ''), mentioned: [], mentions: [], mentionAll: /(^|\s)@todos\b/i.test(text || '') };
+  ((st && st.picks) || []).slice().sort((a, b) => b.label.length - a.label.length).forEach(m => {
+    if (!out.text.includes(m.label)) return;
+    out.text = out.text.split(m.label).join('@' + m.phone);
+    if (!out.mentioned.includes(m.phone)) { out.mentioned.push(m.phone); out.mentions.push({ label: m.label, phone: m.phone }); }
+  });
+  return out;
+}
+// Para mostrar e editar: "@numero" volta a ser "@Nome".
+function mboxShow(text, mentions) {
+  let out = String(text || '');
+  (Array.isArray(mentions) ? mentions : []).forEach(m => { if (m && m.phone && m.label) out = out.split('@' + m.phone).join(m.label); });
+  return out;
+}
+
+// Pessoas dos grupos marcados na Cadência (com o nome salvo no WhatsApp deste número).
+const _cadMentionCache = {};
+function cadenceMentionLoad() {
+  const d = _cadenceDraft;
+  if (!d) return Promise.resolve([]);
+  const ids = d.mode === 'edit-series' ? d.preselect : [...document.querySelectorAll('.cad-group:checked')].map(cb => cb.value);
+  if (!ids.length) return Promise.reject(new Error('Marque o grupo primeiro: a lista mostra as pessoas dos grupos marcados.'));
+  const key = [d.act, d.line || '', ids.slice().sort().join(',')].join('|');
+  if (!_cadMentionCache[key]) {
+    _cadMentionCache[key] = window._fb.whatsapp('/whatsapp/group-participants', d.act, { groupIds: ids, line: d.line || WA_MAIN, withNames: true })
+      .then(r => (r.participants || []).filter(p => p.phone).map(p => ({ phone: p.phone, name: p.name || cadenceLeadName(d.act, p.phone) }))
+        .sort((a, b) => (a.name ? 0 : 1) - (b.name ? 0 : 1) || String(a.name || a.phone).localeCompare(String(b.name || b.phone), 'pt-BR')))
+      .catch(e => { delete _cadMentionCache[key]; throw e; });
+  }
+  return _cadMentionCache[key];
+}
+function cadenceLeadName(act, phone) {
+  const base = leadChatBase(phone);
+  const lead = (_leadsCache || []).find(l => leadMatchesClient(l, act) && l.phone && leadChatBase(l.phone) === base);
+  return lead && lead.name ? lead.name : '';
+}
+function cadenceMentionsOut() {
+  const ta = document.getElementById('cad-text');
+  return mboxApply('cad-text', ta ? ta.value : '');
+}
+
+// ===== NÃO PERDER O QUE ESTAVA SENDO MONTADO =====
+// Cadência, Disparo e Chat guardam no aparelho, a cada mudança, o que está sendo escrito. Se a página recarregar
+// (versão nova do CRM, celular que descarregou a aba), ao voltar para a tela o editor reabre do jeito que estava.
+const RESUME_MAX_AGE = 7 * 86400000;
+function resumeKey(kind) {
+  const p = window._fb && window._fb.getProfile ? window._fb.getProfile() : null;
+  return 'crm_resume:' + ((p && (p.login || p.act)) || '-') + ':' + kind;
+}
+function resumeGet(kind) {
+  try { const r = JSON.parse(localStorage.getItem(resumeKey(kind)) || 'null'); return r && Date.now() - r.at < RESUME_MAX_AGE ? r : null; } catch (e) { return null; }
+}
+function resumeSet(kind, data) { try { localStorage.setItem(resumeKey(kind), JSON.stringify({ ...data, at: Date.now() })); } catch (e) {} }
+function resumeClear(kind) { try { localStorage.removeItem(resumeKey(kind)); } catch (e) {} }
+// Valores dos campos: pelo id; caixas de marcar sem id, pelo nome/classe + valor.
+function resumeFields(box) {
+  const out = {};
+  box.querySelectorAll('input, textarea, select').forEach(el => {
+    if (['file', 'button', 'submit'].includes(el.type)) return;
+    const check = el.type === 'checkbox' || el.type === 'radio';
+    const key = el.id ? '#' + el.id : check && (el.name || el.className) ? (el.name || el.className) + '=' + el.value : '';
+    if (key) out[key] = check ? el.checked : el.value;
+  });
+  return out;
+}
+function resumeApplyFields(box, fields) {
+  const checks = [...box.querySelectorAll('input[type=checkbox], input[type=radio]')];
+  Object.entries(fields || {}).forEach(([key, v]) => {
+    let el = null;
+    if (key[0] === '#') el = document.getElementById(key.slice(1));
+    else { const i = key.indexOf('='); el = checks.find(x => (x.name || x.className) === key.slice(0, i) && x.value === key.slice(i + 1)); }
+    if (!el || !box.contains(el)) return;
+    if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!v; else el.value = v;
+  });
+}
+const _resumeSavers = [];
+function resumeWatch(box, save) {
+  if (!_resumeSavers.includes(save)) _resumeSavers.push(save);
+  if (box._resumeHook) return;
+  box._resumeHook = true;
+  let t = null;
+  const later = () => { clearTimeout(t); t = setTimeout(save, 350); };
+  ['input', 'change', 'click'].forEach(ev => box.addEventListener(ev, later));
+}
+function resumeFlush() { _resumeSavers.forEach(f => { try { f(); } catch (e) {} }); }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') resumeFlush(); });
+window.addEventListener('pagehide', resumeFlush);
+// Algum editor aberto com coisa escrita: a atualização automática espera.
+function resumeEditing() {
+  const chatText = document.getElementById('chat-text');
+  return !!(_cadenceDraft || _campaignDraft || document.getElementById('sched-text') || (chatText && chatText.value.trim()));
+}
+function resumeNotice(text, discard) {
+  showToast(text, 'info', 9000, { onClick: discard, clickLabel: 'Descartar' });
+}
+
+function cadenceResumeSave() {
+  const d = _cadenceDraft, editor = document.getElementById('cadence-editor');
+  if (!d || !editor || editor.style.display === 'none') return;
+  const loaded = document.querySelector('.cad-group');
+  resumeSet('cadencia', {
+    act: d.act,
+    state: {
+      mode: d.mode, editIds: d.editIds, type: d.type, media: d.media, line: d.line, isDraft: d.isDraft, groupNames: d.groupNames,
+      groups: d.mode === 'edit-series' || !loaded ? d.preselect : [...document.querySelectorAll('.cad-group:checked')].map(cb => cb.value),
+      pollOptions: [...document.querySelectorAll('.cad-poll-option')].map(el => el.value),
+      picks: (_mbox['cad-text'] || {}).picks || []
+    },
+    fields: resumeFields(editor)
+  });
+}
+function cadenceResumeOpen(act) {
+  const r = resumeGet('cadencia');
+  if (!r || r.act !== act || !r.state) return;
+  const s = r.state;
+  if (s.mode !== 'new' && !(s.editIds || []).length) return;
+  const seed = {
+    type: s.type || 'text', media: s.media || null, line: s.line, status: s.isDraft ? 'draft' : 'scheduled', id: (s.editIds || [])[0],
+    poll: s.pollOptions && s.pollOptions.length ? { options: s.pollOptions } : null,
+    groupId: (s.groups || [])[0], sendAt: new Date(Date.now() + 86400000).toISOString(), mentions: s.picks || []
+  };
+  openCadenceEditor(seed, {
+    mode: s.mode, ids: s.editIds, groupIds: s.groups || [], groupNames: s.groupNames || [],
+    title: s.mode === 'new' ? 'Programar envio' : undefined,
+    onReady: () => {
+      resumeApplyFields(document.getElementById('cadence-editor'), r.fields);
+      const rep = document.getElementById('cad-repeat');
+      if (rep) rep.dispatchEvent(new Event('change'));
+      updateCadenceMentionState();
+    }
+  });
+  resumeNotice('Reabrimos a mensagem que você estava montando.', () => closeCadenceEditor());
 }
 
 // ===== TROCA DE CLIENTE (topo do menu) E TELA CLIENTES =====
@@ -10313,6 +10765,22 @@ function renderClientSwitch() {
 // A cada 3 minutos (e quando a aba volta a ficar visível) pergunta ao servidor a "etiqueta" da página publicada.
 // Mudou = saiu versão nova: recarrega sozinho quando ninguém estiver digitando ou com uma janela aberta.
 // Se a pessoa estiver no meio de algo, aparece um aviso com o botão "Atualizar agora" e recarrega na próxima pausa.
+// Última tela aberta: depois de recarregar (versão nova, celular que descarregou a aba), o CRM volta para ela.
+let _bootLastView = null;
+try {
+  const v = JSON.parse(localStorage.getItem('crm_last_view') || 'null');
+  if (v && Date.now() - v.at < 12 * 3600000 && !/[?&]lead=/.test(location.search)) _bootLastView = v.view;
+} catch (e) {}
+function resumeLastView() {
+  const v = _bootLastView;
+  _bootLastView = null;
+  if (!v || v === 'report' || typeof userCanView !== 'function' || !userCanView(v) || !document.getElementById(v + '-view')) return;
+  const active = document.querySelector('.nav-item.active');
+  if (active && active.id === 'nav-' + v) return;
+  switchView(v);
+  if (typeof setMobileNav === 'function') setMobileNav(v);
+}
+
 (function setupAutoUpdate() {
   let base = null, pending = false;
   try { const u = new URL(location.href); if (u.searchParams.has('v')) { u.searchParams.delete('v'); history.replaceState(null, '', u.pathname + (u.search || '') + u.hash); } } catch (e) {}
@@ -10325,12 +10793,15 @@ function renderClientSwitch() {
   const busy = () => {
     const a = document.activeElement;
     if (a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !['checkbox', 'radio', 'button'].includes(a.type)) || a.isContentEditable)) return true;
+    if (typeof resumeEditing === 'function' && resumeEditing()) return true;
     return !!document.querySelector('#huven-modal, .modal-overlay.open, .modal.open, #move-modal.open, #confirm-modal.open, #campaign-editor[style*="block"]');
   };
   const reload = () => { location.replace(location.pathname + '?v=' + Date.now() + location.hash); };
+  // Com Cadência, Disparo ou Chat em edição não recarrega nem com a aba escondida (o rascunho fica guardado de qualquer jeito).
+  const editing = () => typeof resumeEditing === 'function' && resumeEditing();
   const tryReload = () => {
     if (!pending) return;
-    if (!busy() || document.visibilityState === 'hidden') reload();
+    if (!busy() || (document.visibilityState === 'hidden' && !editing())) reload();
   };
   const showBanner = () => {
     if (document.getElementById('upd-banner')) return;
@@ -14627,6 +15098,7 @@ function onChatClientChange() {
       _chatItems = items.concat(Object.values(_chatExtra).filter(x => !items.some(i => i.id === x.id))).filter(chatVisibleFilter(act));
       renderChatList();
       renderChatHeader();
+      chatResumeOpenLast();
       const open = items.find(c => c.id === _chatOpenKey);
       if (open && open.unread > 0 && document.getElementById('chat-view').style.display !== 'none' && !document.hidden) {
         window._fb.updateInboxChat(act, open.id, { unread: 0 }).catch(() => {});
@@ -14958,7 +15430,49 @@ function stopChatExtras() {
   _chatNotes = []; _chatSched = [];
 }
 
-function closeChat() {
+// O que estava sendo digitado em cada conversa fica guardado no aparelho; a conversa aberta reabre depois de recarregar.
+function chatResumeSave() {
+  const ta = document.getElementById('chat-text');
+  if (!_chatAct || !_chatOpenKey || !ta) return;
+  const kind = 'chat:' + _chatAct + ':' + _chatOpenKey;
+  if (ta.value.trim()) resumeSet(kind, { text: ta.value, mentions: _chatMentions }); else resumeClear(kind);
+  const st = document.getElementById('sched-text');
+  if (st) resumeSet('chatsched', { act: _chatAct, key: _chatOpenKey, text: st.value, when: (document.getElementById('sched-when') || {}).value || '', picks: (_mbox['sched-text'] || {}).picks || [] });
+}
+function chatResumeRestore(key) {
+  resumeSet('chatopen', { act: _chatAct, key });
+  const ta = document.getElementById('chat-text');
+  const r = resumeGet('chat:' + _chatAct + ':' + key);
+  if (ta && r && r.text && !ta.value) {
+    ta.value = r.text;
+    _chatMentions = Array.isArray(r.mentions) ? r.mentions : [];
+    ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px';
+  }
+  const sr = resumeGet('chatsched');
+  if (sr && sr.act === _chatAct && sr.key === key && !document.getElementById('sched-text')) {
+    openScheduleMessage();
+    const st = document.getElementById('sched-text'), sw = document.getElementById('sched-when');
+    if (st) st.value = sr.text || '';
+    if (sw && sr.when) sw.value = sr.when;
+    if (_mbox['sched-text']) _mbox['sched-text'].picks = sr.picks || [];
+    resumeNotice('Reabrimos a mensagem agendada que você estava montando.', () => closeHuvenModal());
+  }
+}
+let _chatResumeTried = false;
+function chatResumeOpenLast() {
+  if (_chatResumeTried || _chatOpenKey || !_chatAct) return;
+  _chatResumeTried = true;
+  const r = resumeGet('chatopen');
+  if (r && r.act === _chatAct && r.key && _chatItems.some(c => c.id === r.key)) openChat(r.key);
+}
+document.addEventListener('input', e => {
+  const id = e.target && e.target.id;
+  if (id === 'chat-text' || id === 'sched-text' || id === 'sched-when') { clearTimeout(chatResumeSave._t); chatResumeSave._t = setTimeout(chatResumeSave, 300); }
+});
+_resumeSavers.push(chatResumeSave);
+
+function closeChat(userClosed) {
+  if (userClosed) resumeClear('chatopen');
   if (_chatMsgUnsub) { _chatMsgUnsub(); _chatMsgUnsub = null; }
   stopChatExtras();
   _chatOpenKey = null; _chatMsgs = []; _chatPendingMedia = null;
@@ -14995,6 +15509,7 @@ function openChat(key) {
     </div>`;
   renderChatHeader();
   renderChatList();
+  chatResumeRestore(key);
   const act = _chatAct;
   stopChatExtras();
   _chatNotesUnsub = window._fb.listenChatNotes(act, key, notes => { if (_chatOpenKey !== key) return; _chatNotes = notes; renderChatMessages(); });
@@ -15124,7 +15639,7 @@ function renderChatHeader() {
     ? `<button class="chat-pill" onclick="toggleChatAssign()">Soltar conversa</button>`
     : `<button class="chat-pill active" onclick="toggleChatAssign()">${c.assignedTo ? 'Assumir' : 'Atribuir para mim'}</button>`;
   head.innerHTML = `
-    <button class="chat-pill chat-back" onclick="closeChat()">←</button>
+    <button class="chat-pill chat-back" onclick="closeChat(true)">←</button>
     <div style="flex:1;min-width:160px;">
       <div style="font-size:15px;font-weight:600;color:var(--text);">${escapeHtml(chatName(c, lead))}</div>
       <div style="font-size:12px;color:var(--muted2);display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:2px;">
@@ -15155,7 +15670,7 @@ async function toggleChatClosed(close) {
     const r = await window._fb.whatsapp('/whatsapp/chat-close', _chatAct, { chatKey: c.id, close });
     c.closedAt = r.closedAt || '';
     showToast(close ? 'Conversa encerrada. Ela volta para a lista quando chegar mensagem nova.' : 'Conversa reaberta.', 'success');
-    if (close) closeChat(); else renderChatHeader();
+    if (close) closeChat(true); else renderChatHeader();
     renderChatList();
   } catch (e) { showToast('Erro: ' + e.message, 'error'); }
 }
@@ -15242,7 +15757,7 @@ function renderChatMessages() {
     const when = new Date(s.sendAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     const head = s.status === 'failed' ? `${uiIco('alert', 12)} Agendada para ${when} não foi enviada: ${escapeHtml(s.error || '')}`
       : s.status === 'sending' ? `${uiIco('clock', 12)} Enviando agora...` : `${uiIco('clock', 12)} Agendada para ${when}${s.lastError ? ' · ' + escapeHtml(s.lastError) : ''}`;
-    parts.push(`<div class="chat-sched ${s.status === 'failed' ? 'failed' : ''}"><div style="font-size:11px;font-weight:700;color:var(--muted2);margin-bottom:3px;">${head}</div>${s.media && s.media.fileName ? `${uiIco('clip', 13)} ${escapeHtml(s.media.fileName)}<br>` : ''}${escapeHtml(s.text || '')}<div class="chat-meta">${escapeHtml(s.createdByName || '')}${['pending', 'failed'].includes(s.status) ? ` · <a href="#" onclick="cancelScheduled('${escapeJsString(s.id)}');return false;" style="color:var(--red);">${s.status === 'failed' ? 'dispensar' : 'cancelar'}</a>` : ''}</div></div>`);
+    parts.push(`<div class="chat-sched ${s.status === 'failed' ? 'failed' : ''}"><div style="font-size:11px;font-weight:700;color:var(--muted2);margin-bottom:3px;">${head}</div>${s.media && s.media.fileName ? `${uiIco('clip', 13)} ${escapeHtml(s.media.fileName)}<br>` : ''}${escapeHtml(mboxShow(s.text || '', s.mentions))}<div class="chat-meta">${escapeHtml(s.createdByName || '')}${['pending', 'failed'].includes(s.status) ? ` · <a href="#" onclick="cancelScheduled('${escapeJsString(s.id)}');return false;" style="color:var(--red);">${s.status === 'failed' ? 'dispensar' : 'cancelar'}</a>` : ''}</div></div>`);
   });
   box.innerHTML = parts.join('');
   box.dataset.loaded = '1';
@@ -15380,6 +15895,7 @@ async function sendChatMessage() {
     }
     ta.value = ''; ta.style.height = 'auto';
     _chatMentions = [];
+    resumeClear('chat:' + _chatAct + ':' + _chatOpenKey);
     clearChatMedia();
     const c = _chatItems.find(x => x.id === _chatOpenKey);
     const me = chatMe();
@@ -16052,6 +16568,16 @@ function openScheduleMessage() {
     <label class="field-label">Quando enviar</label>
     <input type="datetime-local" class="field-input" id="sched-when" value="${chatDateTimeLocal(soon)}" style="margin-bottom:12px;">
     <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="saveScheduleMessage()">Agendar</button> <span id="sched-fb" class="integ-muted"></span>`, 480);
+  delete _mbox['sched-text'];
+  const grp = chatOpenGroup();
+  if (grp) {
+    const st = document.getElementById('sched-text');
+    if (st) st.insertAdjacentHTML('afterend', '<div class="integ-muted" style="font-size:11.5px;margin:-6px 0 10px;">Digite <b>@</b> para marcar alguém do grupo (a pessoa recebe o aviso).</div>');
+    mboxSetup('sched-text', {
+      load: () => loadGroupInfo(grp.id).then(info => groupMembersSorted(info).filter(m => m.phone).map(m => ({ phone: m.phone, name: m.name || '' }))),
+      picks: _chatMentions
+    });
+  }
 }
 
 // Anexo da mensagem agendada (imagem, vídeo ou áudio). Usa o mesmo envio de arquivo do chat; o texto vira legenda.
@@ -16109,11 +16635,17 @@ async function saveScheduleMessage() {
   const me = chatMe();
   fb.textContent = 'Agendando...';
   try {
-    const data = { act: _chatAct, chatKey: _chatOpenKey, text, sendAt: when.toISOString(), createdBy: me.uid, createdByName: me.name, createdAt: new Date().toISOString() };
+    // Grupo: "@Nome" vira "@numero" e vai a lista de quem é marcado (como no envio na hora).
+    const mt = chatOpenGroup() && _mbox['sched-text'] ? mboxApply('sched-text', text) : { text, mentioned: [], mentions: [], mentionAll: false };
+    const data = { act: _chatAct, chatKey: _chatOpenKey, text: mt.text, sendAt: when.toISOString(), createdBy: me.uid, createdByName: me.name, createdAt: new Date().toISOString() };
+    if (mt.mentioned.length) { data.mentioned = mt.mentioned; data.mentions = mt.mentions; }
+    if (mt.mentionAll) data.mentionAll = true;
     if (_chatPendingMedia) data.media = _chatPendingMedia;
     await window._fb.addScheduledMessage(data);
     const ta = document.getElementById('chat-text');
     if (ta) { ta.value = ''; ta.style.height = 'auto'; }
+    _chatMentions = [];
+    resumeClear('chat:' + _chatAct + ':' + _chatOpenKey);
     clearChatMedia();
     closeHuvenModal();
     showToast('Mensagem agendada para ' + when.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + '.', 'success');
@@ -16134,7 +16666,7 @@ function openNewChat(prefill) {
   _chatOpenKey = null;
   document.getElementById('chat-wrap').classList.add('open');
   document.getElementById('chat-main').innerHTML = `
-    <div class="chat-head"><button class="chat-pill chat-back" onclick="closeChat()">←</button><div style="font-size:15px;font-weight:600;color:var(--text);">Nova conversa</div></div>
+    <div class="chat-head"><button class="chat-pill chat-back" onclick="closeChat(true)">←</button><div style="font-size:15px;font-weight:600;color:var(--text);">Nova conversa</div></div>
     <div style="padding:20px;max-width:420px;">
       ${chatLines(_chatAct).length > 1 ? `<label class="field-label">Enviar pelo WhatsApp</label><select id="chat-new-line" class="field-input" style="margin-bottom:10px;">${chatLines(_chatAct).map(l => `<option value="${escapeHtml(l.id)}" ${_chatLineFilter === l.id ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}</select>` : ''}
       <label class="field-label">Número com DDD</label>
@@ -17155,6 +17687,10 @@ async function renderWhatsAppView() {
   if (!profile || !clientPanel || !adminPanel) return;
   try { Object.assign(WHATSAPP_SETTINGS, await window._fb.getWhatsAppSettings()); } catch(e) { console.warn('Configuração de WhatsApp indisponível:', e); }
 
+  const sub = document.getElementById('whatsapp-view-subtitle');
+  const old = document.getElementById('wa-alert-unmute');
+  if (old) old.remove();
+  if (sub && waAlertMuted()) sub.insertAdjacentHTML('afterend', `<div id="wa-alert-unmute" class="integ-muted" style="font-size:12px;margin:6px 0 10px;">Os avisos de WhatsApp desconectado estão desligados neste aparelho. <button class="chat-pill" onclick="unmuteWhatsAppAlert()">Ligar de novo</button></div>`);
   if (profile.role === 'admin') {
     clientPanel.style.display = 'none';
     adminPanel.style.display = 'block';
@@ -22068,7 +22604,7 @@ function renderWhatsAppAlert() {
   if (key !== _waAlertKey) { _waAlertKey = key; _waAlertHiddenUntil = 0; }
 
   let el = document.getElementById('wa-alert');
-  if ((!down.length && !server) || Date.now() < _waAlertHiddenUntil) { if (el) el.remove(); return; }
+  if ((!down.length && !server) || Date.now() < _waAlertHiddenUntil || waAlertMuted()) { if (el) el.remove(); return; }
   if (!el) { el = document.createElement('div'); el.id = 'wa-alert'; el.className = 'wa-alert'; document.body.appendChild(el); enableSwipeDismiss(el, hideWhatsAppAlert); }
 
   const parts = [];
@@ -22087,7 +22623,25 @@ function renderWhatsAppAlert() {
       <div style="margin-top:4px;">Enquanto estiver desconectado, as mensagens do WhatsApp não viram card no kanban, o Chat não recebe mensagens e a 1ª mensagem automática não sai. Leia o QR Code de novo para voltar a funcionar.</div>
       <div style="margin-top:8px;"><button class="wa-alert-btn" onclick="openWaReconnect('${escapeJsString(s.act || s.id.split('__')[0])}','${escapeJsString(sLine)}')">Reconectar agora</button></div>`);
   }
-  el.innerHTML = `<button class="wa-alert-close" title="Esconder por 30 minutos" onclick="hideWhatsAppAlert()">×</button>${parts.join('')}`;
+  el.innerHTML = `<button class="wa-alert-close" title="Esconder por 30 minutos" onclick="hideWhatsAppAlert()">×</button>${parts.join('')}
+    <label class="wa-alert-mute"><input type="checkbox" onchange="if (this.checked) muteWhatsAppAlert()"> Não mostrar novamente</label>`;
+}
+
+// "Não mostrar novamente": some de vez neste aparelho, mesmo sem resolver (o ponto vermelho no menu WhatsApp continua).
+function waAlertMuted() { try { return localStorage.getItem('crm_wa_alert_off') === '1'; } catch (e) { return false; } }
+function muteWhatsAppAlert() {
+  try { localStorage.setItem('crm_wa_alert_off', '1'); } catch (e) {}
+  const el = document.getElementById('wa-alert');
+  if (el) el.remove();
+  showToast('Aviso desligado. Para ligar de novo, abra a tela WhatsApp.', 'info', 6000);
+}
+function unmuteWhatsAppAlert() {
+  try { localStorage.removeItem('crm_wa_alert_off'); } catch (e) {}
+  _waAlertHiddenUntil = 0;
+  renderWhatsAppAlert();
+  const box = document.getElementById('wa-alert-unmute');
+  if (box) box.remove();
+  showToast('Os avisos de WhatsApp desconectado voltaram.', 'success');
 }
 
 // ===== ATENDIMENTO: tempo de resposta (Chat × cards do funil) =====
@@ -22818,6 +23372,7 @@ function updateSidebarForUser() {
   const mobileNav = document.getElementById('mobile-nav');
   if (mobileNav) mobileNav.style.display = 'flex';
   applyViewPermissions();
+  if (_bootLastView) setTimeout(resumeLastView, 300);
 }
 
 function onMobileClientChange() {
