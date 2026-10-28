@@ -281,6 +281,10 @@ tr:hover td { background: var(--surface2); }
 }
 .status-pill.active { background: var(--green-dim); color: var(--green); }
 .status-pill.paused { background: var(--amber-dim); color: var(--amber); }
+.meta-toggle { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; cursor: pointer; font: inherit; color: inherit; }
+.meta-toggle:disabled { opacity: .5; cursor: wait; }
+.meta-toggle-act { font-size: 11px; color: var(--muted); text-decoration: underline; opacity: .75; }
+.meta-toggle:hover .meta-toggle-act { opacity: 1; color: var(--text); }
 .status-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .empty-state { text-align: center; padding: 48px; color: var(--muted); font-family: 'Manrope', sans-serif; }
 .empty-state strong { display: block; font-size: 15px; color: var(--muted2); margin-bottom: 6px; font-weight: 500; }
@@ -2774,7 +2778,7 @@ html:root .chat-pill.chat-sum-pill { display: none; }
     },
     async teamCall(path, body) { return callAdminApi(path, body); },
     async updateSubLogin(login, personName, perms) {
-      if (currentProfile && currentProfile.role !== 'admin') { await callAdminApi('/team/update', { login, name: personName, views: perms.views, chatLines: perms.chatLines || [], funnelScope: perms.funnelScope || 'all' }); return; }
+      if (currentProfile && currentProfile.role !== 'admin') { await callAdminApi('/team/update', { login, name: personName, views: perms.views, chatLines: perms.chatLines || [], funnelScope: perms.funnelScope || 'all', adsManage: !!perms.adsManage, mcp: !!perms.mcp }); return; }
       const uid = await findUidByLogin(login);
       if (!uid) throw new Error('Login não encontrado.');
       await updateDoc(doc(db, 'users', uid), { personName, perms });
@@ -4068,6 +4072,7 @@ html:root .chat-pill.chat-sum-pill { display: none; }
           <button class="integ-tab" data-tab="meta" onclick="setIntegTab('meta')">Formulários da Meta</button>
           <button class="integ-tab" data-tab="sheets" onclick="setIntegTab('sheets')">Planilhas (Apps Script)</button>
           <button class="integ-tab" data-tab="ads" onclick="setIntegTab('ads')">Dashboard (contas de anúncios)</button>
+          <button class="integ-tab" data-tab="mcp" onclick="setIntegTab('mcp')">Claude / Codex (MCP)</button>
         </div>
         <div id="integ-body"></div>
       </div>
@@ -4445,6 +4450,7 @@ async function loadData() {
   if (!from || !to) { showError('Selecione o período.'); return; }
   const account = getAdAccountFor(activeClient.account);
   if (!account) { showError(NO_AD_ACCOUNT_MESSAGE); return; }
+  lastDashAccount = account;
 
   hideError(); showLoading(true);
   document.getElementById('welcome-state').style.display = 'none';
@@ -4903,6 +4909,8 @@ let dailyData = [];
 let _dashSnap = null; // números do Dashboard na tela, usados no relatório em PDF
 let lastAdsData = [];
 let adThumbnailCache = {};
+let adStatusCache = {};
+let lastDashAccount = '';
 const DASHBOARD_METRICS_KEY = 'huven_dashboard_visible_metrics_v1';
 const DEFAULT_DASHBOARD_METRICS = ['spend','reach','cpm','ctr','freq','cpl','conv','cpconv','leads','purchases','cpp','purchaseValue','roas'];
 
@@ -5118,6 +5126,7 @@ async function loadAdThumbnails(account, rows) {
     const list = Array.isArray(json && json.data) ? json.data : [];
     return list.reduce((map, item) => {
       const id = item.id || item.ad_id;
+      if (id && item.effective_status) adStatusCache[id] = item.effective_status;
       const thumb = getAdThumbnail(item);
       if (id && thumb) map[id] = thumb;
       return map;
@@ -5210,6 +5219,7 @@ function renderAdsTable(rows) {
       stats: dashRowStats(row, true),
       purchases: purchaseActionValue(row.actions),
       name: row.ad_name || row.ad_id || 'Anúncio sem nome',
+      id: row.ad_id || '',
       campaign: row.campaign_name || '',
       thumbnail: getAdThumbnail(row) || (row.ad_id ? adThumbnailCache[row.ad_id] : ''),
       spend,
@@ -5227,9 +5237,9 @@ function renderAdsTable(rows) {
   });
 
   const cols = dashColsFor('ads');
-  dashColsHeader('ads', cols, '<th style="width:30%">Anúncio</th>');
+  dashColsHeader('ads', cols, '<th style="width:30%">Anúncio</th><th style="width:9%">Status</th>');
   if (!normalized.length) {
-    body.innerHTML = `<tr><td colspan="${cols.length + 1}" class="empty-state"><strong>Nenhum anúncio encontrado</strong>Não há dados por anúncio para esse período.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="${cols.length + 2}" class="empty-state"><strong>Nenhum anúncio encontrado</strong>Não há dados por anúncio para esse período.</td></tr>`;
     return;
   }
 
@@ -5244,6 +5254,7 @@ function renderAdsTable(rows) {
           </div>
         </div>
       </td>
+      <td data-label="Status">${ad.id ? metaStatusPill('ad', ad.id, adStatusCache[ad.id], ad.name) : '—'}</td>
       ${dashColsCells(cols, ad.stats)}
     </tr>`).join('');
 }
@@ -5357,6 +5368,48 @@ function resetDashCols(table) {
   rerenderDashTable(table);
 }
 document.addEventListener('click', () => document.querySelectorAll('.dash-cols-picker.open').forEach(p => p.classList.remove('open')));
+// Pausar / ativar na Meta direto do Dashboard (admin, login principal e equipe com a permissão).
+function canManageAds() {
+  if (isAdmin) return true;
+  const p = window._fb && window._fb.getProfile && window._fb.getProfile();
+  return !!p && (!p.parentLogin || !!(p.perms && p.perms.adsManage));
+}
+const META_LEVEL_LABEL = { campaign: 'a campanha', adset: 'o conjunto', ad: 'o anúncio' };
+function metaStatusPill(level, id, status, name) {
+  const st = String(status || '').toUpperCase();
+  const active = st === 'ACTIVE';
+  const label = active ? (level === 'campaign' ? 'Ativa' : 'Ativo') : st && st !== 'PAUSED' && st !== 'CAMPAIGN_PAUSED' && st !== 'ADSET_PAUSED' ? metaStatusText(st) : (level === 'campaign' ? 'Pausada' : 'Pausado');
+  const pill = `<span class="status-pill ${active ? 'active' : 'paused'}"><span class="status-dot"></span>${label}</span>`;
+  if (!st || !canManageAds() || !id) return pill;
+  return `<button type="button" class="meta-toggle" title="${active ? 'Pausar' : 'Ativar'} ${META_LEVEL_LABEL[level]} na Meta" onclick="toggleMetaStatus('${level}','${escapeJsString(String(id))}',${active},'${escapeJsString(String(name || '').slice(0, 80))}', this)">${pill}<span class="meta-toggle-act">${active ? 'Pausar' : 'Ativar'}</span></button>`;
+}
+function metaStatusText(st) {
+  return { CAMPAIGN_PAUSED: 'Campanha pausada', ADSET_PAUSED: 'Conjunto pausado', IN_PROCESS: 'Em análise', PENDING_REVIEW: 'Em análise', DISAPPROVED: 'Reprovado', WITH_ISSUES: 'Com problema', ARCHIVED: 'Arquivado', DELETED: 'Excluído' }[st] || st;
+}
+async function toggleMetaStatus(level, id, active, name, btn) {
+  const account = lastDashAccount;
+  if (!account) return;
+  const status = active ? 'PAUSED' : 'ACTIVE';
+  const what = `${META_LEVEL_LABEL[level]} "${name || id}"`;
+  if (!await showConfirm(active ? `Pausar ${what} na Meta? Ele para de veicular e de gastar até ser ativado de novo.` : `Ativar ${what} na Meta? Ele volta a veicular e a gastar o orçamento.`, active ? 'Pausar na Meta' : 'Ativar na Meta', active ? 'Pausar' : 'Ativar')) return;
+  if (btn) btn.disabled = true;
+  try {
+    const token = window._fb ? await window._fb.getIdToken() : null;
+    const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) }, body: JSON.stringify({ account, id, status }) });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || out.error) throw new Error((out.error && out.error.message) || 'Erro ' + res.status);
+    if (level === 'campaign' && lastCampaignsData) lastCampaignsData.statusMap[id] = status;
+    if (level === 'ad') adStatusCache[id] = status;
+    renderCampaignsTable();
+    renderAdsTable(lastAdsData || []);
+    showToast(`${active ? 'Pausado' : 'Ativado'} na Meta: ${name || id}`, 'success');
+    if (activeClient) auditLog(activeClient.account, 'campanha', `${active ? 'Pausou' : 'Ativou'} ${what} na Meta (Dashboard)`);
+  } catch (e) {
+    showToast(e.message, 'error', 9000);
+    if (btn) btn.disabled = false;
+  }
+}
+
 function renderCampaignsTable() {
   const body = document.getElementById('campaigns-body');
   if (!body) return;
@@ -5372,7 +5425,7 @@ function renderCampaignsTable() {
     const isActive = (statusMap[d.campaign_id] || '').toUpperCase() === 'ACTIVE';
     return `<tr>
         <td class="name-cell" data-label="Campanha" title="${escapeHtml(d.campaign_name || '')}">${escapeHtml(d.campaign_name || '')}</td>
-        <td data-label="Status"><span class="status-pill ${isActive ? 'active' : 'paused'}"><span class="status-dot"></span>${isActive ? 'Ativa' : 'Pausada'}</span></td>
+        <td data-label="Status">${metaStatusPill('campaign', d.campaign_id, statusMap[d.campaign_id], d.campaign_name)}</td>
         ${dashColsCells(cols, dashRowStats(d, false))}
       </tr>`;
   }).join('');
@@ -7930,6 +7983,17 @@ function subChatLinesHtml(act, selected, funnelScope) {
     `<label class="sub-view"><input type="checkbox" value="${escapeHtml(l.id)}" ${!sel || sel.includes(l.id) ? 'checked' : ''}><span class="sub-box"></span>${escapeHtml(l.label)}</label>`).join('')}</div>
     <label class="sub-view" style="margin-top:6px;"><input type="checkbox" class="sub-funnel-mine" ${funnelScope === 'mine' ? 'checked' : ''}><span class="sub-box"></span>Funil: ver só os leads destes WhatsApps (os cards em que o responsável é um deles)</label>`;
 }
+// Permissões extras do login de equipe: pausar/ativar anúncios na Meta e conectar o CRM no Claude/Codex (MCP).
+function subExtraPermsHtml(perms) {
+  perms = perms || {};
+  return `<div class="sub-views-head"><span>Permissões extras</span></div>
+    <label class="sub-view"><input type="checkbox" class="sub-ads-manage" ${perms.adsManage ? 'checked' : ''}><span class="sub-box"></span>Dashboard: pausar e ativar anúncios na Meta</label>
+    <label class="sub-view"><input type="checkbox" class="sub-mcp" ${perms.mcp ? 'checked' : ''}><span class="sub-box"></span>Conectar o CRM no Claude / Codex (MCP)</label>`;
+}
+function readSubExtraPerms(box) {
+  const a = box.querySelector('.sub-ads-manage'), m = box.querySelector('.sub-mcp');
+  return { adsManage: !!(a && a.checked), mcp: !!(m && m.checked) };
+}
 function readSubFunnelScope(box) { const i = box.querySelector('.sub-funnel-mine'); return i && i.checked ? 'mine' : 'all'; }
 // Lista vazia = todos (inclusive números conectados depois).
 function readSubChatLines(box) {
@@ -7982,6 +8046,7 @@ function subLoginsHtml(parentLogin, team) {
         ${team ? '' : renameLoginHtml(sl.login)}
         ${subViewChecks(views)}
         ${subChatLinesHtml(sl.act, sl.perms && sl.perms.chatLines, sl.perms && sl.perms.funnelScope)}
+        ${subExtraPermsHtml(sl.perms)}
         <div class="sub-actions">
           <button class="integ-btn primary" onclick="saveSubLogin('${lj}', this)">Salvar acessos</button>
           <span class="sub-sep"></span>
@@ -8131,10 +8196,11 @@ async function saveSubLogin(login, btn) {
   if (!name) return subMsg(btn, 'Informe o nome.', false);
   if (!views.length) return subMsg(btn, 'Marque pelo menos uma área.', false);
   if (item.querySelector('.sub-chatlines') && !item.querySelector('.sub-chatlines input:checked')) return subMsg(btn, 'Marque pelo menos um WhatsApp para o Chat.', false);
-  const ok = await withSaveFeedback(btn, () => window._fb.updateSubLogin(login, name, { views, chatLines, funnelScope }));
+  const extra = readSubExtraPerms(item);
+  const ok = await withSaveFeedback(btn, () => window._fb.updateSubLogin(login, name, { views, chatLines, funnelScope, ...extra }));
   if (!ok) return;
   const sl = SUB_LOGINS.find(x => x.login === login);
-  if (sl) { sl.name = name; sl.perms = { views, chatLines, funnelScope }; }
+  if (sl) { sl.name = name; sl.perms = { views, chatLines, funnelScope, ...extra }; }
   subMsg(btn, 'Salvo ✓ (vale no próximo acesso dessa pessoa)', true);
 }
 
@@ -13535,7 +13601,86 @@ function renderIntegracoesView() {
   if (_integTab === 'lp') renderIntegLp();
   else if (_integTab === 'meta') renderIntegMeta();
   else if (_integTab === 'ads') renderIntegAds();
+  else if (_integTab === 'mcp') renderIntegMcp();
   else renderIntegSheets();
+}
+
+// ----- MCP: usar o CRM pelo Claude, Codex e outros assistentes -----
+let _mcpInfo = null, _mcpNewKey = null;
+const MCP_SERVER_NAME = 'crm-zioon';
+const MCP_KEY_ENV = 'ZIOON_MCP_KEY';
+async function renderIntegMcp(skipLoad) {
+  const body = document.getElementById('integ-body');
+  if (!body) return;
+  const act = isAdmin ? (_integAct || '') : flowAct();
+  if (!skipLoad) {
+    body.innerHTML = '<div class="integ-muted">Carregando...</div>';
+    try { _mcpInfo = await window._fb.adminApi('/mcpcfg/info', { act }); } catch (e) { body.innerHTML = `<div class="integ-error">Erro: ${escapeHtml(e.message)}</div>`; return; }
+  }
+  const i = _mcpInfo || {};
+  const url = i.url || '';
+  const u = escapeJsString(url);
+  const code = t => `<div class="integ-url" style="align-items:flex-start;"><code style="white-space:pre-wrap;word-break:break-all;">${escapeHtml(t)}</code><button class="integ-btn" onclick="copyText(${JSON.stringify(t).replace(/"/g, '&quot;')}, 'Copiado')">Copiar</button></div>`;
+  const key = _mcpNewKey ? _mcpNewKey.key : 'SUA_CHAVE';
+  body.innerHTML = `
+    <div class="integ-intro">
+      <div>
+        <div class="integ-h2">Use o CRM pelo Claude ou Codex</div>
+        <div class="integ-muted">Conecte o CRM no Claude, no Codex ou em outro assistente com MCP e peça em português: "quantos leads chegaram essa semana?", "move o João para Fechado com valor de 5 mil", "cria uma cadência de 7 dias para a coluna Novo lead", "pausa os anúncios com custo por lead acima de R$ 30". O assistente enxerga só esta conta, com as permissões do seu login. Disparos, automações, mensagens e pausar anúncios sempre pedem confirmação antes.</div>
+      </div>
+      ${isAdmin ? `<div class="integ-actions"><select class="field-input integ-select" onchange="_integAct = this.value; renderIntegMcp()">${integClientOptions(_integAct, 'Escolha o cliente (configuração)')}</select></div>` : ''}
+    </div>
+    ${i.allowed === false ? `<div class="integ-card" style="border-color:var(--amber);"><div class="integ-muted" style="color:var(--amber);">${escapeHtml(i.reason || 'Seu login não pode usar o MCP.')}</div></div>` : ''}
+    <div class="integ-card">
+      <div class="integ-title" style="margin-bottom:6px;">Endereço do servidor MCP</div>
+      <div class="integ-url"><code>${escapeHtml(url)}</code><button class="integ-btn" onclick="copyText('${u}', 'Endereço copiado')">Copiar</button></div>
+    </div>
+    <div class="integ-card">
+      <div class="integ-title" style="margin-bottom:8px;">Como conectar</div>
+      <div class="integ-muted" style="margin-bottom:6px;"><b>Claude (site, app ou desktop):</b> Configurações → Conectores → Adicionar conector personalizado → cole o endereço acima → Conectar. Abre a tela de login do CRM: entre com o seu login e senha. Não precisa de chave.</div>
+      <div class="integ-muted" style="margin:12px 0 6px;"><b>Claude Code</b> (no terminal; ao usar, ele abre o login do CRM):</div>
+      ${code(`claude mcp add --transport http ${MCP_SERVER_NAME} ${url}`)}
+      <div class="integ-muted" style="margin:12px 0 6px;"><b>Codex</b>: gere uma chave abaixo e coloque no arquivo <code>~/.codex/config.toml</code>:</div>
+      ${code(`[mcp_servers.${MCP_SERVER_NAME.replace(/-/g, '_')}]\nurl = "${url}"\nbearer_token_env_var = "${MCP_KEY_ENV}"`)}
+      <div class="integ-muted" style="margin:8px 0 6px;">e deixe a chave na variável de ambiente (no terminal, antes de abrir o Codex):</div>
+      ${code(`export ${MCP_KEY_ENV}="${key}"`)}
+      <div class="integ-muted" style="margin-top:12px;"><b>Outros assistentes:</b> use o endereço acima com o cabeçalho <code>Authorization: Bearer ${escapeHtml(key)}</code>, ou o login pelo navegador (OAuth), se o assistente tiver.</div>
+    </div>
+    <div class="integ-card">
+      <div class="integ-card-head" style="margin-bottom:6px;">
+        <div style="flex:1;"><div class="integ-title">Chaves e conexões do seu login</div><div class="integ-muted">Cada chave dá acesso com o seu login. Exclua a que não usar mais (ou se alguém tiver visto).</div></div>
+        ${i.allowed === false ? '' : '<button class="integ-btn primary" onclick="createMcpKey()">+ Gerar chave</button>'}
+      </div>
+      ${_mcpNewKey ? `<div class="integ-card" style="border-color:var(--accent);margin:8px 0;"><div class="integ-muted" style="margin-bottom:6px;"><b>Copie a chave agora:</b> ela não aparece de novo.</div>${code(_mcpNewKey.key)}</div>` : ''}
+      ${(i.keys || []).length ? (i.keys || []).map(k => `<div class="integ-row" style="justify-content:space-between;border-top:1px solid var(--border);padding-top:8px;margin-top:8px;">
+        <span>${uiIco(k.kind === 'chave' ? 'lock' : 'user', 13)} <b>${escapeHtml(k.name || (k.kind === 'chave' ? 'Chave' : 'Conexão'))}</b> <span class="integ-muted">· ${k.kind === 'chave' ? 'chave ' + escapeHtml(k.prefix || '') : 'conectado pelo login'} · ${escapeHtml(integWhen(k.createdAt))}</span></span>
+        <button class="integ-btn danger" onclick="revokeMcpKey('${escapeJsString(k.id)}')">${k.kind === 'chave' ? 'Excluir' : 'Desconectar'}</button></div>`).join('') : '<div class="integ-muted">Nenhuma chave nem conexão ainda.</div>'}
+    </div>
+    ${i.canConfig ? `<div class="integ-card">
+      <div class="integ-title" style="margin-bottom:6px;">Mensagens do WhatsApp pelo MCP</div>
+      <label class="integ-toggle"><input type="checkbox" ${i.allowMessages ? 'checked' : ''} onchange="saveMcpSettings(this.checked, this)"> Permitir que o assistente leia as conversas e envie mensagens (cada envio pede confirmação)</label>
+      <div class="integ-muted" style="margin-top:6px;">Vale para todos os logins desta conta. Desligado, o assistente continua vendo leads, métricas e automações, mas não abre nem envia mensagens.</div>
+    </div>` : ''}`;
+}
+async function createMcpKey() {
+  const name = prompt('Nome da chave (ex.: "Codex do Gabriel"):', 'Codex');
+  if (name === null) return;
+  try {
+    _mcpNewKey = await window._fb.adminApi('/mcpcfg/key-create', { name: name || 'Chave MCP' });
+    await renderIntegMcp();
+    showToast('Chave criada. Copie agora: ela não aparece de novo.', 'success', 7000);
+  } catch (e) { showToast(e.message, 'error', 7000); }
+}
+async function revokeMcpKey(id) {
+  if (!await showConfirm('O assistente que usa esta chave (ou conexão) perde o acesso ao CRM na hora.', 'Excluir acesso', 'Excluir')) return;
+  try { await window._fb.adminApi('/mcpcfg/key-revoke', { id }); _mcpNewKey = null; await renderIntegMcp(); showToast('Acesso excluído.', 'success'); }
+  catch (e) { showToast(e.message, 'error', 7000); }
+}
+async function saveMcpSettings(on, input) {
+  const act = isAdmin ? (_integAct || '') : flowAct();
+  if (isAdmin && !act) { input.checked = !on; return showToast('Escolha o cliente primeiro.', 'warning'); }
+  try { await window._fb.adminApi('/mcpcfg/settings', { act, allowMessages: on }); if (_mcpInfo) _mcpInfo.allowMessages = on; showToast(on ? 'O assistente pode ler e enviar mensagens (com confirmação).' : 'Mensagens pelo MCP desligadas.', 'success'); }
+  catch (e) { input.checked = !on; showToast(e.message, 'error', 7000); }
 }
 
 function setIntegTab(tab) { _integTab = tab; renderIntegracoesView(); }
