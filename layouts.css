@@ -356,3 +356,19 @@ html.ui-quente[data-theme="light"] {
   --accent-glow: rgba(224, 112, 63, .16);
   --accent-glow2: rgba(224, 112, 63, .08);
 }
+
+/* Botão claro/escuro do topo: no modo noturno a lua fica acesa (cor de destaque e anel); no claro aparece um sol. */
+#ui-theme.is-dark { color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow), 0 6px 20px rgba(0, 0, 0, .15); }
+#ui-theme:not(.is-dark) { color: #E0A21B; }
+
+/* Listas que abrem nos seletores (ex.: mês do funil): no escuro vinham brancas com letra branca. */
+html.ui-vidro:not([data-theme="light"]), html.ui-quente:not([data-theme="light"]) { color-scheme: dark; }
+html.ui-vidro[data-theme="light"], html.ui-quente[data-theme="light"] { color-scheme: light; }
+html.ui-vidro select option, html.ui-vidro select optgroup { background-color: #1F1F24; color: #FFFFFF; }
+html.ui-vidro[data-theme="light"] select option, html.ui-vidro[data-theme="light"] select optgroup { background-color: #FFFFFF; color: #17171A; }
+html.ui-quente select option, html.ui-quente select optgroup { background-color: #211813; color: #F7EDE4; }
+html.ui-quente[data-theme="light"] select option, html.ui-quente[data-theme="light"] select optgroup { background-color: #FFFBF7; color: #2A1F18; }
+/* Layout Atual no modo escuro: mesmo problema nas listas dos seletores. */
+html:not(.ui-vidro):not(.ui-quente):not([data-theme="light"]) { color-scheme: dark; }
+html:not(.ui-vidro):not(.ui-quente):not([data-theme="light"]) select option,
+html:not(.ui-vidro):not(.ui-quente):not([data-theme="light"]) select optgroup { background-color: #16171B; color: #F3F1EC; }
