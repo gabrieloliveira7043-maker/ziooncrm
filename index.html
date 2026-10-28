@@ -4031,6 +4031,10 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
         <div id="admin-logins-section" style="display:none;">
           <div style="font-size:15px; font-weight:600; color:var(--text); margin-bottom:6px;">Clientes</div>
           <div style="font-size:13px; color:var(--muted); margin-bottom:16px;">Edite o nome e a conta de anúncios de cada cliente, ou defina uma nova senha. Trocar a conta de anúncios muda só de onde vêm as métricas; os leads do CRM continuam os mesmos.</div>
+          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+            <input id="admin-logins-search" class="field-input" style="flex:1; min-width:220px;" placeholder="Buscar login: nome do cliente, nome da pessoa ou login..." oninput="filterAdminLogins(this.value)" autocomplete="off">
+            <span id="admin-logins-count" style="font-size:12px; color:var(--muted);"></span>
+          </div>
           <div id="admin-logins-list" style="display:flex; flex-direction:column; gap:8px;"></div>
         </div>
       </div>
@@ -7977,7 +7981,7 @@ async function renderAdminLogins() {
     const id = escapeHtml(c.login);
     const jsLogin = escapeJsString(c.login);
     return `
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px;display:flex;flex-direction:column;gap:10px;">
+    <div class="admin-login-card" data-search="${escapeHtml(prosNorm([c.name, c.login, c.act].join(' ')))}" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px;display:flex;flex-direction:column;gap:10px;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <span style="${labelStyle}">Login:</span>
         <span class="mono" style="font-size:12px;color:var(--text);">${id}</span>
@@ -8016,6 +8020,30 @@ async function renderAdminLogins() {
       <div class="sublogin-box" data-parent="${id}">${subLoginsHtml(c.login)}</div>
     </div>`;
   }).join('');
+  filterAdminLogins((document.getElementById('admin-logins-search') || {}).value || '');
+}
+
+// Busca na lista de logins (tela Conta do admin): pelo nome do cliente, pelo nome da pessoa ou pelo login.
+// Se bater só com um login extra, o cartão do cliente aparece mostrando apenas esse login extra.
+function filterAdminLogins(term) {
+  const q = prosNorm(String(term || '').trim());
+  let shown = 0, total = 0;
+  document.querySelectorAll('#admin-logins-list .admin-login-card').forEach(card => {
+    total += 1;
+    const clientHit = !q || (card.dataset.search || '').includes(q);
+    let subHit = false;
+    card.querySelectorAll('.sub-item[data-sublogin]').forEach(sub => {
+      const nameInput = sub.querySelector('.sub-name');
+      const hit = !!q && prosNorm(sub.dataset.sublogin + ' ' + (nameInput ? nameInput.value : '')).includes(q);
+      if (hit) subHit = true;
+      sub.style.display = clientHit || hit ? '' : 'none';
+    });
+    const visible = clientHit || subHit;
+    card.style.display = visible ? '' : 'none';
+    if (visible) shown += 1;
+  });
+  const count = document.getElementById('admin-logins-count');
+  if (count) count.textContent = q ? `${shown} de ${total} clientes` : `${total} clientes`;
 }
 
 // ----- Áreas que o login principal do cliente pode abrir (o admin libera ou tira, como nos logins extras) -----
@@ -8032,6 +8060,7 @@ function mainLoginPermsHtml(login) {
     <div class="sub-head-t" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">Áreas do login principal <small class="main-perms-count">${mainLoginPermsLabel(views)}</small><button class="integ-btn" style="margin-left:auto;" onclick="viewAsLogin('${escapeJsString(login)}')" title="Abre em outra aba o CRM como este login vê (sem senha)">${uiIco('user')} Ver como</button></div>
     ${subViewChecks(views)}
     ${subChatLinesHtml(CREDENTIALS[login] && CREDENTIALS[login].act, _mainChatLines[login], _mainFunnelScope[login])}
+    <div class="sub-empty" style="margin-top:8px;">O login principal já pode pausar e ativar anúncios na Meta e conectar o CRM no Claude / Codex (MCP). As caixinhas de "Permissões extras" aparecem só nos logins extras (equipe), porque é para eles que precisa liberar.</div>
     <div class="sub-actions"><button class="integ-btn primary" onclick="saveMainLoginPerms('${escapeJsString(login)}', this)">Salvar acessos</button><span class="sub-msg"></span></div>
   </div>`;
 }
@@ -8191,6 +8220,8 @@ function readSubViews(box) { return [...box.querySelectorAll('.sub-views:not(.su
 function refreshSubBox(parentLogin) {
   const box = [...document.querySelectorAll('.sublogin-box')].find(b => b.dataset.parent === parentLogin);
   if (box) box.innerHTML = subLoginsHtml(parentLogin, !isAdmin);
+  const search = document.getElementById('admin-logins-search');
+  if (search && search.value) filterAdminLogins(search.value);
 }
 function toggleSubLoginForm(parentLogin, btn) {
   const f = btn.closest('.sublogin-box').querySelector('.sub-new');
