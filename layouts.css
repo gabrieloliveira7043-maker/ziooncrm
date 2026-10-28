@@ -220,7 +220,7 @@ html.ui-anim :is(.metric-card, .integ-card, .help-card, .huv-card, .at-card, .cf
 html.ui-anim :is(.metric-card, .help-card, .huv-card, .at-card):hover { transform: translateY(-3px); }
 html.ui-anim .kanban-card { transition: transform .2s ease, box-shadow .2s; }
 html.ui-anim .kanban-card:hover { transform: translateY(-2px); }
-html.ui-calm *, html.ui-calm *::before, html.ui-calm *::after { animation: none !important; transition: none !important; }
+html.ui-calm :not(.login-overlay *), html.ui-calm :not(.login-overlay *)::before, html.ui-calm :not(.login-overlay *)::after { animation: none !important; transition: none !important; } /* a tela de entrar continua animada */
 html.ui-calm { --ui-blur: 0px; }
 html.ui-calm.ui-vidro :is(.metric-card, .table-card, .integ-card, .help-card, .kanban-col, .modal-box, .topbar, .cal-grid) { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 html.ui-calm.ui-vidro { --ui-glass: rgba(24, 24, 28, .86); }
@@ -228,11 +228,22 @@ html.ui-calm.ui-vidro[data-theme="light"] { --ui-glass: rgba(255, 255, 255, .9);
 @media (prefers-reduced-motion: reduce) { html.ui-anim * { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 
 /* ---------- 7. Login animado ---------- */
-html.ui-vidro .login-overlay { z-index: 10000 !important; background: rgba(8, 8, 10, .18) var(--ui-bg-img) center / cover no-repeat !important; background-blend-mode: multiply; }
-html.ui-vidro[data-theme="light"] .login-overlay { background-color: rgba(255, 250, 240, .1) !important; }
+/* A tela de entrar é sempre a animada (com a foto e o cartão de vidro), qualquer que seja o layout do cliente.
+   O Escuro quente mantém a versão dele (também animada). No layout Atual as cores do vidro vêm definidas aqui. */
+html:not(.ui-vidro):not(.ui-quente) .login-overlay {
+  --ui-glass: rgba(22, 22, 26, .46); --ui-glass-2: rgba(255, 255, 255, .07); --ui-glass-line: rgba(255, 255, 255, .14);
+  --ui-pill-active: #F4F1EA; --ui-pill-active-text: #111214; --accent-glow: rgba(242, 193, 78, .2);
+}
+html:not(.ui-vidro):not(.ui-quente)[data-theme="light"] .login-overlay {
+  --ui-glass: rgba(255, 255, 255, .62); --ui-glass-2: rgba(255, 255, 255, .55); --ui-glass-line: rgba(255, 255, 255, .7);
+  --ui-pill-active: #17171A; --ui-pill-active-text: #FFFFFF;
+}
+html:not(.ui-vidro):not(.ui-quente) .login-overlay .login-input { background-color: var(--ui-glass-2) !important; border-color: var(--ui-glass-line) !important; }
+html:not(.ui-quente) .login-overlay { z-index: 10000 !important; background: rgba(8, 8, 10, .18) var(--ui-bg-img) center / cover no-repeat !important; background-blend-mode: multiply; }
+html:not(.ui-quente)[data-theme="light"] .login-overlay { background-color: rgba(255, 250, 240, .1) !important; }
 html.ui-quente .login-overlay { z-index: 10000 !important; background: radial-gradient(900px 600px at 80% -10%, rgba(240, 138, 93, .2), transparent 60%), var(--bg) !important; }
 html:has(#login-overlay[style*="flex"]) :is(.ui-topnav, .ui-dock) { display: none !important; }
-html.ui-vidro .login-box, html.ui-quente .login-box {
+html:not(.ui-quente) .login-box, html.ui-quente .login-box {
   position: relative; overflow: hidden; border-radius: 26px !important;
   background: var(--ui-glass) !important; border: 1px solid var(--ui-glass-line) !important;
   -webkit-backdrop-filter: blur(28px) saturate(160%); backdrop-filter: blur(28px) saturate(160%);
@@ -241,28 +252,28 @@ html.ui-vidro .login-box, html.ui-quente .login-box {
 }
 /* Brilho que corre pela borda do cartão (só a borda: o meio é recortado pela máscara). */
 @property --ui-ang { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
-html.ui-vidro .login-box::before, html.ui-quente .login-box::before {
+html:not(.ui-quente) .login-box::before, html.ui-quente .login-box::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; pointer-events: none;
   background: conic-gradient(from var(--ui-ang), transparent 0 72%, rgba(255, 255, 255, .85) 82%, transparent 92%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
   animation: ui-ang 5s linear infinite;
 }
-html.ui-vidro[data-theme="light"] .login-box::before { background: conic-gradient(from var(--ui-ang), transparent 0 72%, rgba(242, 193, 78, .95) 82%, transparent 92%); }
+html:not(.ui-quente)[data-theme="light"] .login-box::before { background: conic-gradient(from var(--ui-ang), transparent 0 72%, rgba(242, 193, 78, .95) 82%, transparent 92%); }
 html.ui-quente .login-box::before { background: conic-gradient(from var(--ui-ang), transparent 0 72%, rgba(240, 138, 93, .95) 82%, transparent 92%); }
 @keyframes ui-ang { to { --ui-ang: 360deg; } }
-html.ui-vidro .login-box > *, html.ui-quente .login-box > * { animation: ui-in .7s cubic-bezier(.2, .8, .2, 1) both; }
-html.ui-vidro .login-box > :nth-child(2), html.ui-quente .login-box > :nth-child(2) { animation-delay: .12s; }
-html.ui-vidro .login-box > :nth-child(3), html.ui-quente .login-box > :nth-child(3) { animation-delay: .18s; }
-html.ui-vidro .login-box > :nth-child(5), html.ui-quente .login-box > :nth-child(5) { animation-delay: .26s; }
-html.ui-vidro .login-box > :nth-child(6), html.ui-quente .login-box > :nth-child(6) { animation-delay: .32s; }
-html.ui-vidro .login-box > :nth-child(7), html.ui-quente .login-box > :nth-child(7) { animation-delay: .4s; }
-html.ui-vidro .login-input, html.ui-quente .login-input { border-radius: 14px !important; transition: border-color .25s, box-shadow .25s; }
-html.ui-vidro .login-input:focus, html.ui-quente .login-input:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 4px var(--accent-glow) !important; }
-html.ui-vidro .login-btn, html.ui-quente .login-btn { position: relative; overflow: hidden; border-radius: 14px !important; background: var(--ui-pill-active) !important; color: var(--ui-pill-active-text) !important; transition: transform .2s; }
+html:not(.ui-quente) .login-box > *, html.ui-quente .login-box > * { animation: ui-in .7s cubic-bezier(.2, .8, .2, 1) both; }
+html:not(.ui-quente) .login-box > :nth-child(2), html.ui-quente .login-box > :nth-child(2) { animation-delay: .12s; }
+html:not(.ui-quente) .login-box > :nth-child(3), html.ui-quente .login-box > :nth-child(3) { animation-delay: .18s; }
+html:not(.ui-quente) .login-box > :nth-child(5), html.ui-quente .login-box > :nth-child(5) { animation-delay: .26s; }
+html:not(.ui-quente) .login-box > :nth-child(6), html.ui-quente .login-box > :nth-child(6) { animation-delay: .32s; }
+html:not(.ui-quente) .login-box > :nth-child(7), html.ui-quente .login-box > :nth-child(7) { animation-delay: .4s; }
+html:not(.ui-quente) .login-input, html.ui-quente .login-input { border-radius: 14px !important; transition: border-color .25s, box-shadow .25s; }
+html:not(.ui-quente) .login-input:focus, html.ui-quente .login-input:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 4px var(--accent-glow) !important; }
+html:not(.ui-quente) .login-btn, html.ui-quente .login-btn { position: relative; overflow: hidden; border-radius: 14px !important; background: var(--ui-pill-active) !important; color: var(--ui-pill-active-text) !important; transition: transform .2s; }
 html.ui-quente .login-btn { background: var(--accent) !important; color: var(--btn-text) !important; }
-html.ui-vidro .login-btn::after, html.ui-quente .login-btn::after { content: ""; position: absolute; top: 0; bottom: 0; width: 40%; left: -60%; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .35), transparent); animation: ui-shine 3.2s ease-in-out infinite 1.2s; }
-html.ui-vidro .login-btn:hover, html.ui-quente .login-btn:hover { transform: translateY(-1px); }
+html:not(.ui-quente) .login-btn::after, html.ui-quente .login-btn::after { content: ""; position: absolute; top: 0; bottom: 0; width: 40%; left: -60%; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .35), transparent); animation: ui-shine 3.2s ease-in-out infinite 1.2s; }
+html:not(.ui-quente) .login-btn:hover, html.ui-quente .login-btn:hover { transform: translateY(-1px); }
 @keyframes ui-login-in { from { opacity: 0; transform: translateY(26px) scale(.96); filter: blur(8px); } to { opacity: 1; transform: none; filter: none; } }
 @keyframes ui-spin { to { transform: rotate(360deg); } }
 @keyframes ui-shine { 0% { left: -60%; } 45%, 100% { left: 130%; } }
