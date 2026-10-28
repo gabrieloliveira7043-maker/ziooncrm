@@ -383,3 +383,21 @@ html.ui-quente[data-theme="light"] select option, html.ui-quente[data-theme="lig
 html:not(.ui-vidro):not(.ui-quente):not([data-theme="light"]) { color-scheme: dark; }
 html:not(.ui-vidro):not(.ui-quente):not([data-theme="light"]) select option,
 html:not(.ui-vidro):not(.ui-quente):not([data-theme="light"]) select optgroup { background-color: #16171B; color: #F3F1EC; }
+
+/* Tela de entrar: o cartão inclina em 3D seguindo o mouse, com um reflexo de luz no ponto do cursor. */
+.login-overlay { perspective: 1100px; }
+.login-overlay .login-box.ui-tilt-ready {
+  animation: none !important;
+  transform: rotateX(var(--ui-rx, 0deg)) rotateY(var(--ui-ry, 0deg)) translateY(var(--ui-lift, 0px));
+  transition: transform .6s cubic-bezier(.2, .8, .2, 1), box-shadow .6s;
+  will-change: transform;
+}
+.login-overlay .login-box.ui-tilt-ready.ui-tilting { --ui-lift: -6px; transition: transform .14s ease-out, box-shadow .3s; box-shadow: 0 40px 90px rgba(0, 0, 0, .4), inset 0 1px 0 rgba(255, 255, 255, .2) !important; }
+.login-overlay .login-box::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 2;
+  background: radial-gradient(380px circle at var(--ui-gx, 50%) var(--ui-gy, 0%), rgba(255, 255, 255, .16), transparent 55%);
+  opacity: 0; transition: opacity .35s ease;
+}
+.login-overlay .login-box.ui-tilting::after { opacity: 1; }
+/* A foto do fundo acompanha de leve, no sentido contrário (sensação de profundidade). */
+html:not(.ui-quente) .login-overlay { background-position: calc(50% + var(--ui-px, 0px)) calc(50% + var(--ui-py, 0px)) !important; transition: background-position .8s cubic-bezier(.2, .8, .2, 1); }

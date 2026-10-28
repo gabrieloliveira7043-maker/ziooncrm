@@ -392,10 +392,47 @@
 
   function debounce(fn, ms) { var t; return function () { clearTimeout(t); t = setTimeout(fn, ms); }; }
 
+  // ---------- Tela de entrar: cartão que inclina acompanhando o mouse ----------
+  // Inclinação 3D + reflexo de luz no ponto do cursor + a foto do fundo se mexendo um pouco ao contrário.
+  // Só com mouse (no celular não há "passar o mouse") e respeitando quem pediu menos movimento no sistema.
+  function setupLoginTilt() {
+    var ov = document.getElementById('login-overlay');
+    var box = ov && ov.querySelector('.login-box');
+    if (!box || ov._uiTilt) return;
+    ov._uiTilt = true;
+    if (!window.matchMedia || !matchMedia('(hover: hover) and (pointer: fine)').matches || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // A animação de entrada do cartão segura o "transform"; depois que ela termina, a inclinação assume.
+    box.addEventListener('animationend', function (e) { if (e.target === box) box.classList.add('ui-tilt-ready'); });
+    setTimeout(function () { box.classList.add('ui-tilt-ready'); }, 1600);
+    var raf = 0, px = 0, py = 0;
+    var clamp = function (v) { return Math.max(-1, Math.min(1, v)); };
+    function update() {
+      raf = 0;
+      var r = box.getBoundingClientRect();
+      if (!r.width) return;
+      var x = clamp((px - (r.left + r.width / 2)) / (r.width * 0.75));
+      var y = clamp((py - (r.top + r.height / 2)) / (r.height * 0.75));
+      box.style.setProperty('--ui-rx', (-y * 8).toFixed(2) + 'deg');
+      box.style.setProperty('--ui-ry', (x * 10).toFixed(2) + 'deg');
+      box.style.setProperty('--ui-gx', ((px - r.left) / r.width * 100).toFixed(1) + '%');
+      box.style.setProperty('--ui-gy', ((py - r.top) / r.height * 100).toFixed(1) + '%');
+      ov.style.setProperty('--ui-px', (-x * 14).toFixed(1) + 'px');
+      ov.style.setProperty('--ui-py', (-y * 10).toFixed(1) + 'px');
+      box.classList.add('ui-tilting');
+    }
+    ov.addEventListener('mousemove', function (e) { px = e.clientX; py = e.clientY; if (!raf) raf = requestAnimationFrame(update); });
+    ov.addEventListener('mouseleave', function () {
+      ['--ui-rx', '--ui-ry'].forEach(function (k) { box.style.setProperty(k, '0deg'); });
+      ov.style.setProperty('--ui-px', '0px'); ov.style.setProperty('--ui-py', '0px');
+      box.classList.remove('ui-tilting');
+    });
+  }
+
   // ---------- Início ----------
   function boot() {
     hook();
     apply(prefs);
+    setupLoginTilt();
     var tries = 0;
     var t = setInterval(function () { hook(); if (++tries > 40 || (window.switchView && window.switchView._ui && window.applyViewPermissions && window.applyViewPermissions._ui)) clearInterval(t); }, 250);
   }
