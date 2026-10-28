@@ -1901,6 +1901,16 @@ html:root .chat-pill.chat-sum-pill { display: none; }
 .mcp-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; line-height: 1.5; color: var(--text); }
 .mcp-steps li::marker { font-weight: 700; color: var(--muted); }
 .mcp-adv summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); }
+.ntc-overlay { position: fixed; inset: 0; z-index: 10050; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 16px; -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.ntc-box { width: 100%; max-width: 520px; max-height: calc(100vh - 32px); overflow-y: auto; background: var(--surface); color: var(--text); border: 1px solid var(--border2); border-radius: 18px; padding: 22px 22px 18px; box-shadow: 0 24px 70px rgba(0,0,0,.35); animation: ui-pop .25s ease both; }
+html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: blur(24px) saturate(150%); backdrop-filter: blur(24px) saturate(150%); }
+.ntc-tag { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--accent2, var(--accent)); background: var(--accent-glow2); border-radius: 99px; padding: 4px 10px; margin-bottom: 10px; }
+.ntc-title { font-size: 19px; font-weight: 700; line-height: 1.3; margin-bottom: 10px; }
+.ntc-text { font-size: 14px; line-height: 1.6; color: var(--muted2); }
+.ntc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.ntc-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.ntc-foot label { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted2); cursor: pointer; }
+.ntc-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--border); padding: 10px 0; }
 .cad-drafts { border: 1px dashed var(--border2); border-radius: 10px; padding: 10px 12px; margin-bottom: 16px; }
 .wa-alert-mute { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; cursor: pointer; opacity: .9; }
 #cadencia-view > div { max-width: 1240px !important; }
@@ -3988,6 +3998,8 @@ html:root .chat-pill.chat-sum-pill { display: none; }
         <div style="font-size:13px; color:var(--muted); margin-bottom:28px;">Altere sua senha de acesso ao relatório.</div>
 
         <div id="conta-team" style="display:none;margin-bottom:24px;"></div>
+
+        <div id="notices-admin" style="display:none;"></div>
 
         <div id="ui-aparencia"></div>
 
@@ -7897,6 +7909,7 @@ function switchView(view) {
     document.getElementById('pw-error').style.display = 'none';
     document.getElementById('pw-success').style.display = 'none';
     if (isAdmin) renderAdminLogins();
+    renderNoticesAdmin();
   }
 }
 
@@ -10700,6 +10713,181 @@ function cadenceResumeOpen(act) {
     }
   });
   resumeNotice('Reabrimos a mensagem que você estava montando.', () => closeCadenceEditor());
+}
+
+// ===== AVISOS EM POP-UP (novidades) =====
+// O admin cria os avisos na tela Conta (painel "Avisos em pop-up"); eles ficam no servidor (app_config/notices).
+// Cada login vê os ativos dentro do período. Fechar sem marcar "Não mostrar mais" = aparece de novo no próximo
+// login ou quando a pessoa volta para o CRM depois de sair dele (aba escondida por 1 minuto ou mais).
+let _noticesShown = new Set(), _noticesHiddenAt = 0, _noticeQueue = [];
+function noticeOffKey(id) { const p = window._fb && window._fb.getProfile ? window._fb.getProfile() : null; return 'crm_notice_off:' + ((p && (p.login || p.uid)) || '-') + ':' + id; }
+function noticeIsOff(id) { try { return localStorage.getItem(noticeOffKey(id)) === '1'; } catch (e) { return false; } }
+async function noticesCheck() {
+  if (!window._fb || !window._fb.adminApi || !window._fb.getProfile || !window._fb.getProfile()) return;
+  if (document.getElementById('ntc-overlay')) return;
+  const login = document.getElementById('login-overlay');
+  if (login && login.style.display && login.style.display !== 'none') return;
+  let items = [];
+  try { items = (await window._fb.adminApi('/ui/notices', {})).items || []; } catch (e) { return; }
+  _noticeQueue = items.filter(n => !noticeIsOff(n.id) && !_noticesShown.has(n.id));
+  showNextNotice();
+}
+function noticeTextHtml(t) {
+  return escapeHtml(t || '').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+}
+function showNextNotice(preview) {
+  const n = preview || _noticeQueue.shift();
+  if (!n) return;
+  if (!preview) _noticesShown.add(n.id);
+  const b = n.buttons || {};
+  const canMcp = typeof userCanView !== 'function' || userCanView('integracoes');
+  const btn = 'class="integ-btn" style="padding:9px 14px;"';
+  const el = document.createElement('div');
+  el.className = 'ntc-overlay'; el.id = 'ntc-overlay';
+  el.innerHTML = `<div class="ntc-box" role="dialog" aria-modal="true" aria-labelledby="ntc-title">
+    <div class="ntc-tag">Novidade</div>
+    <div class="ntc-title" id="ntc-title">${escapeHtml(n.title || '')}</div>
+    <div class="ntc-text">${noticeTextHtml(n.text)}</div>
+    <div class="ntc-actions">
+      ${b.layout ? `<button class="integ-btn primary" style="padding:9px 14px;" onclick="noticeGo('layout')">Trocar o layout</button>` : ''}
+      ${b.mcp && canMcp ? `<button ${btn} onclick="noticeGo('mcp')">Conectar no Claude ou Codex</button>` : ''}
+      ${b.link && b.link.url ? `<a ${btn} href="${escapeHtml(b.link.url)}" target="_blank" rel="noopener" onclick="noticeClose()">${escapeHtml(b.link.label || 'Abrir')}</a>` : ''}
+    </div>
+    <div class="ntc-foot">
+      <label><input type="checkbox" id="ntc-off" ${preview ? 'disabled' : ''}> Não mostrar mais</label>
+      <button ${btn} onclick="noticeClose()">${preview ? 'Fechar prévia' : 'Fechar'}</button>
+    </div>
+  </div>`;
+  el.dataset.id = preview ? '' : n.id;
+  el.addEventListener('click', e => { if (e.target === el) noticeClose(); });
+  document.body.appendChild(el);
+}
+function noticeClose() {
+  const el = document.getElementById('ntc-overlay');
+  if (!el) return;
+  const off = document.getElementById('ntc-off');
+  if (el.dataset.id && off && off.checked) { try { localStorage.setItem(noticeOffKey(el.dataset.id), '1'); } catch (e) {} }
+  el.remove();
+  if (_noticeQueue.length) setTimeout(() => showNextNotice(), 250);
+}
+function noticeGo(where) {
+  noticeClose();
+  _noticeQueue = [];
+  if (where === 'layout') {
+    switchView('conta'); if (typeof setMobileNav === 'function') setMobileNav('conta');
+    setTimeout(() => { const e = document.getElementById('ui-aparencia'); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
+  } else if (where === 'mcp') {
+    switchView('integracoes'); if (typeof setMobileNav === 'function') setMobileNav('integracoes');
+    setIntegTab('mcp');
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { _noticesHiddenAt = Date.now(); return; }
+  if (_noticesHiddenAt && Date.now() - _noticesHiddenAt >= 60000) { _noticesShown = new Set(); setTimeout(() => noticesCheck(), 800); }
+  _noticesHiddenAt = 0;
+});
+
+// ----- Painel do admin (tela Conta) -----
+let _noticesAdmin = null;
+async function renderNoticesAdmin(reload) {
+  const box = document.getElementById('notices-admin');
+  if (!box) return;
+  if (!isAdmin) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  if (!_noticesAdmin || reload) {
+    box.innerHTML = '<div class="ui-ap"><h3>Avisos em pop-up</h3><div class="ui-ap-sub">Carregando...</div></div>';
+    try { _noticesAdmin = (await window._fb.adminApi('/ui/notices', { all: true })).items || []; }
+    catch (e) { box.innerHTML = `<div class="ui-ap"><h3>Avisos em pop-up</h3><div class="integ-error">Erro: ${escapeHtml(e.message)}</div></div>`; return; }
+  }
+  const now = Date.now();
+  const fmt = v => v ? new Date(v).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+  const state = n => !n.active ? ['Desligado', 'var(--muted)'] : n.to && Date.parse(n.to) < now ? ['Encerrado', 'var(--muted)'] : n.from && Date.parse(n.from) > now ? ['Agendado', '#60a5fa'] : ['No ar', '#34d399'];
+  box.innerHTML = `<div class="ui-ap">
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;">
+      <div><h3>Avisos em pop-up</h3><div class="ui-ap-sub" style="margin-bottom:6px;">Aparecem para os logins quando entram no CRM ou voltam para ele, dentro do período. Quem marcar "Não mostrar mais" deixa de ver aquele aviso.</div></div>
+      <button class="integ-btn primary" onclick="editNotice()">+ Novo aviso</button>
+    </div>
+    ${_noticesAdmin.length ? _noticesAdmin.map((n, i) => { const [st, color] = state(n); return `<div class="ntc-row">
+      <label class="integ-toggle" title="Ligar ou desligar" style="margin:0;"><input type="checkbox" ${n.active ? 'checked' : ''} onchange="toggleNotice(${i}, this.checked)"></label>
+      <div style="flex:1;min-width:180px;">
+        <div style="font-size:13.5px;font-weight:600;color:var(--text);">${escapeHtml(n.title || '(sem título)')}</div>
+        <div style="font-size:12px;color:var(--muted);"><span style="color:${color};font-weight:700;">● ${st}</span> · ${fmt(n.from)} até ${fmt(n.to)} · ${n.audience === 'clientes' ? 'só clientes' : 'todos os logins'}</div>
+      </div>
+      <button class="integ-btn" onclick="previewNotice(${i})">Prévia</button>
+      <button class="integ-btn" onclick="editNotice(${i})">Editar</button>
+      <button class="integ-btn danger" onclick="deleteNotice(${i})">Excluir</button>
+    </div>`; }).join('') : '<div class="integ-muted" style="border-top:1px solid var(--border);padding-top:10px;">Nenhum aviso ainda.</div>'}
+  </div>`;
+}
+async function saveNotices(items, msg) {
+  try {
+    _noticesAdmin = (await window._fb.adminApi('/ui/notices', { save: true, items })).items || [];
+    if (msg) showToast(msg, 'success');
+    renderNoticesAdmin();
+    return true;
+  } catch (e) { showToast('Erro: ' + e.message, 'warning'); return false; }
+}
+function toggleNotice(i, on) {
+  const items = (_noticesAdmin || []).map(n => ({ ...n }));
+  if (!items[i]) return;
+  items[i].active = on;
+  saveNotices(items, on ? 'Aviso ligado.' : 'Aviso desligado.');
+}
+async function deleteNotice(i) {
+  const n = (_noticesAdmin || [])[i];
+  if (!n || !await showConfirm(`O aviso "${n.title || ''}" será excluído.`, 'Excluir aviso', 'Excluir', true)) return;
+  saveNotices(_noticesAdmin.filter((_, k) => k !== i), 'Aviso excluído.');
+}
+function previewNotice(i) { const n = (_noticesAdmin || [])[i]; if (n) showNextNotice(n); }
+function noticeLocalInput(v) { if (!v) return ''; const d = new Date(v); return isNaN(d) ? '' : `${toLocalDateInput(d)}T${toLocalTimeInput(d)}`; }
+function editNotice(i) {
+  const n = i !== undefined ? (_noticesAdmin || [])[i] : null;
+  const start = new Date(); const end = new Date(); end.setHours(23, 59, 0, 0);
+  const b = (n && n.buttons) || { layout: false, mcp: false, link: null };
+  const lab = 'display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text);cursor:pointer;margin:4px 0;';
+  openHuvenModal(n ? 'Editar aviso' : 'Novo aviso', `
+    <label class="field-label">Título</label>
+    <input class="field-input" id="ntc-f-title" maxlength="120" value="${escapeHtml(n ? n.title : '')}" placeholder="Ex.: Novidades no CRM">
+    <label class="field-label" style="margin-top:10px;">Texto</label>
+    <textarea class="field-input" id="ntc-f-text" rows="7" maxlength="3000" style="width:100%;box-sizing:border-box;resize:vertical;" placeholder="Use **palavra** para negrito. Quebras de linha aparecem no aviso.">${escapeHtml(n ? n.text : '')}</textarea>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+      <div><label class="field-label">Aparece de</label><input type="datetime-local" class="field-input" id="ntc-f-from" value="${noticeLocalInput(n ? n.from : start)}"></div>
+      <div><label class="field-label">até</label><input type="datetime-local" class="field-input" id="ntc-f-to" value="${noticeLocalInput(n ? n.to : end)}"></div>
+      <div><label class="field-label">Para quem</label><select class="field-input" id="ntc-f-aud"><option value="todos">Todos os logins</option><option value="clientes" ${n && n.audience === 'clientes' ? 'selected' : ''}>Só os clientes (sem o admin)</option></select></div>
+    </div>
+    <div class="field-label" style="margin-top:12px;">Botões do aviso</div>
+    <label style="${lab}"><input type="checkbox" id="ntc-f-layout" ${b.layout ? 'checked' : ''}> Trocar o layout (abre Conta → Aparência)</label>
+    <label style="${lab}"><input type="checkbox" id="ntc-f-mcp" ${b.mcp ? 'checked' : ''}> Conectar no Claude ou Codex (abre Integrações → MCP)</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+      <input class="field-input" id="ntc-f-linklabel" placeholder="Texto de um link (opcional)" style="flex:1;min-width:150px;" value="${escapeHtml(b.link ? b.link.label : '')}">
+      <input class="field-input" id="ntc-f-linkurl" placeholder="https://..." style="flex:2;min-width:180px;" value="${escapeHtml(b.link ? b.link.url : '')}">
+    </div>
+    <label style="${lab}margin-top:12px;"><input type="checkbox" id="ntc-f-active" ${!n || n.active ? 'checked' : ''}> Ligado</label>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;">
+      <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="saveNoticeForm(${i !== undefined ? i : -1})">Salvar</button>
+      <button class="integ-btn" onclick="showNextNotice(readNoticeForm())">Ver prévia</button>
+      <span id="ntc-f-fb" style="font-size:12px;color:#f87171;"></span>
+    </div>`, 560);
+}
+function readNoticeForm() {
+  const v = id => (document.getElementById(id) || {}).value || '';
+  const when = id => { const d = new Date(v(id)); return isNaN(d) ? '' : d.toISOString(); };
+  const url = v('ntc-f-linkurl').trim();
+  return {
+    title: v('ntc-f-title').trim(), text: v('ntc-f-text').trim(), from: when('ntc-f-from'), to: when('ntc-f-to'), audience: v('ntc-f-aud'),
+    active: !!document.getElementById('ntc-f-active').checked,
+    buttons: { layout: !!document.getElementById('ntc-f-layout').checked, mcp: !!document.getElementById('ntc-f-mcp').checked, link: url ? { label: v('ntc-f-linklabel').trim() || 'Abrir', url } : null }
+  };
+}
+async function saveNoticeForm(i) {
+  const f = readNoticeForm();
+  const fb = document.getElementById('ntc-f-fb');
+  if (!f.title) { fb.textContent = 'Escreva o título.'; return; }
+  if (f.buttons.link && !/^https:\/\//.test(f.buttons.link.url)) { fb.textContent = 'O link precisa começar com https://'; return; }
+  if (f.from && f.to && f.to <= f.from) { fb.textContent = 'O fim precisa ser depois do início.'; return; }
+  const items = (_noticesAdmin || []).map(n => ({ ...n }));
+  if (i >= 0 && items[i]) items[i] = { ...items[i], ...f }; else items.unshift({ ...f, createdAt: new Date().toISOString() });
+  if (await saveNotices(items, 'Aviso salvo.')) closeHuvenModal();
 }
 
 // ===== TROCA DE CLIENTE (topo do menu) E TELA CLIENTES =====
@@ -23405,6 +23593,7 @@ function updateSidebarForUser() {
   const mobileNav = document.getElementById('mobile-nav');
   if (mobileNav) mobileNav.style.display = 'flex';
   applyViewPermissions();
+  setTimeout(() => noticesCheck(), 1500);
   if (_bootLastView) setTimeout(resumeLastView, 300);
 }
 
