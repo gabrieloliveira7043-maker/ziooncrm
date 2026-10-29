@@ -6541,7 +6541,13 @@ function ensurePipelines(act, onLoad) {
   _pipelinesLoading[act] = window._fb.getPipelines(act).then(cfg => {
     _pipelinesCache[act] = cfg || { list: [] };
     uploadLocalPrincipalStages(act);
-  }).catch(() => { _pipelinesCache[act] = { list: [] }; });
+  }).catch(e => {
+    // Sem a configuração, as colunas personalizadas não apareceriam: tenta de novo em alguns segundos
+    // (antes ficava com as colunas padrão e os leads dessas colunas sumiam da tela).
+    console.warn('Colunas do funil não carregaram, tentando de novo:', e && e.message);
+    delete _pipelinesLoading[act];
+    return new Promise(res => setTimeout(res, 3000)).then(() => { ensurePipelines(act); return _pipelinesLoading[act]; });
+  });
   if (onLoad) _pipelinesLoading[act].then(onLoad);
 }
 
@@ -7072,9 +7078,13 @@ function normalizeLeadStageForClient(lead, act) {
       const fallbackStage = stages.find(stage => stage.id === candidate || normalizeStageTextForMatch(stage.label) === normalizeStageTextForMatch(candidate));
       if (fallbackStage) return fallbackStage.id;
     }
+    // Colunas do cliente ainda não carregadas: não decide agora (a tela decide quando elas chegarem).
+    if (!pipelinesFor(act)) return current;
     return stages[0]?.id || canonical;
   }
-  return stages.some(stage => stage.id === current) ? current : (stages[0]?.id || current);
+  // Etapa que não bate com as colunas carregadas (ex.: coluna personalizada cuja configuração ainda não chegou):
+  // o lead fica com a etapa dele. Antes ele era trocado para a 1ª coluna e "sumia" da coluna certa.
+  return current;
 }
 function adrianaCampaignLabelFromLead(lead, rawSheet) {
   const act = String(lead.act || rawSheet.act || rawSheet.account || rawSheet.conta || '').trim();
@@ -20938,6 +20948,13 @@ function renderKanban() {
     leads = filterLeadsByCrmMonth(leads);
   } catch (e) {
     console.warn('Filtro mensal do CRM ignorado:', e);
+  }
+  // Sem as colunas do cliente carregadas, os cards cairiam em colunas erradas: espera elas chegarem para desenhar.
+  if (filterAct && !pipelinesFor(filterAct)) {
+    ensurePipelines(filterAct, () => { renderKanban(); renderFunilChart(); renderFunilEvolucao(); });
+    const boardWait = document.getElementById('kanban-board');
+    if (boardWait && !boardWait.querySelector('.kanban-wait')) boardWait.innerHTML = '<div class="kanban-wait" style="padding:28px;color:var(--muted);font-size:13px;">Carregando as colunas do funil...</div>';
+    return;
   }
   const boardPipe = filterAct ? currentPipeline(filterAct) : 'principal';
   if (filterAct) {
