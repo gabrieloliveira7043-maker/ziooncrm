@@ -10,8 +10,10 @@
   'use strict';
   var KEY = 'crm_ui';
   var BGS = [
-    ['por-do-sol', 'Pôr do sol'], ['sala', 'Sala'], ['noite', 'Noite'],
-    ['oceano', 'Oceano'], ['grafite', 'Grafite'], ['areia', 'Areia']
+    // Fotos do Unsplash (licença livre). Os nomes antigos dos arquivos foram mantidos para quem já tinha escolhido um fundo.
+    ['sala', 'Sala moderna'], ['areia', 'Sala aconchego'], ['loft', 'Loft'], ['por-do-sol', 'Alpes'],
+    ['noite', 'Via Láctea'], ['aurora', 'Aurora'], ['skyline', 'Cidade'], ['grafite', 'Cordilheira'],
+    ['oceano', 'Praia'], ['floresta', 'Floresta']
   ];
   // Itens que ficam à mostra no topo e nas bolinhas (o resto vai em "Mais").
   var TOP = ['report', 'crm', 'chat', 'calendario', 'campanhas', 'automacoes'];
