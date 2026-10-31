@@ -401,3 +401,56 @@ html:not(.ui-vidro):not(.ui-quente):not([data-theme="light"]) select optgroup { 
 .login-overlay .login-box.ui-tilting::after { opacity: 1; }
 /* A foto do fundo acompanha de leve, no sentido contrário (sensação de profundidade). */
 html:not(.ui-quente) .login-overlay { background-position: calc(50% + var(--ui-px, 0px)) calc(50% + var(--ui-py, 0px)) !important; transition: background-position .8s cubic-bezier(.2, .8, .2, 1); }
+
+/* ---------- 10. Vidro com mais cara de vidro (estilo visionOS) ----------
+   Desfoque mais forte e foto mais visível atrás; reflexo diagonal por cima do vidro; borda de luz no alto;
+   sombra funda (placas soltas flutuando); cantos maiores; os cartões sobem um pouco ao passar o mouse. */
+html.ui-vidro {
+  --ui-glass: rgba(46, 42, 44, .34);
+  --ui-glass-2: rgba(255, 255, 255, .08);
+  --ui-glass-line: rgba(255, 255, 255, .16);
+  --ui-blur: 34px;
+  --ui-tint: rgba(8, 8, 10, .16);
+  --ui-pill: rgba(40, 38, 42, .42);
+  --ui-sheen: linear-gradient(150deg, rgba(255, 255, 255, .15) 0%, rgba(255, 255, 255, .05) 34%, rgba(255, 255, 255, .015) 62%, rgba(255, 255, 255, .06) 100%);
+  --ui-edge: inset 0 1px 0 rgba(255, 255, 255, .26), inset 1px 0 0 rgba(255, 255, 255, .06), inset -1px 0 0 rgba(255, 255, 255, .04), inset 0 -1px 0 rgba(255, 255, 255, .04);
+  --card-shadow: 0 26px 60px -20px rgba(0, 0, 0, .55), 0 2px 8px rgba(0, 0, 0, .16);
+  --ui-lift-shadow: 0 34px 70px -22px rgba(0, 0, 0, .62), 0 3px 10px rgba(0, 0, 0, .18);
+  --ui-sheen-soft: linear-gradient(150deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .01) 50%, rgba(255, 255, 255, .03));
+  --r2: 22px;
+}
+html.ui-vidro[data-theme="light"] {
+  --ui-glass: rgba(255, 255, 255, .56);
+  --ui-sheen-soft: linear-gradient(150deg, rgba(255, 255, 255, .3), rgba(255, 255, 255, .08) 50%, rgba(255, 255, 255, .16));
+  --ui-pill: rgba(255, 255, 255, .5);
+  --ui-tint: rgba(255, 250, 240, .16);
+  --ui-sheen: linear-gradient(150deg, rgba(255, 255, 255, .6) 0%, rgba(255, 255, 255, .16) 40%, rgba(255, 255, 255, .06) 65%, rgba(255, 255, 255, .3) 100%);
+  --ui-edge: inset 0 1px 0 rgba(255, 255, 255, .95), inset 0 -1px 0 rgba(255, 255, 255, .35);
+  --card-shadow: 0 24px 50px -22px rgba(70, 45, 20, .38), 0 2px 8px rgba(70, 45, 20, .08);
+  --ui-lift-shadow: 0 32px 60px -22px rgba(70, 45, 20, .45), 0 3px 10px rgba(70, 45, 20, .1);
+}
+html.ui-vidro :is(.metric-card, .table-card, .integ-card, .help-card, .cfgc-card, .kanban-col, .modal-box, .paleta-card, .topbar, .chart-card, .huv-card, .at-card, .camp-card, .auto-card, .client-card, .cal-grid, .cal-list-ev, .chat-list, .chat-main, .chat-panel, .stat-card, .analise-card),
+html.ui-vidro #huven-modal > div, html.ui-vidro .client-switch-pop, html.ui-vidro .config-panel, html.ui-vidro .ui-menu {
+  background: var(--ui-sheen), var(--ui-glass) !important;
+  -webkit-backdrop-filter: blur(var(--ui-blur)) saturate(185%) brightness(1.05);
+  backdrop-filter: blur(var(--ui-blur)) saturate(185%) brightness(1.05);
+  box-shadow: var(--ui-edge), var(--card-shadow);
+}
+html.ui-vidro :is(.metric-card, .table-card, .integ-card, .help-card, .cfgc-card, .kanban-col, .chart-card, .huv-card, .camp-card, .auto-card, .client-card, .stat-card, .analise-card, .modal-box) { border-radius: var(--r2); }
+html.ui-vidro .kanban-col { background: var(--ui-sheen-soft), var(--ui-glass) !important; }
+html.ui-vidro .kanban-card { background: var(--ui-sheen-soft), var(--ui-glass-2) !important; box-shadow: var(--ui-edge), 0 8px 22px -12px rgba(0, 0, 0, .4); }
+html.ui-vidro :is(.ui-chip, .ui-pills, .ui-round:not(.ui-avatar), .ui-dock, .ui-topnav .client-switch) {
+  background: var(--ui-sheen), var(--ui-pill) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(185%) brightness(1.05);
+  backdrop-filter: blur(26px) saturate(185%) brightness(1.05);
+  box-shadow: var(--ui-edge), 0 14px 34px -14px rgba(0, 0, 0, .45);
+}
+html.ui-vidro :is(.ui-ind, .ui-dot.on) { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), 0 6px 18px rgba(0, 0, 0, .25); }
+html.ui-vidro:not(.ui-calm) :is(.metric-card, .stat-card, .integ-card, .camp-card, .auto-card, .client-card, .huv-card, .help-card) { transition: transform .3s cubic-bezier(.2, .8, .3, 1), box-shadow .3s ease; }
+html.ui-vidro:not(.ui-calm) :is(.metric-card, .stat-card, .integ-card, .camp-card, .auto-card, .client-card, .huv-card, .help-card):hover { transform: translateY(-4px); box-shadow: var(--ui-edge), var(--ui-lift-shadow); }
+/* Aparelhos mais fracos: sem desfoque, vidro mais opaco (mantém o reflexo e a borda de luz). */
+html.ui-calm.ui-vidro { --ui-glass: rgba(30, 28, 32, .88); --ui-pill: rgba(30, 28, 32, .88); }
+html.ui-calm.ui-vidro[data-theme="light"] { --ui-glass: rgba(255, 255, 255, .9); --ui-pill: rgba(255, 255, 255, .9); }
+html.ui-calm.ui-vidro :is(.ui-chip, .ui-pills, .ui-round, .ui-dock, .ui-menu, .client-switch-pop, .config-panel, .chart-card, .stat-card, .chat-list, .chat-main, .chat-panel) { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+/* Etiqueta de origem do card: o azul ficava fraco no vidro mais claro. */
+html.ui-vidro:not([data-theme="light"]) .kc-chip.kc-origin { color: #C4DAFF !important; background: rgba(60, 110, 220, .34) !important; }
