@@ -406,7 +406,7 @@ html:not(.ui-quente) .login-overlay { background-position: calc(50% + var(--ui-p
    Desfoque mais forte e foto mais visível atrás; reflexo diagonal por cima do vidro; borda de luz no alto;
    sombra funda (placas soltas flutuando); cantos maiores; os cartões sobem um pouco ao passar o mouse. */
 html.ui-vidro {
-  --ui-glass: rgba(46, 42, 44, .34);
+  --ui-glass: rgba(46, 42, 44, .4);
   --ui-glass-2: rgba(255, 255, 255, .08);
   --ui-glass-line: rgba(255, 255, 255, .16);
   --ui-blur: 34px;
