@@ -402,7 +402,8 @@
     var box = ov && ov.querySelector('.login-box');
     if (!box || ov._uiTilt) return;
     ov._uiTilt = true;
-    if (!window.matchMedia || !matchMedia('(hover: hover) and (pointer: fine)').matches || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // "any-": o iPad com teclado/trackpad continua dizendo que o principal é o toque, mas tem cursor.
+    if (!window.matchMedia || !matchMedia('(any-hover: hover) and (any-pointer: fine)').matches || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     // A animação de entrada do cartão segura o "transform"; depois que ela termina, a inclinação assume.
     box.addEventListener('animationend', function (e) { if (e.target === box) box.classList.add('ui-tilt-ready'); });
     setTimeout(function () { box.classList.add('ui-tilt-ready'); }, 1600);
@@ -422,8 +423,8 @@
       ov.style.setProperty('--ui-py', (-y * 10).toFixed(1) + 'px');
       box.classList.add('ui-tilting');
     }
-    ov.addEventListener('mousemove', function (e) { px = e.clientX; py = e.clientY; if (!raf) raf = requestAnimationFrame(update); });
-    ov.addEventListener('mouseleave', function () {
+    ov.addEventListener('pointermove', function (e) { if (e.pointerType === 'touch') return; px = e.clientX; py = e.clientY; if (!raf) raf = requestAnimationFrame(update); });
+    ov.addEventListener('pointerleave', function () {
       ['--ui-rx', '--ui-ry'].forEach(function (k) { box.style.setProperty(k, '0deg'); });
       ov.style.setProperty('--ui-px', '0px'); ov.style.setProperty('--ui-py', '0px');
       box.classList.remove('ui-tilting');
