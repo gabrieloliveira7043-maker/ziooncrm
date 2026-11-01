@@ -18750,14 +18750,16 @@ function openHistoryImport() {
     <div class="integ-muted" style="font-size:12.5px;line-height:1.55;margin-bottom:12px;">Traz para o Chat as mensagens que o WhatsApp já tinha antes de ser conectado (conversas individuais, sem grupos). Não marca como não lidas e não dispara automação nem IA.</div>
     ${lines.length > 1 ? `<label class="field-label">De qual WhatsApp</label><select class="field-input" id="hi-line" style="margin-bottom:10px;">${lines.map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.label)}</option>`).join('')}</select>` : `<input type="hidden" id="hi-line" value="${escapeHtml(lines[0].id)}">`}
     <label class="field-label">Período</label>
-    <select class="field-input" id="hi-days" style="margin-bottom:12px;">${[[1, 'Último dia'], [2, 'Últimos 2 dias'], [3, 'Últimos 3 dias'], [7, 'Últimos 7 dias'], [15, 'Últimos 15 dias'], [30, 'Últimos 30 dias']].map(([v, l]) => `<option value="${v}" ${v === 2 ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <select class="field-input" id="hi-days" style="margin-bottom:12px;">${[[0, 'Hoje (desde 0h)'], [1, 'Último dia'], [2, 'Últimos 2 dias'], [3, 'Últimos 3 dias'], [7, 'Últimos 7 dias'], [15, 'Últimos 15 dias'], [30, 'Últimos 30 dias']].map(([v, l]) => `<option value="${v}" ${v === 2 ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <div style="display:flex;gap:8px;align-items:center;"><button class="btn-save" id="hi-btn" style="width:auto;padding:9px 16px;" onclick="runHistoryImport()">Puxar conversas</button><span id="hi-fb" class="integ-muted" style="font-size:12.5px;"></span></div>`, 460);
 }
 
 async function runHistoryImport() {
   const act = _chatAct;
   const line = document.getElementById('hi-line').value;
-  const days = Number(document.getElementById('hi-days').value) || 2;
+  const sel = Number(document.getElementById('hi-days').value);
+  const today = sel === 0;
+  const days = today ? 1 : (sel || 2);
   const btn = document.getElementById('hi-btn'), fb = document.getElementById('hi-fb');
   btn.disabled = true;
   let page = 1, msgs = 0, chats = 0;
@@ -18765,12 +18767,12 @@ async function runHistoryImport() {
     for (let i = 0; i < 200 && page; i++) {
       fb.style.color = 'var(--muted)';
       fb.textContent = `Puxando... ${msgs} mensagem(ns) até agora`;
-      const r = await window._fb.whatsapp('/whatsapp/history-import', act, { line, days, page });
+      const r = await window._fb.whatsapp('/whatsapp/history-import', act, { line, days, today, page });
       msgs += r.imported || 0; chats += r.chats || 0;
       page = r.done ? 0 : r.nextPage;
     }
     closeHuvenModal();
-    showToast(`Histórico puxado: ${msgs} mensagem(ns) dos últimos ${days} dia(s). Buscando nomes e fotos...`, 'success', 7000);
+    showToast(`Histórico puxado: ${msgs} mensagem(ns) ${today ? 'de hoje' : `dos últimos ${days} dia(s)`}. Buscando nomes e fotos...`, 'success', 7000);
     syncChatContacts(act, line, false);
   } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = 'Erro: ' + e.message; btn.disabled = false; }
 }
