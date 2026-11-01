@@ -7,8 +7,10 @@
    O mesmo arquivo serve Huven e Zioon (a Zioon recebe "marca-zioon").
    ===================================================================== */
 
-/* ---------- 1. Cores ---------- */
-html.ui-vidro {
+/* ---------- 1. Cores ----------
+   Os blocos de cores do vidro também valem para ".marca-zioon": o tema-novo.css da Zioon define o fundo azul
+   com uma regra mais forte (html.tema-novo.marca-zioon) e deixava o vidro sólido em várias telas. */
+html.ui-vidro, html.ui-vidro.marca-zioon {
   --ui-glass: rgba(22, 22, 26, .46);
   --ui-glass-2: rgba(255, 255, 255, .07);
   --ui-glass-line: rgba(255, 255, 255, .14);
@@ -35,7 +37,7 @@ html.ui-vidro {
   --card-shadow: 0 10px 30px rgba(0, 0, 0, .18);
   --r2: 18px;
 }
-html.ui-vidro[data-theme="light"] {
+html.ui-vidro[data-theme="light"], html.ui-vidro.marca-zioon[data-theme="light"] {
   --ui-glass: rgba(255, 255, 255, .5);
   --ui-glass-2: rgba(255, 255, 255, .42);
   --ui-glass-line: rgba(255, 255, 255, .7);
@@ -60,7 +62,7 @@ html.ui-vidro[data-theme="light"] {
   --card-shadow: 0 10px 30px rgba(60, 45, 20, .12);
 }
 html.ui-vidro.marca-zioon { --accent: #8EA6FF; --accent-glow: rgba(142, 166, 255, .2); --accent-glow2: rgba(142, 166, 255, .1); }
-html.ui-vidro.marca-zioon[data-theme="light"] { --accent: #1F4BD8; }
+html.ui-vidro.marca-zioon[data-theme="light"] { --accent: #1F4BD8; --accent-glow: rgba(31, 75, 216, .16); --accent-glow2: rgba(31, 75, 216, .08); }
 
 html.ui-quente {
   --ui-glass: rgba(38, 28, 22, .78);
@@ -331,7 +333,7 @@ html.ui-calm.ui-vidro { --ui-band: rgba(16, 16, 20, .85); }
 html.ui-calm.ui-vidro[data-theme="light"] { --ui-band: rgba(250, 246, 240, .92); }
 
 /* Vidro claro: vidro mais encorpado e foto um pouco mais clara (fundos escuros deixavam colunas e textos acinzentados). */
-html.ui-vidro[data-theme="light"] {
+html.ui-vidro[data-theme="light"], html.ui-vidro.marca-zioon[data-theme="light"] {
   --ui-glass: rgba(255, 255, 255, .64);
   --ui-glass-2: rgba(255, 255, 255, .55);
   --ui-tint: rgba(255, 250, 240, .24);
@@ -340,7 +342,7 @@ html.ui-vidro[data-theme="light"] {
   --muted: rgba(23, 23, 26, .66);
   --muted2: rgba(23, 23, 26, .82);
 }
-html.ui-vidro { --muted: rgba(255, 255, 255, .7); }
+html.ui-vidro, html.ui-vidro.marca-zioon { --muted: rgba(255, 255, 255, .7); }
 html.ui-vidro ::placeholder, html.ui-quente ::placeholder { color: var(--muted); opacity: 1; }
 
 /* Avisos do funil ("novos leads", faturamento) como cartões legíveis em cima da foto. */
@@ -405,7 +407,7 @@ html:not(.ui-quente) .login-overlay { background-position: calc(50% + var(--ui-p
 /* ---------- 10. Vidro com mais cara de vidro (estilo visionOS) ----------
    Desfoque mais forte e foto mais visível atrás; reflexo diagonal por cima do vidro; borda de luz no alto;
    sombra funda (placas soltas flutuando); cantos maiores; os cartões sobem um pouco ao passar o mouse. */
-html.ui-vidro {
+html.ui-vidro, html.ui-vidro.marca-zioon {
   --ui-glass: rgba(46, 42, 44, .4);
   --ui-glass-2: rgba(255, 255, 255, .08);
   --ui-glass-line: rgba(255, 255, 255, .16);
@@ -419,7 +421,7 @@ html.ui-vidro {
   --ui-sheen-soft: linear-gradient(150deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .01) 50%, rgba(255, 255, 255, .03));
   --r2: 22px;
 }
-html.ui-vidro[data-theme="light"] {
+html.ui-vidro[data-theme="light"], html.ui-vidro.marca-zioon[data-theme="light"] {
   --ui-glass: rgba(255, 255, 255, .56);
   --ui-sheen-soft: linear-gradient(150deg, rgba(255, 255, 255, .3), rgba(255, 255, 255, .08) 50%, rgba(255, 255, 255, .16));
   --ui-pill: rgba(255, 255, 255, .5);
@@ -454,3 +456,13 @@ html.ui-calm.ui-vidro[data-theme="light"] { --ui-glass: rgba(255, 255, 255, .9);
 html.ui-calm.ui-vidro :is(.ui-chip, .ui-pills, .ui-round, .ui-dock, .ui-menu, .client-switch-pop, .config-panel, .chart-card, .stat-card, .chat-list, .chat-main, .chat-panel) { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 /* Etiqueta de origem do card: o azul ficava fraco no vidro mais claro. */
 html.ui-vidro:not([data-theme="light"]) .kc-chip.kc-origin { color: #C4DAFF !important; background: rgba(60, 110, 220, .34) !important; }
+/* Chat com conversa aberta: a área das mensagens tinha fundo sólido (--bg) e tapava o vidro. */
+html.ui-vidro .chat-msgs { background: transparent !important; }
+html.ui-vidro .chat-bubble.in { background: rgba(255, 255, 255, .1); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); }
+html.ui-vidro[data-theme="light"] .chat-bubble.in { background: rgba(255, 255, 255, .72); box-shadow: inset 0 1px 0 #fff, 0 1px 3px rgba(60, 45, 20, .08); }
+html.ui-vidro .chat-day { background: rgba(255, 255, 255, .12); }
+html.ui-vidro[data-theme="light"] .chat-day { background: rgba(255, 255, 255, .7); }
+/* Etiquetas de etapa (Contatos): as cores são de tema escuro e ficavam apagadas no vidro claro. */
+html.ui-vidro[data-theme="light"] .ct-stage { color: var(--text) !important; }
+/* Avatar da Zioon no escuro: letra branca sobre azul-claro. */
+html.ui-vidro.marca-zioon:not([data-theme="light"]) .ui-avatar { color: #0B1430; }
