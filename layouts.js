@@ -402,8 +402,9 @@
     var box = ov && ov.querySelector('.login-box');
     if (!box || ov._uiTilt) return;
     ov._uiTilt = true;
-    // "any-": o iPad com teclado/trackpad continua dizendo que o principal é o toque, mas tem cursor.
-    if (!window.matchMedia || !matchMedia('(any-hover: hover) and (any-pointer: fine)').matches || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // Sem checar "tem mouse?": o iPad com trackpad se descreve como aparelho de toque. A inclinação
+    // reage a qualquer cursor (mouse/trackpad) e ignora o dedo no pointermove abaixo.
+    if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     // A animação de entrada do cartão segura o "transform"; depois que ela termina, a inclinação assume.
     box.addEventListener('animationend', function (e) { if (e.target === box) box.classList.add('ui-tilt-ready'); });
     setTimeout(function () { box.classList.add('ui-tilt-ready'); }, 1600);
