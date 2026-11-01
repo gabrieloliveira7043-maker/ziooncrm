@@ -2455,7 +2455,10 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
     async getExtraClients() {
       if (!currentProfile) return [];
       try {
-        const snap = await getDocs(collection(db, 'extra_clients'));
+        // Cliente só pode ler os logins da própria conta (regras do Firestore).
+        const ref = currentProfile.role === 'admin' ? collection(db, 'extra_clients')
+          : query(collection(db, 'extra_clients'), where('act', '==', currentProfile.act || ''));
+        const snap = await getDocs(ref);
         return snap.docs.map(d => ({ login: d.id, ...d.data() }));
       } catch(e) { return []; }
     },
@@ -5171,7 +5174,10 @@ function escapeHtml(value) {
 }
 
 function escapeJsString(value) {
-  return String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, ' ');
+  // Seguro em string JS e também dentro de atributo HTML (onclick="..."): troca os caracteres
+  // que fecham a string ou o atributo por escapes \xNN, que o JavaScript lê como o caractere original.
+  return String(value ?? '').replace(/\\/g, '\\\\').replace(/\r\n|[\r\n\u2028\u2029]/g, ' ')
+    .replace(/[&<>"'`$]/g, ch => '\\x' + ch.charCodeAt(0).toString(16).padStart(2, '0'));
 }
 
 function onlyDigits(value) {
@@ -5690,7 +5696,7 @@ function renderFunilEvolucao() {
     const color = colors[i % colors.length];
 
     return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-      <div style="font-size:12px;color:var(--text);min-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:400;">${stage.label}</div>
+      <div style="font-size:12px;color:var(--text);min-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:400;">${escapeHtml(stage.label)}</div>
       <div style="flex:1;background:var(--surface2);border-radius:4px;height:20px;overflow:hidden;">
         <div style="height:100%;width:${barWidth}%;background:${color};border-radius:4px;transition:width 0.4s;display:flex;align-items:center;padding-left:6px;box-sizing:border-box;">
           ${pct > 5 ? `<span style="font-size:10px;color:#fff;font-weight:500;">${pct}%</span>` : ''}
@@ -6074,7 +6080,7 @@ function renderStageMapping() {
 
   if (!uniqueValues.length) { section.style.display = 'none'; return; }
 
-  const stageOptions = stages.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+  const stageOptions = stages.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`).join('');
 
   stageList.innerHTML = uniqueValues.map((val, i) => {
     // Tentar auto-mapear
@@ -6085,7 +6091,7 @@ function renderStageMapping() {
       <div style="display:flex;align-items:center;gap:6px;">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         <select id="stage-map-${i}" data-value="${val}" class="field-input" style="padding:4px 8px;font-size:12px;min-width:160px;">
-          ${stages.map(s => `<option value="${s.id}" ${s.id === autoStage ? 'selected' : ''}>${s.label}</option>`).join('')}
+          ${stages.map(s => `<option value="${escapeHtml(s.id)}" ${s.id === autoStage ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
         </select>
       </div>
     </div>`;
@@ -7369,7 +7375,7 @@ function filterContactEntries(entries, tagFilter, q, extra) {
 }
 
 function tagChipHtml(tag, extra = '') {
-  const c = tag.color || '#94a3b8';
+  const c = /^#[0-9a-f]{6}$/i.test(String(tag.color || '')) ? tag.color : '#94a3b8';
   return `<span class="chat-tag" style="background:${c}22;color:${c};border:1px solid ${c}55;${extra}">${escapeHtml(tag.name)}</span>`;
 }
 
@@ -7838,8 +7844,8 @@ function renderAtendimento() {
     const phone = (l.phone||'').replace(/\D/g,'');
     return phone ? `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);margin-bottom:8px;">
       <div>
-        <div style="font-size:13px;font-weight:500;color:var(--text);">${l.name||'—'}</div>
-        <div style="font-size:12px;color:var(--muted);">${l.phone}</div>
+        <div style="font-size:13px;font-weight:500;color:var(--text);">${escapeHtml(l.name||'—')}</div>
+        <div style="font-size:12px;color:var(--muted);">${escapeHtml(l.phone)}</div>
       </div>
       <button onclick="openLeadChat('${escapeJsString(l.id)}')" style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.3);color:#25d366;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.118 1.528 5.855L0 24l6.292-1.508A11.947 11.947 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.848 0-3.579-.498-5.073-1.367l-.361-.214-3.737.895.952-3.638-.235-.374A9.953 9.953 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
@@ -10822,7 +10828,7 @@ function showNextNotice(preview) {
     <div class="ntc-actions">
       ${b.layout ? `<button class="integ-btn primary" style="padding:9px 14px;" onclick="noticeGo('layout')">Trocar o layout</button>` : ''}
       ${b.mcp && canMcp ? `<button ${btn} onclick="noticeGo('mcp')">Conectar no Claude ou Codex</button>` : ''}
-      ${b.link && b.link.url ? `<a ${btn} href="${escapeHtml(b.link.url)}" target="_blank" rel="noopener" onclick="noticeClose()">${escapeHtml(b.link.label || 'Abrir')}</a>` : ''}
+      ${b.link && /^https?:\/\//i.test(String(b.link.url || '')) ? `<a ${btn} href="${escapeHtml(b.link.url)}" target="_blank" rel="noopener" onclick="noticeClose()">${escapeHtml(b.link.label || 'Abrir')}</a>` : ''}
     </div>
     <div class="ntc-foot">
       <label><input type="checkbox" id="ntc-off" ${preview ? 'disabled' : ''}> Não mostrar mais</label>
@@ -14787,6 +14793,7 @@ async function startFbConnect(act, elId) {
     if (!w) { showToast('O navegador bloqueou a janela. Libere pop-ups para o CRM e tente de novo.', 'warning', 7000); return; }
     let answered = false;
     const onMsg = ev => {
+      if (ev.source !== w || ev.origin !== new URL(CRM_API_BASE).origin) return;
       if (!ev.data || ev.data.huvenFb === undefined) return;
       answered = true;
       window.removeEventListener('message', onMsg);
@@ -18337,6 +18344,7 @@ async function calConnect() {
     const w = window.open(r.url, 'huvengcal', 'width=560,height=720');
     if (!w) return showToast('O navegador bloqueou a janela. Libere pop-ups para o CRM e tente de novo.', 'warning', 7000);
     const onMsg = ev => {
+      if (ev.source !== w || ev.origin !== new URL(CRM_API_BASE).origin) return;
       if (!ev.data || ev.data.huvenGcal === undefined) return;
       window.removeEventListener('message', onMsg);
       showToast(ev.data.msg || (ev.data.huvenGcal ? 'Agenda conectada.' : 'Não conectou.'), ev.data.huvenGcal ? 'success' : 'warning', 8000);
@@ -19072,6 +19080,7 @@ async function igLogin() {
     const w = window.open(r.url, 'huvenig', 'width=520,height=720');
     if (!w) { showToast('O navegador bloqueou a janela. Libere pop-ups para o CRM e tente de novo.', 'warning', 7000); return; }
     const onMsg = ev => {
+      if (ev.source !== w || ev.origin !== new URL(CRM_API_BASE).origin) return;
       if (!ev.data || ev.data.huvenIg === undefined) return;
       window.removeEventListener('message', onMsg);
       showToast(ev.data.msg || (ev.data.huvenIg ? 'Instagram conectado.' : 'Não conectou.'), ev.data.huvenIg ? 'success' : 'warning', 9000);
@@ -19637,6 +19646,7 @@ async function connectAiGcal() {
     const w = window.open(r.url, 'huvengcal', 'width=560,height=720');
     if (!w) { showToast('O navegador bloqueou a janela. Libere pop-ups para o CRM e tente de novo.', 'warning', 7000); return; }
     const onMsg = ev => {
+      if (ev.source !== w || ev.origin !== new URL(CRM_API_BASE).origin) return;
       if (!ev.data || ev.data.huvenGcal === undefined) return;
       window.removeEventListener('message', onMsg);
       showToast(ev.data.msg || (ev.data.huvenGcal ? 'Google Agenda conectado.' : 'Não conectou.'), ev.data.huvenGcal ? 'success' : 'warning', 8000);
@@ -21127,7 +21137,7 @@ function renderKanban() {
     searchWrap.className = 'col-search-wrap';
     searchWrap.innerHTML = `
       <svg class="col-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-      <input class="col-search-input" placeholder="Buscar..." oninput="filtrarColuna('${stage.id}', this.value)">`;
+      <input class="col-search-input" placeholder="Buscar..." oninput="filtrarColuna('${escapeJsString(stage.id)}', this.value)">`;
     col.appendChild(searchWrap);
 
     // Cards container
@@ -21514,7 +21524,7 @@ function openLeadModal() {
   // update stage options usando stages reais do cliente (inclui customizados)
   const stageSelect = document.getElementById('lead-stage');
   const stages = act ? getStages(act, currentPipeline(act)) : (clinica ? STAGES_CLINICA : STAGES_DEFAULT);
-  stageSelect.innerHTML = stages.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+  stageSelect.innerHTML = stages.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`).join('');
   if (act) applyFieldConfig(act);
   fillLeadResponsavel(normalizeActValue(act), null);
   renderLeadAiSummary(null);
@@ -21554,7 +21564,7 @@ function editLead(id) {
   };
   const stageSelect = document.getElementById('lead-stage');
   const stages = (lead && lead.act) ? getStages(lead.act, leadPipeline(lead)) : (clinica ? STAGES_CLINICA : STAGES_DEFAULT);
-  stageSelect.innerHTML = stages.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+  stageSelect.innerHTML = stages.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`).join('');
   stageSelect.value = getArteAzulejoStageForBoard(lead, lead.act);
   document.getElementById('modal-title').textContent = 'Editar lead';
   if (lead.act) applyFieldConfig(lead.act);
@@ -21948,8 +21958,8 @@ function showHistory(id) {
           ${i < history.length - 1 ? '<div style="width:1px;flex:1;background:var(--border2);margin:3px 0;min-height:20px;"></div>' : ''}
         </div>
         <div>
-          <div style="font-size:13px;font-weight:500;color:var(--text);">${h.stage}</div>
-          <div style="font-size:11px;color:var(--muted);font-family:JetBrains Mono,monospace;">${h.at}</div>
+          <div style="font-size:13px;font-weight:500;color:var(--text);">${escapeHtml(h.stage)}</div>
+          <div style="font-size:11px;color:var(--muted);font-family:JetBrains Mono,monospace;">${escapeHtml(h.at)}</div>
           ${h.call ? `<div style="display:flex;gap:6px;margin-top:4px;">
             <button class="chat-pill" style="padding:2px 8px;font-size:11px;${h.result === 'atendeu' ? 'background:var(--green-dim);' : ''}" onclick="saveCallResult('${escapeJsString(lead.id)}', 'atendeu', ${i})">✅ Atendeu</button>
             <button class="chat-pill" style="padding:2px 8px;font-size:11px;${h.result === 'nao_atendeu' ? 'background:var(--red-dim);' : ''}" onclick="saveCallResult('${escapeJsString(lead.id)}', 'nao_atendeu', ${i})">❌ Não atendeu</button>
@@ -21977,9 +21987,9 @@ function openMoveModal(id) {
 
   const opts = document.getElementById('move-stage-options');
   opts.innerHTML = STAGES.map(s => `
-    <button class="move-stage-btn ${lead.stage === s.id ? 'current' : ''}" onclick="moveLeadTo('${id}','${s.id}')">
+    <button class="move-stage-btn ${lead.stage === s.id ? 'current' : ''}" onclick="moveLeadTo('${escapeJsString(id)}','${escapeJsString(s.id)}')">
       <div class="move-stage-dot" style="background:${stageColors[s.id] || 'var(--accent)'}"></div>
-      ${s.label}
+      ${escapeHtml(s.label)}
       ${lead.stage === s.id ? '<span style="margin-left:auto;font-size:11px;color:var(--accent2);">atual</span>' : ''}
     </button>`).join('') + (() => {
       const others = pipelineList(lead.act).filter(p => p.id !== leadPipeline(lead));
