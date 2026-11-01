@@ -22876,12 +22876,19 @@ function whatsappDownList() {
     const cfg = WHATSAPP_SETTINGS[act];
     if (cfg && (s.line || 'main') === 'main' && cfg.mainRemoved) return false;
     if (cfg && (s.line || 'main') !== 'main' && !(cfg.lines || []).some(l => l.id === s.line)) return false;
-    // Desconectado pelo botão do CRM: foi de propósito, não avisa.
-    if (s.manual) return false;
-    // Se outro WhatsApp do mesmo cliente está conectado, o atendimento segue: não avisa.
-    if (_waStatusList.some(o => o !== s && o.id !== '__server' && o.ok === true && (o.act || String(o.id).split('__')[0]) === act)) return false;
+    // Desconectado pelo botão do CRM: foi de propósito, mas se ficar mais de 30 min sem ler o QR de novo, avisa
+    // (uma linha esquecida desconectada passa dias sem receber nada no Chat).
+    if (s.manual && !(s.manualAt && Date.now() - Date.parse(s.manualAt) > 30 * 60 * 1000)) return false;
+    // Cada número conta: outro WhatsApp conectado do mesmo cliente não cobre as conversas deste.
     return true;
   });
+}
+
+// Motivo mostrado no aviso. "silent" = conectado mas sem receber (vigia de linha muda do servidor).
+function waDownReason(s) {
+  if (s.silent) return 'conectado, mas sem receber mensagens desde ' + escapeHtml(waAlertTime(s.silentSince || s.since).replace(/^(às|em) /, ''));
+  if (s.manual) return 'desconectado no CRM ' + escapeHtml(waAlertTime(s.manualAt || s.since)) + ' e ainda sem ler o QR';
+  return (s.loggedOut ? 'desconectado pelo celular' : 'sem conexão') + ' ' + escapeHtml(waAlertTime(s.since));
 }
 
 function waAlertTime(iso) {
@@ -22930,13 +22937,13 @@ function renderWhatsAppAlert() {
   }
   if (isAdmin) {
     if (down.length) {
-      parts.push(`<div style="margin-top:${server ? 8 : 0}px;"><b>${uiIco('alert', 14)} WhatsApp desconectado ${down.length > 1 ? `(${down.length} clientes)` : ''}</b> — é preciso ler o QR Code de novo:</div>`);
-      parts.push(down.map(s => { const act = s.act || s.id.split('__')[0]; const line = s.line || 'main'; return `<div class="wa-alert-row"><span>• <b>${escapeHtml(getClientDisplayName(act) || act)}${line !== 'main' ? ' · ' + escapeHtml(waLineLabel(act, line)) : ''}</b> — ${s.loggedOut ? 'desconectado pelo celular' : 'sem conexão'} ${escapeHtml(waAlertTime(s.since))}</span><button class="wa-alert-btn" onclick="openWaReconnect('${escapeJsString(act)}','${escapeJsString(line)}')">Reconectar</button></div>`; }).join(''));
+      parts.push(`<div style="margin-top:${server ? 8 : 0}px;"><b>${uiIco('alert', 14)} WhatsApp com problema ${down.length > 1 ? `(${down.length} números)` : ''}</b> — é preciso ler o QR Code de novo:</div>`);
+      parts.push(down.map(s => { const act = s.act || s.id.split('__')[0]; const line = s.line || 'main'; return `<div class="wa-alert-row"><span>• <b>${escapeHtml(getClientDisplayName(act) || act)}${line !== 'main' ? ' · ' + escapeHtml(waLineLabel(act, line)) : ''}</b> — ${waDownReason(s)}</span><button class="wa-alert-btn" onclick="openWaReconnect('${escapeJsString(act)}','${escapeJsString(line)}')">Reconectar</button></div>`; }).join(''));
     }
   } else if (down.length) {
     const s = down[0];
     const sLine = s.line || 'main';
-    parts.push(`<div><b>${uiIco('alert', 14)} Seu WhatsApp${sLine !== 'main' ? ' "' + escapeHtml(waLineLabel(s.act || s.id, sLine)) + '"' : ''} foi desconectado do CRM</b> ${escapeHtml(waAlertTime(s.since))}.</div>
+    parts.push(`<div><b>${uiIco('alert', 14)} Seu WhatsApp${sLine !== 'main' ? ' "' + escapeHtml(waLineLabel(s.act || s.id, sLine)) + '"' : ''} ${s.silent ? 'está conectado, mas parou de receber mensagens' : 'foi desconectado do CRM'}</b> ${escapeHtml(waAlertTime(s.silent && s.silentSince ? s.silentSince : s.since))}.</div>
       <div style="margin-top:4px;">Enquanto estiver desconectado, as mensagens do WhatsApp não viram card no kanban, o Chat não recebe mensagens e a 1ª mensagem automática não sai. Leia o QR Code de novo para voltar a funcionar.</div>
       <div style="margin-top:8px;"><button class="wa-alert-btn" onclick="openWaReconnect('${escapeJsString(s.act || s.id.split('__')[0])}','${escapeJsString(sLine)}')">Reconectar agora</button></div>`);
   }
