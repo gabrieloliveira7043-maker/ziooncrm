@@ -1,0 +1,4 @@
+
+# Graphify: só o relatório fica no repositório (o resto é gerado de novo com a skill)
+graphify-out/*
+!graphify-out/GRAPH_REPORT.md
