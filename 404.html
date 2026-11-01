@@ -22877,8 +22877,11 @@ function whatsappDownList() {
     if (cfg && (s.line || 'main') === 'main' && cfg.mainRemoved) return false;
     if (cfg && (s.line || 'main') !== 'main' && !(cfg.lines || []).some(l => l.id === s.line)) return false;
     // Desconectado pelo botão do CRM: foi de propósito, mas se ficar mais de 30 min sem ler o QR de novo, avisa
-    // (uma linha esquecida desconectada passa dias sem receber nada no Chat).
-    if (s.manual && !(s.manualAt && Date.now() - Date.parse(s.manualAt) > 30 * 60 * 1000)) return false;
+    // (uma linha esquecida desconectada passa dias sem receber nada no Chat). Depois de 7 dias é linha abandonada: não avisa.
+    if (s.manual) {
+      const age = s.manualAt ? Date.now() - Date.parse(s.manualAt) : 0;
+      if (!(age > 30 * 60 * 1000 && age < 7 * 86400 * 1000)) return false;
+    }
     // Cada número conta: outro WhatsApp conectado do mesmo cliente não cobre as conversas deste.
     return true;
   });
