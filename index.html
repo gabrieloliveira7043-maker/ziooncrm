@@ -16033,7 +16033,8 @@ function renderChatMessages() {
   if (!box) return;
   const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120 || !box.dataset.loaded;
   const pendingSched = _chatSched.filter(s => ['pending', 'sending', 'failed'].includes(s.status)).sort((a, b) => String(a.sendAt).localeCompare(String(b.sendAt)));
-  if (!_chatMsgs.length && !_chatNotes.length && !pendingSched.length) { box.innerHTML = '<div class="chat-empty">Nenhuma mensagem ainda.</div>'; box.dataset.loaded = '1'; return; }
+  const outbox = chatOutboxVisible();
+  if (!_chatMsgs.length && !_chatNotes.length && !pendingSched.length && !outbox.length) { box.innerHTML = '<div class="chat-empty">Nenhuma mensagem ainda.</div>'; box.dataset.loaded = '1'; return; }
   let lastDay = '';
   const parts = [];
   if (_chatMsgs.length >= _chatMsgLimit) parts.push(`<button class="chat-pill" style="align-self:center;" onclick="loadOlderChatMessages()">Carregar mensagens anteriores</button>`);
@@ -16095,6 +16096,7 @@ function renderChatMessages() {
       : s.status === 'sending' ? `${uiIco('clock', 12)} Enviando agora...` : `${uiIco('clock', 12)} Agendada para ${when}${s.lastError ? ' · ' + escapeHtml(s.lastError) : ''}`;
     parts.push(`<div class="chat-sched ${s.status === 'failed' ? 'failed' : ''}"><div style="font-size:11px;font-weight:700;color:var(--muted2);margin-bottom:3px;">${head}</div>${s.media && s.media.fileName ? `${uiIco('clip', 13)} ${escapeHtml(s.media.fileName)}<br>` : ''}${escapeHtml(mboxShow(s.text || '', s.mentions))}<div class="chat-meta">${escapeHtml(s.createdByName || '')}${['pending', 'failed'].includes(s.status) ? ` · <a href="#" onclick="cancelScheduled('${escapeJsString(s.id)}');return false;" style="color:var(--red);">${s.status === 'failed' ? 'dispensar' : 'cancelar'}</a>` : ''}</div></div>`);
   });
+  if (outbox.length) parts.push(chatOutboxHtml(outbox));
   box.innerHTML = parts.join('');
   box.dataset.loaded = '1';
   if (nearBottom) box.scrollTop = box.scrollHeight;
@@ -16215,33 +16217,81 @@ function clearChatMedia() {
   if (chip) { chip.style.display = 'none'; chip.innerHTML = ''; }
 }
 
-async function sendChatMessage() {
-  if (_chatSending || !_chatAct || !_chatOpenKey) return;
+// Envio na hora: a mensagem já aparece no chat e o campo fica livre; o servidor manda em fila, na ordem.
+// Se falhar, o balão fica vermelho com "tentar de novo".
+let _chatOutbox = [];
+let _chatSendChain = Promise.resolve();
+function sendChatMessage() {
+  if (!_chatAct || !_chatOpenKey) return;
   const ta = document.getElementById('chat-text');
   const text = ta.value.trim();
   if (!text && !_chatPendingMedia) return;
-  const btn = document.getElementById('chat-send-btn');
-  _chatSending = true; btn.disabled = true; btn.textContent = 'Enviando...';
-  try {
-    const cOpen = _chatItems.find(x => x.id === _chatOpenKey);
-    if (cOpen && cOpen.channel === 'instagram') await window._fb.whatsapp('/instagram/send', _chatAct, { chatKey: _chatOpenKey, text });
-    else {
-      const mt = chatOpenGroup() ? chatApplyMentions(text) : { text, mentioned: [], mentionAll: false };
-      await window._fb.whatsapp('/whatsapp/chat-send', _chatAct, { chatKey: _chatOpenKey, text: mt.text, media: _chatPendingMedia || undefined, ...(mt.mentioned.length ? { mentioned: mt.mentioned } : {}), ...(mt.mentionAll ? { mentionAll: true } : {}) });
-    }
-    ta.value = ''; ta.style.height = 'auto';
-    _chatMentions = [];
-    resumeClear('chat:' + _chatAct + ':' + _chatOpenKey);
-    clearChatMedia();
-    const c = _chatItems.find(x => x.id === _chatOpenKey);
-    const me = chatMe();
-    // Quem responde primeiro fica com a conversa.
-    if (c && !c.assignedTo) window._fb.updateInboxChat(_chatAct, c.id, { assignedTo: me.uid, assignedName: me.name, assignedAt: new Date().toISOString() }).catch(() => {});
-  } catch (e) {
-    showToast('Não enviou: ' + e.message, 'error', 6000);
-  } finally {
-    _chatSending = false; btn.disabled = false; btn.textContent = 'Enviar';
+  const act = _chatAct, key = _chatOpenKey;
+  const c = _chatItems.find(x => x.id === key);
+  const media = _chatPendingMedia || null;
+  let path, payload;
+  if (c && c.channel === 'instagram') { path = '/instagram/send'; payload = { chatKey: key, text }; }
+  else {
+    const mt = chatOpenGroup() ? chatApplyMentions(text) : { text, mentioned: [], mentionAll: false };
+    path = '/whatsapp/chat-send';
+    payload = { chatKey: key, text: mt.text, media: media || undefined, ...(mt.mentioned.length ? { mentioned: mt.mentioned } : {}), ...(mt.mentionAll ? { mentionAll: true } : {}) };
   }
+  ta.value = ''; ta.style.height = 'auto';
+  _chatMentions = [];
+  resumeClear('chat:' + act + ':' + key);
+  clearChatMedia();
+  const me = chatMe();
+  // Quem responde primeiro fica com a conversa.
+  if (c && !c.assignedTo) window._fb.updateInboxChat(act, c.id, { assignedTo: me.uid, assignedName: me.name, assignedAt: new Date().toISOString() }).catch(() => {});
+  const item = { id: 'out' + Date.now() + Math.random().toString(36).slice(2, 6), act, key, path, payload, text: payload.text, media, at: new Date().toISOString(), status: 'sending' };
+  _chatOutbox.push(item);
+  chatOutboxRender(item, true);
+  chatOutboxQueue(item);
+}
+function chatOutboxQueue(item) {
+  _chatSendChain = _chatSendChain.then(() => window._fb.whatsapp(item.path, item.act, item.payload)
+    .then(() => { item.status = 'sent'; item.sentAt = Date.now(); setTimeout(() => chatOutboxRender(item), 21000); })
+    .catch(e => { item.status = 'failed'; item.error = e.message; showToast('Não enviou: ' + e.message, 'error', 6000); })
+    .then(() => chatOutboxRender(item)));
+}
+function chatOutboxRender(item, scroll) {
+  if (_chatOpenKey !== item.key || _chatAct !== item.act) return;
+  const box = document.getElementById('chat-msgs');
+  if (scroll && box) delete box.dataset.loaded; // desce até a mensagem nova
+  renderChatMessages();
+}
+// Balões ainda não confirmados da conversa aberta. Some quando a mensagem de verdade chega (ou 20 s depois de enviada).
+function chatOutboxVisible() {
+  const now = Date.now();
+  _chatOutbox = _chatOutbox.filter(o => {
+    if (o.status !== 'sent') return true;
+    if (now - o.sentAt > 20000) return false;
+    if (o.key !== _chatOpenKey) return true;
+    const t0 = new Date(o.at).getTime() - 60000;
+    return !_chatMsgs.some(m => m.fromMe && new Date(m.at).getTime() >= t0 && String(m.text || '') === String(o.text || ''));
+  });
+  return _chatOutbox.filter(o => o.key === _chatOpenKey && o.act === _chatAct);
+}
+function chatOutboxHtml(list) {
+  return list.map(o => {
+    const failed = o.status === 'failed';
+    const media = o.media ? (o.media.fileName ? uiIco('clip', 13) + ' ' + escapeHtml(o.media.fileName) : escapeHtml(CHAT_MEDIA_LABELS[o.media.type] || 'Arquivo')) + '<br>' : '';
+    const err = failed ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">${uiIco('alert', 12)} Não enviou: ${escapeHtml(o.error || '')} · <a href="#" style="color:var(--red);" onclick="chatOutboxRetry('${o.id}');return false;">tentar de novo</a> · <a href="#" style="color:var(--red);" onclick="chatOutboxDrop('${o.id}');return false;">descartar</a></div>` : '';
+    const time = new Date(o.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return `<div class="chat-bubble out"${failed ? '' : ' style="opacity:.8;"'}>${media}${chatMentionsHtml(chatLinkify(escapeHtml(o.text || '')))}${err}<div class="chat-meta">${failed ? '' : uiIco('clock', 11) + (o.status === 'sent' ? ' enviada · ' : ' enviando · ')}${time}</div></div>`;
+  }).join('');
+}
+function chatOutboxRetry(id) {
+  const o = _chatOutbox.find(x => x.id === id);
+  if (!o || o.status !== 'failed') return;
+  o.status = 'sending'; o.error = '';
+  chatOutboxRender(o);
+  chatOutboxQueue(o);
+}
+function chatOutboxDrop(id) {
+  const o = _chatOutbox.find(x => x.id === id);
+  _chatOutbox = _chatOutbox.filter(x => x.id !== id);
+  if (o) chatOutboxRender(o);
 }
 
 // ===== CHAT: GRUPOS (participantes, configurações e marcação com @) =====
