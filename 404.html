@@ -2645,6 +2645,18 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
     async deleteChatNote(id) {
       await deleteDoc(doc(db, 'chat_notes', id));
     },
+    // Atividades: várias de uma vez (em lote) e as concluídas do cliente.
+    async addChatNotesBatch(list) {
+      for (let i = 0; i < list.length; i += 400) {
+        const batch = writeBatch(db);
+        list.slice(i, i + 400).forEach(d => batch.set(doc(collection(db, 'chat_notes')), { ...d, act: normalizeAct(d.act) }));
+        await batch.commit();
+      }
+    },
+    async listDoneTasks(act) {
+      const snap = await getDocs(query(collection(db, 'chat_notes'), where('act', '==', normalizeAct(act)), where('isTask', '==', true), where('done', '==', true)));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    },
     // Chat: mensagens agendadas (o Worker envia no horário).
     listenChatScheduled(act, chatKey, callback) {
       return onSnapshot(query(collection(db, 'scheduled_messages'), where('act', '==', normalizeAct(act)), where('chatKey', '==', chatKey)), snap => {
@@ -2893,6 +2905,40 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
 </script>
 <script src="icones.js?v=6"></script>
 <script src="cores.js?v=2"></script>
+<style>
+.actv-head{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
+.actv-title{font-size:20px;font-weight:700;color:var(--text);}
+.actv-bar-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;}
+.actv-filter{width:auto;max-width:200px;padding:7px 9px;font-size:13px;}
+.actv-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+.actv-tab{border:1px solid var(--border);background:var(--surface);color:var(--muted2);border-radius:999px;padding:6px 12px;font-size:13px;cursor:pointer;}
+.actv-tab span{font-weight:700;margin-left:4px;}
+.actv-tab.on{background:var(--text);color:var(--surface);border-color:transparent;}
+.actv-tab.late:not(.on) span{color:var(--red);}
+.actv-list{display:flex;flex-direction:column;gap:6px;}
+.actv-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;}
+.actv-row.done{opacity:.65;}
+.actv-check{width:22px;height:22px;border-radius:50%;border:2px solid var(--border2);background:transparent;cursor:pointer;flex:none;display:flex;align-items:center;justify-content:center;color:#1FA855;padding:0;}
+.actv-check:hover:not(:disabled){border-color:#1FA855;background:rgba(31,168,85,.12);}
+.actv-ico{color:var(--muted2);flex:none;display:flex;}
+.actv-main{flex:1;min-width:0;}
+.actv-text{font-size:13.5px;font-weight:600;color:var(--text);overflow-wrap:anywhere;}
+.actv-sub{font-size:12px;color:var(--muted2);margin-top:2px;}
+.actv-when{font-size:12.5px;color:var(--muted2);white-space:nowrap;}
+.actv-when.late{color:var(--red);font-weight:600;}
+.actv-btns{display:flex;gap:4px;flex:none;}
+.actv-empty{padding:28px;text-align:center;color:var(--muted2);border:1px dashed var(--border);border-radius:12px;}
+.actv-team{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin-bottom:12px;}
+.actv-team-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;}
+.actv-team-name{font-size:12.5px;color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.actv-team-num{font-size:20px;font-weight:700;color:var(--text);margin:2px 0 6px;}
+.actv-team-num small{font-size:12px;font-weight:400;color:var(--muted2);}
+.actv-bar{height:6px;border-radius:99px;background:rgba(127,127,127,.2);overflow:hidden;}
+.actv-bar span{display:block;height:100%;background:#1FA855;border-radius:99px;}
+.actv-imp-row{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-bottom:1px solid var(--border);}
+.actv-imp-row.off{opacity:.45;}
+@media (max-width:640px){.actv-row{flex-wrap:wrap;}.actv-main{flex-basis:calc(100% - 70px);}.actv-btns{margin-left:auto;}}
+</style>
 </head>
 <body>
 
@@ -2951,6 +2997,7 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('analise'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6M12 2v3"/></svg><span>Atendimento</span></button>
     <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); switchView('clientes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16M9 7h2M13 7h2M9 11h2M13 11h2"/></svg><span>Clientes</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('calendario'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span>Calendário</span></button>
+    <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('atividades'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg><span>Atividades</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('automacoes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM19 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM5 7v4a4 4 0 0 0 4 4h6a4 4 0 0 1 4 4M19 3v6M16 6h6"/></svg><span>Automações</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('prospeccao'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6M11 8v6"/></svg><span>Prospecção</span></button>
     <button type="button" class="mnav-sheet-item" data-admin="1" onclick="closeMobileMore(); switchView('agenteia'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 4h6M9 14h.01M15 14h.01M2 14h2M20 14h2"/></svg><span>Agente de IA</span></button>
@@ -3044,6 +3091,10 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
         <div class="nav-item" id="nav-calendario" onclick="switchView('calendario')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>
           Calendário
+        </div>
+        <div class="nav-item" id="nav-atividades" onclick="switchView('atividades')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>
+          Atividades
         </div>
         <div class="nav-item" id="nav-automacoes" onclick="switchView('automacoes')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM19 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM5 7v4a4 4 0 0 0 4 4h6a4 4 0 0 1 4 4M19 3v6M16 6h6"/></svg>
@@ -4080,6 +4131,7 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
     <!-- Agente de IA (card do agente do cliente) -->
     <div id="agenteia-view" class="huv-view" style="display:none;"><div id="agenteia-body"></div></div>
     <div id="calendario-view" class="huv-view" style="display:none;"><div id="calendario-body"></div></div>
+    <div id="atividades-view" class="huv-view" style="display:none;"><div id="atividades-body"></div></div>
 
     <!-- Prospecção View -->
     <div id="prospeccao-view" class="huv-view" style="display:none;"><div id="prospeccao-body"></div></div>
@@ -7861,7 +7913,7 @@ function switchView(view) {
     view = firstAllowedView();
   }
   try { localStorage.setItem('crm_last_view', JSON.stringify({ view, at: Date.now() })); } catch (e) {}
-  ['report','analise','clientes','automacoes','agenteia','calendario','capi','historico','instagram','posts','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes','modelos'].forEach(v => {
+  ['report','analise','clientes','automacoes','agenteia','calendario','atividades','capi','historico','instagram','posts','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes','modelos'].forEach(v => {
     const el = document.getElementById('nav-' + v);
     if (el) el.classList.toggle('active', v === view);
   });
@@ -7891,6 +7943,9 @@ function switchView(view) {
   const calView = document.getElementById('calendario-view');
   if (calView) calView.style.display = view === 'calendario' ? 'block' : 'none';
   if (view === 'calendario') renderCalendarioView(true);
+  const atividadesView = document.getElementById('atividades-view');
+  if (atividadesView) atividadesView.style.display = view === 'atividades' ? 'block' : 'none';
+  if (view === 'atividades') renderAtividadesView();
   const prospeccaoView = document.getElementById('prospeccao-view');
   if (prospeccaoView) prospeccaoView.style.display = view === 'prospeccao' ? 'block' : 'none';
   if (view === 'prospeccao') renderProspeccaoView();
@@ -16818,10 +16873,10 @@ function chatNoteHtml(n) {
   }
   const rem = n.remindAt ? new Date(n.remindAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
   const id = escapeJsString(n.id);
-  return `<div class="chat-note"><div class="chat-note-head">${uiIco('note', 12)} Nota interna · ${escapeHtml(n.by || '')} · ${time}
-    ${rem ? `<span class="chat-tag" style="background:${n.done ? 'var(--surface3)' : 'rgba(224,164,58,.25)'};color:${n.done ? 'var(--muted2)' : '#B7791F'};">${uiIco('bell', 11)} ${n.done ? 'concluído' : 'lembrete'} ${rem}</span>` : ''}
+  return `<div class="chat-note"><div class="chat-note-head">${n.isTask && n.kind && n.kind !== 'lembrete' ? uiIco((ACT_KINDS[n.kind] || ACT_KINDS.tarefa)[1], 12) + ' Atividade · ' + (ACT_KINDS[n.kind] || ACT_KINDS.tarefa)[0] : uiIco('note', 12) + ' Nota interna'} · ${escapeHtml(n.by || '')}${n.assigneeName && n.assigneeName !== n.by ? ' para ' + escapeHtml(n.assigneeName) : ''} · ${time}
+    ${rem ? `<span class="chat-tag" style="background:${n.done ? 'var(--surface3)' : 'rgba(224,164,58,.25)'};color:${n.done ? 'var(--muted2)' : '#B7791F'};">${uiIco('bell', 11)} ${n.done ? 'concluído' + (n.result && ACT_RESULTS[n.result] ? ' (' + ACT_RESULTS[n.result] + ')' : '') : n.isTask && n.kind && n.kind !== 'lembrete' ? 'para' : 'lembrete'} ${rem}</span>` : ''}
     <span class="sp"></span>
-    ${rem && !n.done ? `<button onclick="finishReminder('${id}')">Concluir</button>` : ''}
+    ${rem && !n.done ? `<button onclick="${n.isTask && (n.kind === 'ligacao' || n.kind === 'whatsapp') ? 'actComplete' : 'finishReminder'}('${id}')">Concluir</button>` : ''}
     <button onclick="deleteChatNoteUi('${id}')">Excluir</button></div>${escapeHtml(n.text || '')}</div>`;
 }
 
@@ -16851,14 +16906,17 @@ async function saveChatNote() {
   const me = chatMe();
   fb.textContent = 'Salvando...';
   try {
-    await window._fb.addChatNote({ act: _chatAct, chatKey: _chatOpenKey, chatName: chatName(c, chatLeadFor(c, chatLeadIndex(_chatAct))), text, by: me.name, byUid: me.uid, at: new Date().toISOString(), remindAt, done: !remindAt });
+    const lead = chatLeadFor(c, chatLeadIndex(_chatAct));
+    const am = actMe();
+    // Com data, o lembrete também é uma atividade (aba Atividades) de quem criou.
+    await window._fb.addChatNote({ act: _chatAct, chatKey: _chatOpenKey, chatName: chatName(c, lead), text, by: me.name, byUid: me.uid, at: new Date().toISOString(), remindAt, done: !remindAt, ...(remindAt ? { isTask: true, kind: 'lembrete', assigneeLogin: am.login, assigneeName: am.name, leadId: lead ? lead.id : '', leadName: lead ? lead.name || '' : '', phone: c.phone || '' } : {}) });
     closeHuvenModal();
     showToast(remindAt ? 'Lembrete salvo.' : 'Nota salva.', 'success', 1800);
   } catch (e) { fb.textContent = 'Erro: ' + e.message; }
 }
 
 async function finishReminder(id) {
-  try { await window._fb.updateChatNote(id, { done: true, doneAt: new Date().toISOString(), doneBy: chatMe().name }); }
+  try { await window._fb.updateChatNote(id, { done: true, doneAt: new Date().toISOString(), doneBy: chatMe().name, isTask: true, result: 'feito' }); }
   catch (e) { showToast('Erro: ' + e.message, 'error'); }
 }
 
@@ -16873,13 +16931,13 @@ let _remUnsub = null;
 let _remShown = new Set();
 function startReminderWatch() {
   if (_remUnsub || !window._fb || typeof window._fb.listenOpenReminders !== 'function') return;
-  _remUnsub = window._fb.listenOpenReminders(list => { _reminders = list || []; renderReminders(); renderChatList(); });
+  _remUnsub = window._fb.listenOpenReminders(list => { _reminders = list || []; _actLeadIdx = null; renderReminders(); renderChatList(); actRefreshIfOpen(); });
   setInterval(renderReminders, 30000);
 }
 
 function dueReminders() {
   const now = Date.now();
-  return _reminders.filter(n => !n.done && Date.parse(n.remindAt) <= now).sort((a, b) => String(a.remindAt).localeCompare(String(b.remindAt)));
+  return _reminders.filter(n => !n.done && Date.parse(n.remindAt) <= now && actMine(n)).sort((a, b) => String(a.remindAt).localeCompare(String(b.remindAt)));
 }
 
 function chatReminderFor(act, key) {
@@ -16915,8 +16973,8 @@ function renderReminders() {
         <div class="rem-row-top"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${isAdmin ? escapeHtml(getClientDisplayName(n.act) || '') + ' · ' : ''}${escapeHtml(n.chatName || '')} · ${when(n)}</span><button class="x" title="Esconder" onclick="hideReminder('${id}')">×</button></div>
         <div class="rem-row-text" title="${escapeHtml(n.text || '')}">${escapeHtml(limitText(n.text || '', 240))}</div>
         <div class="rem-row-acts">
-          <button onclick="openChatByKey('${escapeJsString(n.act)}','${escapeJsString(n.chatKey)}')">Abrir conversa</button>
-          <button onclick="finishReminder('${id}')">Concluir</button>
+          ${n.chatKey ? `<button onclick="openChatByKey('${escapeJsString(n.act)}','${escapeJsString(n.chatKey)}')">Abrir conversa</button>` : `<button onclick="switchView('atividades')">Ver atividades</button>`}
+          <button onclick="${n.isTask && (n.kind === 'ligacao' || n.kind === 'whatsapp') ? 'actComplete' : 'finishReminder'}('${id}')">Concluir</button>
           <button onclick="snoozeReminder('${id}')">Adiar 1 h</button>
         </div></div>`;
     }).join('')}</div></div>`;
@@ -16925,6 +16983,563 @@ function renderReminders() {
 async function snoozeReminder(id) {
   try { await window._fb.updateChatNote(id, { remindAt: new Date(Date.now() + 3600000).toISOString() }); _remShown.delete(id); }
   catch (e) { showToast('Erro: ' + e.message, 'error'); }
+}
+
+// ===== ATIVIDADES =====
+// Cada atividade é um lembrete do Chat (chat_notes com remindAt e isTask): criar, adiar ou concluir de um lado vale para o outro.
+// Ligada a um lead ou número, aparece também na conversa do Chat. O vendedor vê as dele; o gestor (login principal) vê as de todos.
+const ACT_KINDS = { ligacao: ['Ligação', 'phone'], whatsapp: ['WhatsApp', 'message'], reuniao: ['Reunião', 'calendar'], email: ['E-mail', 'note'], visita: ['Visita', 'pin'], tarefa: ['Tarefa', 'clipboard'], lembrete: ['Lembrete', 'bell'] };
+const ACT_RESULTS = { atendeu: 'Atendeu', nao_atendeu: 'Não atendeu', caixa: 'Caixa postal', feito: 'Feito' };
+let _actv = { tab: 'hoje', who: '', kind: '', done: [], doneAct: '', doneAt: 0 };
+let _actLeadIdx = null;
+let _actFocus = null;
+let _actImport = null;
+
+function actMe() {
+  const p = (window._fb && window._fb.getProfile && window._fb.getProfile()) || {};
+  return { uid: p.uid || '', login: p.login || '', name: p.personName || p.name || p.login || 'Eu' };
+}
+function actIsManager() {
+  if (isAdmin) return true;
+  const p = window._fb && window._fb.getProfile && window._fb.getProfile();
+  return !!p && !p.parentLogin;
+}
+function actMine(n, me) {
+  me = me || actMe();
+  return n.assigneeLogin ? n.assigneeLogin === me.login : n.byUid === me.uid;
+}
+function actCurrentAct() {
+  if (!isAdmin) return normalizeActValue(chatAct() || '');
+  const sel = document.getElementById('actv-client');
+  return sel && sel.value ? normalizeActValue(sel.value) : '';
+}
+// Equipe do cliente: login principal e logins extras.
+function actTeam(act) {
+  act = normalizeActValue(act);
+  const me = actMe();
+  const list = [];
+  const add = (login, name) => { if (login && !list.some(x => x.login === login)) list.push({ login, name }); };
+  if (!isAdmin && me.login) add(me.login, me.name);
+  Object.entries(CREDENTIALS).forEach(([login, c]) => { if (login !== 'admin' && c && normalizeActValue(c.act) === act) add(login, getClientDisplayName(act) + ' (principal)'); });
+  (SUB_LOGINS || []).forEach(s => { if (normalizeActValue(s.act) === act) add(s.login, s.name || s.login); });
+  if (isAdmin && me.login) add(me.login, me.name + ' (admin)');
+  return list;
+}
+function actAssigneeLabel(n) { return n.assigneeName || n.by || ''; }
+function actDayStart(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); }
+function actWhen(iso) { return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); }
+
+// Conversa do Chat de um lead: a que já existe ou a chave que ela vai ter (mesma regra do Worker).
+function actChatKeyFor(act, phone, line) {
+  const base = chatPhoneKey(phone);
+  if (!base) return '';
+  const strip = id => String(id || '').replace(/^[a-z0-9]{1,12}__/, '');
+  if (normalizeActValue(_chatAct || '') === normalizeActValue(act)) {
+    const c = (_chatItems || []).find(x => !x.isGroup && strip(x.id) === base);
+    if (c) return c.id;
+  }
+  return line && line !== WA_MAIN ? line + '__' + base : base;
+}
+function actLeadLink(lead) {
+  if (!lead) return {};
+  const phone = lead.phone || lead.whatsappPhone || '';
+  return { leadId: lead.id, leadName: lead.name || '', phone, chatKey: actChatKeyFor(lead.act, phone, lead.whatsappLine), chatName: lead.name || chatFormatPhone(chatPhoneKey(phone)) };
+}
+function actBaseDoc(act, f) {
+  const me = actMe();
+  return {
+    act, isTask: true, kind: f.kind || 'tarefa', text: String(f.text || '').trim().slice(0, 2000), remindAt: f.remindAt, done: false,
+    assigneeLogin: f.assigneeLogin || me.login, assigneeName: f.assigneeName || me.name,
+    leadId: f.leadId || '', leadName: f.leadName || '', phone: f.phone || '', chatKey: f.chatKey || '', chatName: f.chatName || f.leadName || '',
+    by: me.name, byUid: me.uid, at: new Date().toISOString(), ...(f.batchId ? { batchId: f.batchId } : {})
+  };
+}
+
+// Atividade em aberto nos cards do funil (pelo lead ou pelo número da conversa).
+function actLeadIndex() {
+  if (_actLeadIdx) return _actLeadIdx;
+  const byLead = {}, byPhone = {};
+  (_reminders || []).forEach(n => {
+    if (n.call || n.done || !n.remindAt) return;
+    if (n.leadId) (byLead[n.leadId] = byLead[n.leadId] || []).push(n);
+    else if (n.chatKey) { const k = normalizeActValue(n.act) + '|' + String(n.chatKey).replace(/^[a-z0-9]{1,12}__/, ''); (byPhone[k] = byPhone[k] || []).push(n); }
+  });
+  return (_actLeadIdx = { byLead, byPhone });
+}
+function actForLead(lead) {
+  const idx = actLeadIndex();
+  const k = chatPhoneKey(lead.phone || lead.whatsappPhone);
+  return [...(idx.byLead[lead.id] || []), ...(k ? idx.byPhone[normalizeActValue(lead.act) + '|' + k] || [] : [])].sort((a, b) => String(a.remindAt).localeCompare(String(b.remindAt)));
+}
+function actLeadChip(lead) {
+  const list = actForLead(lead);
+  if (!list.length) return '';
+  const n = list[0];
+  const late = Date.parse(n.remindAt) < Date.now();
+  const k = ACT_KINDS[n.kind] || ACT_KINDS.lembrete;
+  return `<span class="kc-chip" style="background:${late ? 'rgba(248,113,113,.14)' : 'rgba(31,168,85,.14)'};color:${late ? 'var(--red)' : '#1FA855'};cursor:pointer;" title="${escapeHtml((late ? 'Atrasada: ' : 'Próxima atividade: ') + (n.text || '') + ' · ' + actAssigneeLabel(n))}" onclick="event.stopPropagation();actLeadModal('${escapeJsString(lead.id)}')">${uiIco(k[1], 11)} ${actWhen(n.remindAt)}${list.length > 1 ? ' +' + (list.length - 1) : ''}</span>`;
+}
+
+function actRefreshIfOpen() {
+  const v = document.getElementById('atividades-view');
+  if (v && v.style.display !== 'none') renderAtividadesView();
+}
+
+// ----- Aba Atividades -----
+function actVisibleOpen(act) {
+  const me = actMe();
+  const mgr = actIsManager();
+  return (_reminders || []).filter(n => !n.call && !n.done && n.remindAt && normalizeActValue(n.act) === act)
+    .filter(n => !mgr ? actMine(n, me) : !_actv.who ? true : _actv.who === '__me' ? actMine(n, me) : (n.assigneeLogin || '') === _actv.who)
+    .filter(n => !_actv.kind || (n.kind || 'lembrete') === _actv.kind);
+}
+function actTabLists(act) {
+  const open = actVisibleOpen(act).sort((a, b) => String(a.remindAt).localeCompare(String(b.remindAt)));
+  const t0 = actDayStart(Date.now()), t1 = t0 + 86400000;
+  return {
+    atrasadas: open.filter(n => Date.parse(n.remindAt) < t0),
+    hoje: open.filter(n => { const t = Date.parse(n.remindAt); return t >= t0 && t < t1; }),
+    proximas: open.filter(n => Date.parse(n.remindAt) >= t1)
+  };
+}
+function actDoneVisible(act) {
+  const me = actMe();
+  const mgr = actIsManager();
+  return (_actv.doneAct === act ? _actv.done : [])
+    .filter(n => !mgr ? actMine(n, me) : !_actv.who ? true : _actv.who === '__me' ? actMine(n, me) : (n.assigneeLogin || '') === _actv.who)
+    .filter(n => !_actv.kind || (n.kind || 'lembrete') === _actv.kind)
+    .sort((a, b) => String(b.doneAt || '').localeCompare(String(a.doneAt || '')));
+}
+async function actLoadDone(act, force) {
+  if (!act || (!force && _actv.doneAct === act && Date.now() - _actv.doneAt < 60000)) return;
+  _actv.doneAct = act; _actv.doneAt = Date.now();
+  try {
+    const since = new Date(Date.now() - 30 * 86400000).toISOString();
+    _actv.done = (await window._fb.listDoneTasks(act)).filter(n => !n.call && String(n.doneAt || '') >= since);
+  } catch (e) { _actv.done = []; console.warn('Atividades concluídas indisponíveis:', e); }
+  renderAtividadesView();
+}
+
+function renderAtividadesView() {
+  const body = document.getElementById('atividades-body');
+  if (!body) return;
+  let clientSel = '';
+  if (isAdmin) {
+    const prev = (document.getElementById('actv-client') || {}).value || (activeClient && activeClient.account) || '';
+    const entries = Object.entries(CREDENTIALS).filter(([login, c]) => login !== 'admin' && c && c.act)
+      .map(([, c]) => [normalizeActValue(c.act), getClientDisplayName(c.act)]).filter((x, i, arr) => arr.findIndex(y => y[0] === x[0]) === i)
+      .sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+    clientSel = `<select id="actv-client" class="field-input" style="max-width:260px;" onchange="renderAtividadesView()"><option value="">Escolha o cliente</option>${entries.map(([a, n]) => `<option value="${escapeHtml(a)}"${normalizeActValue(prev) === a ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('')}</select>`;
+  }
+  const head = `<div class="actv-head"><div><div class="actv-title">Atividades</div><div class="integ-muted" style="font-size:12.5px;">Ligações, mensagens e tarefas da equipe. Os lembretes do Chat também aparecem aqui.</div></div><span style="flex:1;"></span>${clientSel}</div>`;
+  if (isAdmin && !(document.getElementById('actv-client') || {}).value && !clientSel.includes(' selected')) {
+    body.innerHTML = head + '<div class="actv-empty">Escolha o cliente para ver as atividades.</div>';
+    return;
+  }
+  body.innerHTML = head + '<div id="actv-main"></div>';
+  const act = actCurrentAct();
+  if (!act) { document.getElementById('actv-main').innerHTML = '<div class="actv-empty">Escolha o cliente para ver as atividades.</div>'; return; }
+  actLoadDone(act);
+  const mgr = actIsManager();
+  const team = actTeam(act);
+  const lists = actTabLists(act);
+  const done = actDoneVisible(act);
+  const tabs = [['hoje', 'Hoje', lists.hoje.length], ['atrasadas', 'Atrasadas', lists.atrasadas.length], ['proximas', 'Próximas', lists.proximas.length], ['concluidas', 'Concluídas (30 dias)', done.length]];
+  const list = _actv.tab === 'concluidas' ? done : lists[_actv.tab] || [];
+  const pendingFocus = [...lists.atrasadas, ...lists.hoje];
+  const t0 = actDayStart(Date.now());
+  // Gestor: quanto cada pessoa já fez do que tinha para hoje.
+  let summary = '';
+  if (mgr && !_actv.who) {
+    const rows = {};
+    const bump = (n, isDone) => { const k = n.assigneeLogin || ('uid:' + (n.byUid || '')); const r = rows[k] = rows[k] || { name: actAssigneeLabel(n) || 'Sem responsável', open: 0, done: 0, late: 0 }; if (isDone) r.done++; else { r.open++; if (Date.parse(n.remindAt) < t0) r.late++; } };
+    [...lists.atrasadas, ...lists.hoje].forEach(n => bump(n, false));
+    done.filter(n => Date.parse(n.doneAt) >= t0).forEach(n => bump(n, true));
+    const vals = Object.values(rows).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    if (vals.length) summary = `<div class="actv-team">${vals.map(r => { const tot = r.open + r.done; const pct = tot ? Math.round(r.done / tot * 100) : 0; return `<div class="actv-team-card"><div class="actv-team-name">${uiIco('user', 12)} ${escapeHtml(r.name)}</div><div class="actv-team-num">${r.done}<small> de ${tot}</small></div><div class="actv-bar"><span style="width:${pct}%"></span></div>${r.late ? `<div style="font-size:11.5px;color:var(--red);margin-top:4px;">${r.late} atrasada${r.late > 1 ? 's' : ''}</div>` : ''}</div>`; }).join('')}</div>`;
+  }
+  document.getElementById('actv-main').innerHTML = `
+    <div class="actv-bar-top">
+      <button class="btn-save" style="width:auto;padding:8px 14px;" onclick="actOpenForm()">+ Nova atividade</button>
+      <button class="huv-btn" onclick="actImportOpen()">${uiIco('clip', 13)} Criar por documento</button>
+      ${pendingFocus.length ? `<button class="huv-btn" onclick="actFocusStart()">${uiIco('play', 12)} Modo foco (${pendingFocus.length})</button>` : ''}
+      <span style="flex:1;"></span>
+      ${mgr ? `<select class="field-input actv-filter" onchange="_actv.who = this.value; renderAtividadesView()"><option value="">Todos da equipe</option><option value="__me"${_actv.who === '__me' ? ' selected' : ''}>Só as minhas</option>${team.map(t => `<option value="${escapeHtml(t.login)}"${_actv.who === t.login ? ' selected' : ''}>${escapeHtml(t.name)}</option>`).join('')}</select>` : ''}
+      <select class="field-input actv-filter" onchange="_actv.kind = this.value; renderAtividadesView()"><option value="">Todos os tipos</option>${Object.entries(ACT_KINDS).map(([k, v]) => `<option value="${k}"${_actv.kind === k ? ' selected' : ''}>${v[0]}</option>`).join('')}</select>
+    </div>
+    ${summary}
+    <div class="actv-tabs">${tabs.map(([id, label, n]) => `<button class="actv-tab${_actv.tab === id ? ' on' : ''}${id === 'atrasadas' && n ? ' late' : ''}" onclick="_actv.tab='${id}'; renderAtividadesView()">${label} <span>${n}</span></button>`).join('')}</div>
+    <div class="actv-list">${list.length ? list.map(actRowHtml).join('') : `<div class="actv-empty">${_actv.tab === 'concluidas' ? 'Nada concluído nos últimos 30 dias.' : 'Nenhuma atividade aqui.'}</div>`}</div>`;
+}
+
+function actRowHtml(n) {
+  const k = ACT_KINDS[n.kind] || ACT_KINDS.lembrete;
+  const id = escapeJsString(n.id);
+  const late = !n.done && Date.parse(n.remindAt) < Date.now();
+  const who = n.leadName || n.chatName || '';
+  const sub = [k[0], who, actIsManager() ? 'para ' + actAssigneeLabel(n) : '', n.done && n.result ? ACT_RESULTS[n.result] || n.result : '', n.done && n.doneBy ? 'feito por ' + n.doneBy : ''].filter(Boolean).map(escapeHtml).join(' · ');
+  return `<div class="actv-row${n.done ? ' done' : ''}">
+    <button class="actv-check" title="${n.done ? 'Concluída' : 'Concluir'}" ${n.done ? 'disabled' : `onclick="actComplete('${id}')"`}>${n.done ? uiIco('check', 13) : ''}</button>
+    <div class="actv-ico">${uiIco(k[1], 14)}</div>
+    <div class="actv-main"><div class="actv-text">${escapeHtml(n.text || '')}</div><div class="actv-sub">${sub}</div></div>
+    <div class="actv-when${late ? ' late' : ''}">${n.done && n.doneAt ? actWhen(n.doneAt) : actWhen(n.remindAt)}</div>
+    <div class="actv-btns">
+      ${!n.done && (n.phone || n.leadId) ? `<button class="chat-pill" title="Ligar pelo WhatsApp" onclick="actCall('${id}')">${uiIco('phone', 13)}</button>` : ''}
+      ${n.chatKey ? `<button class="chat-pill" title="Abrir conversa" onclick="openChatByKey('${escapeJsString(n.act)}','${escapeJsString(n.chatKey)}')">${uiIco('message', 13)}</button>` : ''}
+      ${!n.done ? `<button class="chat-pill" title="Editar" onclick="actOpenForm('${id}')">${uiIco('edit', 13)}</button>` : ''}
+      <button class="chat-pill" title="Excluir" onclick="actDelete('${id}')">${uiIco('trash', 13)}</button>
+    </div>
+  </div>`;
+}
+function actFind(id) { return (_reminders || []).find(n => n.id === id) || (_actv.done || []).find(n => n.id === id) || null; }
+function actCall(id) {
+  const n = actFind(id);
+  if (n) callWhatsApp({ leadId: n.leadId || '', phone: n.phone || '', act: n.act, chatKey: n.chatKey || '', name: n.leadName || n.chatName || '' });
+}
+
+// ----- Criar e editar -----
+function actLeadOptions(act) {
+  const leads = getLeads().filter(l => leadMatchesClient(l, act));
+  const map = {};
+  leads.forEach(l => { map[(l.name || 'Sem nome') + (l.phone ? ' · ' + l.phone : '')] = l.id; });
+  return map;
+}
+function actOpenForm(id, preset) {
+  const act = id ? normalizeActValue((actFind(id) || {}).act || '') : normalizeActValue((preset && preset.act) || actCurrentAct() || (isAdmin ? '' : chatAct()) || '');
+  if (!act) return showToast('Escolha o cliente primeiro.', 'warning');
+  const n = id ? actFind(id) : null;
+  if (id && !n) return showToast('Atividade não encontrada.', 'warning');
+  const p = preset || {};
+  const me = actMe();
+  const team = actTeam(act);
+  const mgr = actIsManager();
+  const leadMap = actLeadOptions(act);
+  window._actLeadMap = leadMap;
+  const leadId = n ? n.leadId : p.leadId;
+  const lead = leadId ? getLeads().find(l => l.id === leadId) : null;
+  const leadLabel = lead ? Object.keys(leadMap).find(k => leadMap[k] === lead.id) || '' : '';
+  const soon = new Date(Date.now() + 60 * 60000); soon.setMinutes(0, 0, 0);
+  const due = n ? new Date(n.remindAt) : p.remindAt ? new Date(p.remindAt) : soon;
+  const assignee = n ? n.assigneeLogin || me.login : p.assigneeLogin || me.login;
+  const kind = n ? n.kind || 'lembrete' : p.kind || 'ligacao';
+  openHuvenModal(n ? 'Editar atividade' : 'Nova atividade', `
+    <input type="hidden" id="af-id" value="${escapeHtml(id || '')}"><input type="hidden" id="af-act" value="${escapeHtml(act)}">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+      <label style="flex:1;min-width:140px;"><span class="field-label">Tipo</span><select class="field-input" id="af-kind">${Object.entries(ACT_KINDS).map(([k, v]) => `<option value="${k}"${kind === k ? ' selected' : ''}>${v[0]}</option>`).join('')}</select></label>
+      <label style="flex:1;min-width:170px;"><span class="field-label">Quando</span><input type="datetime-local" class="field-input" id="af-when" value="${chatDateTimeLocal(due)}"></label>
+    </div>
+    <label class="field-label">O que fazer</label>
+    <textarea class="field-input" id="af-text" rows="3" maxlength="2000" placeholder="Ex.: ligar para apresentar o plano anual" style="width:100%;box-sizing:border-box;resize:vertical;margin-bottom:8px;">${escapeHtml(n ? n.text || '' : p.text || '')}</textarea>
+    ${mgr && team.length > 1 ? `<label class="field-label">Responsável</label><select class="field-input" id="af-who" style="margin-bottom:8px;">${team.map(t => `<option value="${escapeHtml(t.login)}"${t.login === assignee ? ' selected' : ''}>${escapeHtml(t.name)}</option>`).join('')}</select>` : ''}
+    <label class="field-label">Lead do funil (opcional)</label>
+    <input class="field-input" id="af-lead" list="af-leads" value="${escapeHtml(leadLabel)}" placeholder="Busque pelo nome ou telefone" style="margin-bottom:4px;" ${n && n.chatKey && !n.leadId ? 'disabled' : ''}>
+    <datalist id="af-leads">${Object.keys(leadMap).slice(0, 3000).map(k => `<option value="${escapeHtml(k)}">`).join('')}</datalist>
+    <div class="integ-muted" style="font-size:12px;margin-bottom:12px;">${n && n.chatKey && !n.leadId ? 'Ligada à conversa ' + escapeHtml(n.chatName || '') + ' do Chat.' : 'Com lead, a atividade aparece no card do funil e na conversa do Chat dele.'}</div>
+    <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="actSaveForm()">${n ? 'Salvar' : 'Criar atividade'}</button> <span id="af-fb" class="integ-muted"></span>`, 520);
+}
+async function actSaveForm() {
+  const fb = document.getElementById('af-fb');
+  const id = document.getElementById('af-id').value;
+  const act = document.getElementById('af-act').value;
+  const text = document.getElementById('af-text').value.trim();
+  const when = new Date(document.getElementById('af-when').value);
+  if (!text) { fb.textContent = 'Escreva o que fazer.'; return; }
+  if (isNaN(when)) { fb.textContent = 'Escolha a data e a hora.'; return; }
+  const whoSel = document.getElementById('af-who');
+  const team = actTeam(act);
+  const me = actMe();
+  const who = whoSel ? team.find(t => t.login === whoSel.value) : null;
+  const leadInput = document.getElementById('af-lead');
+  const leadLabel = leadInput.disabled ? null : leadInput.value.trim();
+  const leadId = leadLabel ? (window._actLeadMap || {})[leadLabel] : '';
+  if (leadLabel && !leadId) { fb.textContent = 'Escolha o lead da lista (ou deixe em branco).'; return; }
+  const lead = leadId ? getLeads().find(l => l.id === leadId) : null;
+  const f = { kind: document.getElementById('af-kind').value, text, remindAt: when.toISOString(), assigneeLogin: who ? who.login : me.login, assigneeName: who ? who.name : me.name };
+  fb.textContent = 'Salvando...';
+  try {
+    if (id) {
+      const upd = { kind: f.kind, text: f.text, remindAt: f.remindAt, assigneeLogin: f.assigneeLogin, assigneeName: f.assigneeName, isTask: true };
+      if (leadLabel !== null) Object.assign(upd, lead ? actLeadLink(lead) : { leadId: '', leadName: '', phone: '', chatKey: '', chatName: '' });
+      await window._fb.updateChatNote(id, upd);
+      _remShown.delete(id);
+    } else {
+      await window._fb.addChatNote(actBaseDoc(act, { ...f, ...actLeadLink(lead) }));
+    }
+    closeHuvenModal();
+    showToast(id ? 'Atividade salva.' : 'Atividade criada.', 'success', 1800);
+  } catch (e) { fb.textContent = 'Erro: ' + e.message; }
+}
+
+// ----- Concluir (com o resultado, nas ligações) -----
+function actComplete(id, after) {
+  const n = actFind(id);
+  if (!n) return;
+  window._actAfterDone = after || null;
+  const call = n.kind === 'ligacao' || n.kind === 'whatsapp';
+  const b = (r, label, extra) => `<button class="${r === 'atendeu' || r === 'feito' ? 'btn-save' : 'huv-btn'}" style="width:auto;padding:8px 14px;" onclick="actDoComplete('${escapeJsString(id)}','${r}',${extra ? 'true' : 'false'})">${label}</button>`;
+  openHuvenModal('Concluir atividade', `
+    <div style="font-weight:600;margin-bottom:4px;">${escapeHtml(n.text || '')}</div>
+    <div class="integ-muted" style="font-size:12.5px;margin-bottom:12px;">${escapeHtml(n.leadName || n.chatName || '')}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      ${call ? b('atendeu', '✅ Atendeu') + b('nao_atendeu', '❌ Não atendeu') + b('caixa', 'Caixa postal') + b('nao_atendeu', 'Não atendeu, tentar amanhã', true) : b('feito', '✅ Concluir')}
+    </div>`, 460);
+}
+async function actDoComplete(id, result, retry) {
+  const n = actFind(id);
+  if (!n) return;
+  const me = actMe();
+  const doneAt = new Date().toISOString();
+  try {
+    await window._fb.updateChatNote(id, { done: true, doneAt, doneBy: me.name, result, isTask: true });
+    if (_actv.doneAct === normalizeActValue(n.act)) _actv.done.push({ ...n, done: true, doneAt, doneBy: me.name, result });
+    if (retry) {
+      const next = new Date(n.remindAt); const t = new Date(Date.now() + 86400000);
+      t.setHours(next.getHours(), next.getMinutes(), 0, 0);
+      const copy = { ...n }; ['id', 'done', 'doneAt', 'doneBy', 'result'].forEach(k => delete copy[k]);
+      await window._fb.addChatNote({ ...copy, isTask: true, done: false, remindAt: t.toISOString(), at: doneAt, text: /^Nova tentativa: /.test(n.text || '') ? n.text : 'Nova tentativa: ' + (n.text || '') });
+    }
+    closeHuvenModal();
+    showToast(retry ? 'Concluída. Nova tentativa criada para amanhã.' : 'Atividade concluída.', 'success', 2200);
+    const after = window._actAfterDone; window._actAfterDone = null;
+    if (after) after();
+    else actRefreshIfOpen();
+  } catch (e) { showToast('Erro: ' + e.message, 'error'); }
+}
+async function actDelete(id) {
+  if (!await showConfirm('Excluir esta atividade? Ela some também da conversa do Chat.', 'Excluir atividade', 'Excluir', true)) return;
+  try {
+    await window._fb.deleteChatNote(id);
+    _actv.done = (_actv.done || []).filter(n => n.id !== id);
+    actRefreshIfOpen();
+  } catch (e) { showToast('Erro: ' + e.message, 'error'); }
+}
+
+// ----- Atividades de um lead (chip e botão do card) -----
+function actLeadModal(leadId) {
+  const lead = getLeads().find(l => l.id === leadId);
+  if (!lead) return;
+  const list = actForLead(lead);
+  const me = actMe();
+  const mgr = actIsManager();
+  openHuvenModal('Atividades · ' + (lead.name || 'Lead'), `
+    ${list.length ? `<div class="actv-list" style="margin-bottom:12px;">${list.filter(n => mgr || actMine(n, me)).map(actRowHtml).join('') || '<div class="actv-empty">Só há atividades de outras pessoas neste lead.</div>'}</div>` : '<div class="integ-muted" style="margin-bottom:12px;">Nenhuma atividade em aberto para este lead.</div>'}
+    <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="actOpenForm('', { act: '${escapeJsString(normalizeActValue(lead.act))}', leadId: '${escapeJsString(lead.id)}', text: 'Ligar para ${escapeHtml(escapeJsString(lead.name || ''))}' })">+ Nova atividade</button>`, 560);
+}
+
+// ----- Em lote: uma atividade para cada lead da coluna -----
+function actBulkOpen(stageId) {
+  const act = normalizeActValue(getActForStages());
+  if (!act) return;
+  const pid = currentPipeline(act);
+  const leads = sortCrmLeadsForKanban(bulkMoveLeads(act, stageId), act);
+  if (!leads.length) return showToast('Esta coluna está vazia.', 'warning');
+  const col = (getStages(act, pid).find(s => s.id === stageId) || {}).label || stageId;
+  const team = actTeam(act);
+  const me = actMe();
+  const mgr = actIsManager();
+  const soon = new Date(Date.now() + 60 * 60000); soon.setMinutes(0, 0, 0);
+  window._actBulk = { act };
+  openHuvenModal('Criar atividades · ' + col, `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+      <label style="flex:1;min-width:130px;"><span class="field-label">Tipo</span><select class="field-input" id="ab-kind">${Object.entries(ACT_KINDS).filter(([k]) => k !== 'lembrete').map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join('')}</select></label>
+      <label style="flex:1;min-width:170px;"><span class="field-label">Quando</span><input type="datetime-local" class="field-input" id="ab-when" value="${chatDateTimeLocal(soon)}"></label>
+      ${mgr && team.length > 1 ? `<label style="flex:1;min-width:150px;"><span class="field-label">Responsável</span><select class="field-input" id="ab-who">${team.map(t => `<option value="${escapeHtml(t.login)}"${t.login === me.login ? ' selected' : ''}>${escapeHtml(t.name)}</option>`).join('')}</select></label>` : ''}
+    </div>
+    <label class="field-label">O que fazer ({nome} vira o nome do lead)</label>
+    <input class="field-input" id="ab-text" value="Ligar para {nome}" style="margin-bottom:8px;">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+      <label class="integ-toggle" style="margin:0;"><input type="checkbox" checked onchange="document.querySelectorAll('#ab-list label').forEach(l => { if (l.style.display !== 'none') l.querySelector('input').checked = this.checked; }); actBulkCount()"> Selecionar todos</label>
+      <span style="flex:1;"></span><span id="ab-count" class="integ-muted" style="font-size:12px;"></span>
+    </div>
+    <input class="field-input" placeholder="Buscar por nome ou telefone" style="margin-bottom:6px;" oninput="const t = this.value.trim().toLowerCase(); document.querySelectorAll('#ab-list label').forEach(r => { r.style.display = !t || r.dataset.ab.includes(t) ? '' : 'none'; })">
+    <div id="ab-list" style="max-height:300px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:6px;">${leads.map(l => `
+      <label class="integ-toggle" data-ab="${escapeHtml(((l.name || '') + ' ' + (l.phone || '')).toLowerCase())}" style="display:flex;padding:4px 2px;">
+        <input type="checkbox" value="${escapeHtml(l.id)}" checked onchange="actBulkCount()"> ${escapeHtml(l.name || 'Sem nome')} <span class="integ-muted" style="margin-left:auto;font-size:11.5px;">${escapeHtml(l.phone || '')}</span>
+      </label>`).join('')}</div>
+    <div style="margin-top:12px;"><button class="btn-save" id="ab-btn" style="width:auto;padding:9px 16px;" onclick="actBulkRun()">Criar</button></div>`, 560);
+  actBulkCount();
+}
+function actBulkCount() {
+  const n = document.querySelectorAll('#ab-list input:checked').length;
+  const el = document.getElementById('ab-count'); if (el) el.textContent = n + ' selecionado(s)';
+  const btn = document.getElementById('ab-btn'); if (btn) btn.textContent = n ? `Criar ${n} atividade(s)` : 'Criar';
+}
+async function actBulkRun() {
+  const ctx = window._actBulk;
+  if (!ctx) return;
+  const ids = new Set([...document.querySelectorAll('#ab-list input:checked')].map(i => i.value));
+  if (!ids.size) return showToast('Marque pelo menos um lead.', 'warning');
+  const when = new Date(document.getElementById('ab-when').value);
+  if (isNaN(when)) return showToast('Escolha a data e a hora.', 'warning');
+  const tpl = document.getElementById('ab-text').value.trim() || 'Ligar para {nome}';
+  const whoSel = document.getElementById('ab-who');
+  const team = actTeam(ctx.act);
+  const me = actMe();
+  const who = whoSel ? team.find(t => t.login === whoSel.value) : null;
+  if (!await showConfirm(`Criar ${ids.size} atividade(s) para ${who ? who.name : me.name}, em ${actWhen(when.toISOString())}?`, 'Criar atividades', 'Criar', false)) return;
+  const batchId = 'b' + Date.now();
+  const kind = document.getElementById('ab-kind').value;
+  const docs = getLeads().filter(l => ids.has(l.id)).map(l => actBaseDoc(ctx.act, {
+    kind, text: tpl.replace(/\{nome\}/gi, (l.name || '').split(' ')[0] ? l.name : 'o lead'), remindAt: when.toISOString(),
+    assigneeLogin: who ? who.login : me.login, assigneeName: who ? who.name : me.name, batchId, ...actLeadLink(l)
+  }));
+  const btn = document.getElementById('ab-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Criando...'; }
+  try {
+    await window._fb.addChatNotesBatch(docs);
+    closeHuvenModal();
+    showToast(`${docs.length} atividade(s) criada(s).`, 'success');
+  } catch (e) { showToast('Erro: ' + e.message, 'error', 7000); if (btn) { btn.disabled = false; actBulkCount(); } }
+}
+
+// ----- Modo foco: uma atividade por vez, do jeito que o vendedor trabalha a lista do dia -----
+function actFocusStart() {
+  const act = actCurrentAct();
+  const lists = actTabLists(act);
+  const ids = [...lists.atrasadas, ...lists.hoje].map(n => n.id);
+  if (!ids.length) return showToast('Nada pendente para hoje.', 'info');
+  _actFocus = { ids, i: 0, done: 0 };
+  actFocusRender();
+}
+function actFocusRender() {
+  const f = _actFocus;
+  if (!f) return;
+  while (f.i < f.ids.length && !(_reminders || []).some(n => n.id === f.ids[f.i] && !n.done)) f.i++;
+  if (f.i >= f.ids.length) {
+    openHuvenModal('Modo foco', `<div style="text-align:center;padding:16px 0;"><div style="font-size:30px;">🎉</div><div style="font-weight:700;font-size:16px;margin:6px 0;">Lista do dia terminada</div><div class="integ-muted">${f.done} atividade(s) concluída(s) agora.</div></div>`, 420);
+    _actFocus = null; actRefreshIfOpen(); return;
+  }
+  const n = (_reminders || []).find(x => x.id === f.ids[f.i]);
+  const k = ACT_KINDS[n.kind] || ACT_KINDS.lembrete;
+  const lead = n.leadId ? getLeads().find(l => l.id === n.leadId) : null;
+  const stage = lead ? ((getAllStages(normalizeActValue(lead.act)) || []).find(s => s.id === lead.stage) || {}).label : '';
+  const id = escapeJsString(n.id);
+  const late = Date.parse(n.remindAt) < Date.now();
+  const res = (r, label, retry) => `<button class="${r === 'atendeu' || r === 'feito' ? 'btn-save' : 'huv-btn'}" style="width:auto;padding:8px 12px;" onclick="actFocusDone('${id}','${r}',${retry ? 'true' : 'false'})">${label}</button>`;
+  const call = n.kind === 'ligacao' || n.kind === 'whatsapp';
+  openHuvenModal(`Modo foco · ${f.i + 1} de ${f.ids.length}`, `
+    <div class="actv-bar" style="margin-bottom:12px;"><span style="width:${Math.round(f.i / f.ids.length * 100)}%"></span></div>
+    <div class="integ-muted" style="font-size:12px;margin-bottom:4px;">${uiIco(k[1], 12)} ${k[0]} · <span style="${late ? 'color:var(--red);' : ''}">${actWhen(n.remindAt)}</span>${actIsManager() ? ' · para ' + escapeHtml(actAssigneeLabel(n)) : ''}</div>
+    <div style="font-size:17px;font-weight:700;margin-bottom:6px;">${escapeHtml(n.text || '')}</div>
+    ${n.leadName || n.chatName ? `<div style="font-size:14px;margin-bottom:2px;">${uiIco('user', 13)} ${escapeHtml(n.leadName || n.chatName)}</div>` : ''}
+    ${n.phone ? `<div class="integ-muted" style="font-size:13px;margin-bottom:2px;">${escapeHtml(n.phone)}</div>` : ''}
+    ${stage ? `<div class="integ-muted" style="font-size:12.5px;margin-bottom:2px;">Etapa: ${escapeHtml(stage)}</div>` : ''}
+    ${lead && lead.obs ? `<div style="font-size:12.5px;color:var(--muted2);margin:6px 0;max-height:80px;overflow:auto;white-space:pre-wrap;">${escapeHtml(limitText(String(lead.obs), 400))}</div>` : ''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;">
+      ${n.phone || n.leadId ? `<button class="huv-btn" onclick="actCall('${id}')">${uiIco('phone', 13)} Ligar</button>` : ''}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:12px;">
+      ${call ? res('atendeu', '✅ Atendeu') + res('nao_atendeu', '❌ Não atendeu') + res('caixa', 'Caixa postal') + res('nao_atendeu', 'Tentar amanhã', true) : res('feito', '✅ Feito')}
+      <span style="flex:1;"></span>
+      <button class="chat-pill" onclick="_actFocus.i++; actFocusRender()">Pular</button>
+    </div>`, 520);
+}
+async function actFocusDone(id, result, retry) {
+  _actFocus.done++;
+  window._actAfterDone = () => { if (_actFocus) { _actFocus.i++; actFocusRender(); } };
+  await actDoComplete(id, result, retry);
+}
+
+// ----- Criar por documento: a IA lê o arquivo, você confere a lista e só então as atividades são criadas -----
+function actImportOpen() {
+  const act = actCurrentAct();
+  if (!act) return showToast('Escolha o cliente primeiro.', 'warning');
+  _actImport = { act, items: [] };
+  openHuvenModal('Criar atividades por documento', `
+    <div class="integ-muted" style="font-size:12.5px;line-height:1.55;margin-bottom:10px;">Anexe uma lista, planilha ou plano de trabalho (PDF, Word .docx, Excel .xlsx, .csv ou .txt) ou cole o texto. Ex.: "Gustavo: ligar hoje para estas 25 pessoas". A IA monta as atividades e você confere antes de criar.</div>
+    <input type="file" class="field-input" accept=".pdf,.docx,.xlsx,.xls,.csv,.txt,.md" onchange="actImportFile(this)" style="margin-bottom:6px;">
+    <textarea class="field-input" id="ai-act-text" rows="6" style="width:100%;box-sizing:border-box;resize:vertical;margin-bottom:8px;" placeholder="Ou cole aqui o texto"></textarea>
+    <button class="btn-save" id="ai-act-btn" style="width:auto;padding:9px 16px;" onclick="actImportRead()">Ler com IA</button> <span id="ai-act-fb" class="integ-muted"></span>`, 640);
+}
+async function actImportFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const fb = document.getElementById('ai-act-fb');
+  fb.textContent = 'Lendo o arquivo...';
+  try {
+    const text = await fileToText(file);
+    document.getElementById('ai-act-text').value = text.slice(0, 16000);
+    fb.textContent = text ? (text.length > 16000 ? 'Arquivo grande: a IA lê os primeiros 16 mil caracteres.' : 'Arquivo lido. Clique em "Ler com IA".') : 'Não achei texto neste arquivo.';
+  } catch (e) { fb.textContent = 'Não consegui ler: ' + e.message; }
+}
+function actNorm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim(); }
+async function actImportRead() {
+  const ctx = _actImport;
+  const text = document.getElementById('ai-act-text').value.trim();
+  const fb = document.getElementById('ai-act-fb');
+  if (text.length < 10) { fb.textContent = 'Anexe o arquivo ou cole o texto.'; return; }
+  const btn = document.getElementById('ai-act-btn');
+  btn.disabled = true; fb.textContent = 'A IA está lendo o documento...';
+  const team = actTeam(ctx.act);
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  try {
+    const r = await window._fb.whatsapp('/ai/activities', ctx.act, { text, team: team.map(t => t.name.replace(/ \((principal|admin)\)$/, '')), today });
+    const leads = getLeads().filter(l => leadMatchesClient(l, ctx.act));
+    const me = actMe();
+    ctx.items = (r.activities || []).map(a => {
+      const an = actNorm(a.assignee);
+      const who = an ? team.find(t => actNorm(t.name).startsWith(an) || an.startsWith(actNorm(t.name).split(' ')[0])) : null;
+      const pk = chatPhoneKey(a.phone);
+      const ln = actNorm(a.lead);
+      const lead = (pk && leads.find(l => chatPhoneKey(l.phone || l.whatsappPhone) === pk)) || (ln && ln.length > 3 && leads.find(l => actNorm(l.name) === ln)) || null;
+      return { on: true, kind: ACT_KINDS[a.kind] ? a.kind : 'tarefa', text: a.title + (a.notes ? ' (' + a.notes + ')' : ''), when: `${a.date}T${a.time || '09:00'}`, who: (who || team.find(t => t.login === me.login) || team[0] || {}).login || me.login, leadId: lead ? lead.id : '', leadName: lead ? lead.name : a.lead || '', phone: lead ? lead.phone : a.phone || '' };
+    });
+    if (!ctx.items.length) { fb.textContent = 'A IA não achou atividades neste documento.'; btn.disabled = false; return; }
+    actImportReview();
+  } catch (e) { fb.textContent = 'Erro: ' + e.message; btn.disabled = false; }
+}
+function actImportReview() {
+  const ctx = _actImport;
+  const team = actTeam(ctx.act);
+  const mgr = actIsManager();
+  document.getElementById('huven-modal-body').innerHTML = `
+    <div style="font-weight:700;margin-bottom:4px;">Confira as atividades</div>
+    <div class="integ-muted" style="font-size:12.5px;margin-bottom:10px;">A IA montou ${ctx.items.length} atividade(s). Ajuste o que precisar, desmarque o que não quer e clique em criar. Nada é criado antes disso.</div>
+    <div style="max-height:420px;overflow:auto;border:1px solid var(--border);border-radius:10px;">${ctx.items.map((it, i) => `
+      <div class="actv-imp-row${it.on ? '' : ' off'}">
+        <input type="checkbox" ${it.on ? 'checked' : ''} onchange="_actImport.items[${i}].on = this.checked; this.closest('.actv-imp-row').classList.toggle('off', !this.checked); actImportCount()">
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;">
+          <input class="field-input" value="${escapeHtml(it.text)}" oninput="_actImport.items[${i}].text = this.value" style="padding:6px 8px;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <select class="field-input" style="padding:5px 6px;width:auto;" onchange="_actImport.items[${i}].kind = this.value">${Object.entries(ACT_KINDS).map(([k, v]) => `<option value="${k}"${it.kind === k ? ' selected' : ''}>${v[0]}</option>`).join('')}</select>
+            <input type="datetime-local" class="field-input" style="padding:5px 6px;width:auto;" value="${escapeHtml(it.when)}" onchange="_actImport.items[${i}].when = this.value">
+            ${mgr && team.length > 1 ? `<select class="field-input" style="padding:5px 6px;width:auto;" onchange="_actImport.items[${i}].who = this.value">${team.map(t => `<option value="${escapeHtml(t.login)}"${t.login === it.who ? ' selected' : ''}>${escapeHtml(t.name)}</option>`).join('')}</select>` : ''}
+          </div>
+          <div class="integ-muted" style="font-size:11.5px;">${it.leadId ? `${uiIco('user', 11)} Lead do funil: ${escapeHtml(it.leadName)}` : it.phone ? `${uiIco('phone', 11)} ${escapeHtml(it.leadName || '')} ${escapeHtml(it.phone)} (não está no funil; fica ligada ao número)` : it.leadName ? `${escapeHtml(it.leadName)} (não achei no funil)` : 'Sem lead: tarefa do time'}</div>
+        </div>
+      </div>`).join('')}</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap;">
+      <button class="btn-save" id="ai-act-go" style="width:auto;padding:9px 16px;" onclick="actImportCreate()">Criar</button>
+      <button class="huv-btn" onclick="actImportOpen()">Ler outro documento</button>
+    </div>`;
+  actImportCount();
+}
+function actImportCount() {
+  const n = _actImport.items.filter(x => x.on).length;
+  const b = document.getElementById('ai-act-go');
+  if (b) b.textContent = n ? `Criar ${n} atividade(s)` : 'Criar';
+}
+async function actImportCreate() {
+  const ctx = _actImport;
+  const items = ctx.items.filter(x => x.on);
+  if (!items.length) return showToast('Marque pelo menos uma atividade.', 'warning');
+  if (items.some(x => isNaN(new Date(x.when)))) return showToast('Tem atividade sem data válida.', 'warning');
+  if (!await showConfirm(`As ${items.length} atividade(s) estão certas? Ao confirmar, elas são criadas e aparecem para cada responsável.`, 'Criar atividades', 'Sim, criar', false)) return;
+  const team = actTeam(ctx.act);
+  const me = actMe();
+  const batchId = 'd' + Date.now();
+  const docs = items.map(it => {
+    const who = team.find(t => t.login === it.who);
+    const lead = it.leadId ? getLeads().find(l => l.id === it.leadId) : null;
+    const link = lead ? actLeadLink(lead) : it.phone ? { phone: it.phone, leadName: it.leadName || '', chatKey: actChatKeyFor(ctx.act, it.phone, ''), chatName: it.leadName || chatFormatPhone(chatPhoneKey(it.phone)) } : {};
+    return actBaseDoc(ctx.act, { kind: it.kind, text: it.text, remindAt: new Date(it.when).toISOString(), assigneeLogin: who ? who.login : me.login, assigneeName: who ? who.name : me.name, batchId, ...link });
+  });
+  const b = document.getElementById('ai-act-go'); if (b) { b.disabled = true; b.textContent = 'Criando...'; }
+  try {
+    await window._fb.addChatNotesBatch(docs);
+    closeHuvenModal();
+    showToast(`${docs.length} atividade(s) criada(s).`, 'success');
+  } catch (e) { showToast('Erro: ' + e.message, 'error', 7000); if (b) { b.disabled = false; actImportCount(); } }
 }
 
 async function openChatByKey(act, key) {
@@ -17546,6 +18161,15 @@ async function fileToText(file) {
     const parts = [];
     for (let i = 1; i <= Math.min(pdf.numPages, 25); i++) parts.push((await (await pdf.getPage(i)).getTextContent()).items.map(it => it.str).join(' '));
     return parts.join('\n').replace(/[ \t]+/g, ' ').trim();
+  }
+  if (/\.(xlsx|xls)$/i.test(file.name)) {
+    await ensureXlsxLoaded();
+    const wb = window.XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    return wb.SheetNames.slice(0, 5).map(n => window.XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n').trim();
+  }
+  if (/\.docx$/i.test(file.name)) {
+    if (!window.mammoth) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js'; s.onload = res; s.onerror = () => rej(new Error('não carregou o leitor de Word')); document.head.appendChild(s); });
+    return String((await window.mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })).value || '').trim();
   }
   return (await file.text()).trim();
 }
@@ -21172,6 +21796,12 @@ function renderKanban() {
         bulkBtn.innerHTML = uiIco('swap', 13); bulkBtn.style.padding = '1px 8px';
         bulkBtn.addEventListener('click', e => { e.stopPropagation(); openBulkMove(stage.id); });
         headerLeft.appendChild(bulkBtn);
+        const actBtn = document.createElement('button');
+        actBtn.className = 'col-auto-btn';
+        actBtn.title = 'Criar atividades (ex.: ligar) para os leads desta coluna';
+        actBtn.innerHTML = uiIco('clipboard', 13); actBtn.style.padding = '1px 8px';
+        actBtn.addEventListener('click', e => { e.stopPropagation(); actBulkOpen(stage.id); });
+        headerLeft.appendChild(actBtn);
       }
       if (colAuto && colAuto.active && stageLeads.length) {
         const playBtn = document.createElement('button');
@@ -21272,6 +21902,8 @@ function renderKanban() {
       const att = waLines(lead.act).length > 1 || (waLines(lead.act)[0] || {}).attendant ? leadAttendant(lead) : null;
       const meetChip = leadMeetingChip(lead);
       if (meetChip) chips.push(meetChip);
+      const actChip = actLeadChip(lead);
+      if (actChip) chips.push(actChip);
       if (att) chips.push(`<span class="kc-chip" style="background:var(--blue-dim);color:var(--blue);" title="Responsável: ${att.api ? 'atendido pela API oficial' : 'WhatsApp que atende este lead'}">${uiIco('user', 11)} ${escapeHtml(limitText(att.name, 24))}${att.api ? ' · API' : ''}</span>`);
       if (lead.aiSummary && leadSummaryOn(lead.act)) chips.push(aiSummaryChip(lead.aiSummary));
       if (leadNoWhatsApp(lead)) chips.push(`<span class="kc-chip" style="background:rgba(248,113,113,.14);color:var(--red);" title="A automação tentou enviar e este número não tem WhatsApp. Corrija o telefone no card.">${uiIco('alert', 11)} Sem WhatsApp</span>`);
@@ -21286,6 +21918,7 @@ function renderKanban() {
       const waLink = waPhone ? `https://wa.me/55${waPhone}` : '';
       cardHTML += `<div class="card-actions">
         <span class="kc-date">${escapeHtml(cardArrivalLabel(lead))}</span>
+        <button class="card-btn kc-icon" onclick="actLeadModal('${safeLeadId}')" title="Atividades" aria-label="Atividades">${uiIco('clipboard', 14)}</button>
         <button class="card-btn kc-icon" onclick="editLead('${safeLeadId}')" title="Editar" aria-label="Editar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
         <button class="card-btn kc-icon" onclick="openMoveModal('${safeLeadId}')" title="Mover" aria-label="Mover"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
         <button class="card-btn kc-icon" onclick="showHistory('${safeLeadId}')" title="Histórico" aria-label="Histórico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2"/></svg></button>
@@ -23835,7 +24468,7 @@ function userAllowedViews() {
   return p && p.perms && Array.isArray(p.perms.views) ? p.perms.views : null;
 }
 function userCanView(view) {
-  if (view === 'ajuda' || view === 'conta') return true;
+  if (view === 'ajuda' || view === 'conta' || view === 'atividades') return true;
   const v = userAllowedViews();
   if (v && view === 'integracoes') {
     const p = window._fb && window._fb.getProfile && window._fb.getProfile();
