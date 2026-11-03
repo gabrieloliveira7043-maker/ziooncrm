@@ -8904,12 +8904,17 @@ function openCampaignEditor(copyFrom, opts = {}) {
       </div>
     </div>
     <div id="camp-src-groups-box" class="camp-src-box" style="display:none;">
-      <div style="${hint}">Escolha os grupos; os participantes entram na lista sem repetir. Carregar os participantes pode levar até 1 minuto.</div>
+      <div style="${hint}">Escolha os grupos e como enviar: <b>dentro dos grupos</b> manda uma mensagem em cada grupo; <b>no privado</b> manda para cada participante, sem repetir (carregar os participantes pode levar até 1 minuto).</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;font-size:13px;color:var(--text);">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="camp-groups-mode" value="inside" checked onchange="loadCampaignGroupParticipants()"> Enviar dentro dos grupos</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="camp-groups-mode" value="private" onchange="loadCampaignGroupParticipants()"> Enviar no privado de cada participante</label>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
         <button style="${wbtn}" onclick="loadCampaignGroups()">Carregar grupos</button>
         <button style="${wbtn}" onclick="selectAllCampaignGroups()">Selecionar todos os grupos</button>
         <button style="${wbtn}background:transparent;" onclick="exportCampaignAudience()">Exportar lista (CSV)</button>
       </div>
+      <input id="camp-groups-search" class="field-input" placeholder="Pesquisar grupo pelo nome..." oninput="filterCampaignGroups()" style="margin-bottom:8px;">
       <div id="camp-groups-list" style="max-height:260px;overflow:auto;"></div>
     </div>
 
@@ -9238,6 +9243,7 @@ async function buildCampaignAudience() {
     document.getElementById('camp-summary').textContent = 'Carregando a base de contatos...';
     try {
       const contacts = await window._fb.getWhatsAppContacts(act);
+      if (!_campaignDraft || _campaignDraft.source !== 'crm') return; // trocou de público enquanto carregava
       setCampaignRecipients(contacts, 'Base de contatos do WhatsApp');
     } catch (e) {
       document.getElementById('camp-summary').innerHTML = `<span style="color:#f87171;">${escapeHtml(e.message)}</span>`;
@@ -9482,12 +9488,29 @@ async function loadCampaignGroups(refresh) {
     if (!groups.length) { box.innerHTML = '<div style="font-size:12px;color:var(--muted);">Nenhum grupo encontrado.</div>'; return; }
     box.innerHTML = groupsCacheNote(r, 'loadCampaignGroups(true)') + `<label style="position:sticky;top:0;z-index:1;background:var(--surface);display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);padding:4px 0 8px;cursor:pointer;border-bottom:1px solid var(--border);margin-bottom:4px;">
         <input type="checkbox" id="camp-groups-all" onchange="toggleAllCampaignGroups(this.checked)"> Selecionar todos os ${groups.length} grupos</label>` +
-      groups.map(g => `<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);padding:4px 0;cursor:pointer;">
+      groups.map(g => `<label class="camp-group-row" style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);padding:4px 0;cursor:pointer;">
       <input type="checkbox" class="camp-group" value="${escapeHtml(g.id)}" data-subject="${escapeHtml(g.subject)}" onchange="scheduleGroupParticipants()">
       ${escapeHtml(g.subject)} ${g.size ? `<span style="color:var(--muted);font-size:11px;">(${g.size} participantes)</span>` : ''}</label>`).join('');
+    filterCampaignGroups();
   } catch (e) {
     box.innerHTML = `<div style="font-size:12px;color:#f87171;">${escapeHtml(e.message)}</div>`;
   }
+}
+
+// Pesquisa: esconde os grupos cujo nome não tem o texto digitado (sem diferenciar acento e maiúscula).
+function filterCampaignGroups() {
+  const input = document.getElementById('camp-groups-search');
+  const norm = v => String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const q = norm(input && input.value).trim();
+  document.querySelectorAll('.camp-group-row').forEach(row => {
+    const cb = row.querySelector('.camp-group');
+    row.style.display = !q || norm(cb && cb.getAttribute('data-subject')).includes(q) ? 'flex' : 'none';
+  });
+}
+
+function campGroupsMode() {
+  const r = document.querySelector('input[name="camp-groups-mode"]:checked');
+  return r ? r.value : 'inside';
 }
 
 // Botão "Selecionar todos os grupos": carrega a lista se ainda não carregou e marca todos de uma vez.
@@ -9517,16 +9540,25 @@ let _groupParticipantsRequest = 0;
 async function loadCampaignGroupParticipants() {
   const checked = [...document.querySelectorAll('.camp-group:checked')];
   const summary = document.getElementById('camp-summary');
-  if (!checked.length) { setCampaignRecipients([], ''); return; }
+  if (!checked.length) { _groupParticipantsRequest++; setCampaignRecipients([], ''); return; }
+  const allGroups = checked.length === document.querySelectorAll('.camp-group').length;
+  const groupNames = checked.map(cb => cb.getAttribute('data-subject'));
+  // Dentro dos grupos: cada grupo é um destinatário (a mensagem cai no grupo, não no privado de ninguém).
+  if (campGroupsMode() === 'inside') {
+    _groupParticipantsRequest++;
+    setCampaignRecipients(checked.map(cb => ({ name: cb.getAttribute('data-subject'), jid: cb.value })), allGroups
+      ? `Dentro de todos os grupos (${checked.length})`
+      : `Dentro dos grupos: ${groupNames.slice(0, 3).join(', ')}${groupNames.length > 3 ? ` e mais ${groupNames.length - 3}` : ''}`);
+    return;
+  }
   const request = ++_groupParticipantsRequest;
   summary.textContent = `Carregando participantes de ${checked.length} grupo(s)... pode levar até 1 minuto.`;
   try {
     const r = await window._fb.whatsapp('/whatsapp/group-participants', _campaignDraft.act, { groupIds: checked.map(cb => cb.value), line: (campChosenLines()[0] || waDefaultLine(_campaignDraft.act)) });
-    if (request !== _groupParticipantsRequest || !_campaignDraft) return; // seleção mudou enquanto carregava
-    const names = checked.map(cb => cb.getAttribute('data-subject'));
-    setCampaignRecipients(r.participants || [], checked.length === document.querySelectorAll('.camp-group').length
-      ? `Todos os grupos (${checked.length})`
-      : `Grupos: ${names.slice(0, 3).join(', ')}${names.length > 3 ? ` e mais ${names.length - 3}` : ''}`);
+    if (request !== _groupParticipantsRequest || !_campaignDraft || _campaignDraft.source !== 'groups') return; // seleção mudou enquanto carregava
+    setCampaignRecipients(r.participants || [], allGroups
+      ? `No privado dos participantes de todos os grupos (${checked.length})`
+      : `No privado dos participantes de: ${groupNames.slice(0, 3).join(', ')}${groupNames.length > 3 ? ` e mais ${groupNames.length - 3}` : ''}`);
   } catch (e) {
     summary.innerHTML = `<span style="color:#f87171;">${escapeHtml(e.message)}</span>`;
   }
@@ -9599,7 +9631,8 @@ async function saveCampaign(start) {
   const startInfo = readCampaignStart();
   if (startInfo.error) { setFb('#f87171', startInfo.error); return; }
   const startLabel = startInfo.startAt ? `a partir de ${new Date(startInfo.startAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : 'começando agora';
-  if (start && !await showConfirm(`Enviar para ${_campaignDraft.recipients.length} contato(s), ${startLabel}: ${describeDispatch(read.dispatch)}.`, startInfo.startAt ? 'Programar disparo' : 'Iniciar disparo', startInfo.startAt ? 'Programar' : 'Iniciar')) return;
+  const unitLabel = _campaignDraft.source === 'groups' && campGroupsMode() === 'inside' ? 'grupo(s)' : 'contato(s)';
+  if (start && !await showConfirm(`Enviar para ${_campaignDraft.recipients.length} ${unitLabel}, ${startLabel}: ${describeDispatch(read.dispatch)}.`, startInfo.startAt ? 'Programar disparo' : 'Iniciar disparo', startInfo.startAt ? 'Programar' : 'Iniciar')) return;
   setFb('var(--muted)', 'Salvando...');
   try {
     const id = await window._fb.createCampaign({
