@@ -2878,7 +2878,7 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
 })();
 </script>
 <link rel="stylesheet" href="tema-novo.css?v=5">
-<link rel="stylesheet" href="layouts.css?v=2">
+<link rel="stylesheet" href="layouts.css?v=3">
 <script>
 // Layout escolhido em Conta → Aparência (vidro / escuro quente): aplicado já aqui para não piscar o layout antigo.
 (function () {
@@ -8909,6 +8909,7 @@ function openCampaignEditor(copyFrom, opts = {}) {
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="camp-groups-mode" value="inside" checked onchange="loadCampaignGroupParticipants()"> Enviar dentro dos grupos</label>
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="camp-groups-mode" value="private" onchange="loadCampaignGroupParticipants()"> Enviar no privado de cada participante</label>
       </div>
+      <label id="camp-groups-mention-row" style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:13px;color:var(--text);cursor:pointer;"><input type="checkbox" id="camp-groups-mention" checked> Marcar todos do grupo (cada participante recebe a notificação)</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
         <button style="${wbtn}" onclick="loadCampaignGroups()">Carregar grupos</button>
         <button style="${wbtn}" onclick="selectAllCampaignGroups()">Selecionar todos os grupos</button>
@@ -9543,6 +9544,8 @@ async function loadCampaignGroupParticipants() {
   if (!checked.length) { _groupParticipantsRequest++; setCampaignRecipients([], ''); return; }
   const allGroups = checked.length === document.querySelectorAll('.camp-group').length;
   const groupNames = checked.map(cb => cb.getAttribute('data-subject'));
+  const mentionRow = document.getElementById('camp-groups-mention-row');
+  if (mentionRow) mentionRow.style.display = campGroupsMode() === 'inside' ? 'flex' : 'none';
   // Dentro dos grupos: cada grupo é um destinatário (a mensagem cai no grupo, não no privado de ninguém).
   if (campGroupsMode() === 'inside') {
     _groupParticipantsRequest++;
@@ -9648,7 +9651,8 @@ async function saveCampaign(start) {
       cloudTemplate: cloudTpl.template,
       startAt: startInfo.startAt,
       audienceType: _campaignDraft.source,
-      audienceLabel: _campaignDraft.label
+      audienceLabel: _campaignDraft.label,
+      mentionAll: _campaignDraft.source === 'groups' && campGroupsMode() === 'inside' && !!(document.getElementById('camp-groups-mention') || {}).checked
     }, _campaignDraft.recipients);
     if (start) await window._fb.updateCampaign(id, { status: 'running', startedAt: new Date().toISOString() });
     showToast(!start ? 'Campanha salva como rascunho.' : startInfo.startAt ? 'Campanha programada.' : 'Campanha criada e iniciada.', 'success');

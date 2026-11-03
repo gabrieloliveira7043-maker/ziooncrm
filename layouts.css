@@ -134,7 +134,7 @@ html.ui-vidro .main, html.ui-quente .main { background: transparent !important; 
 
 /* ---------- 3. Vidro nas superfícies ---------- */
 html.ui-vidro :is(.metric-card, .table-card, .integ-card, .help-card, .cfgc-card, .kanban-col, .modal-box, .paleta-card, .topbar, .chart-card, .huv-card, .at-card, .camp-card, .auto-card, .client-card, .cal-grid, .cal-list-ev, .chat-list, .chat-main, .chat-panel, .stat-card, .analise-card),
-html.ui-vidro #huven-modal > div, html.ui-vidro .client-switch-pop, html.ui-vidro .config-panel {
+html.ui-vidro #huven-modal > div, html.ui-vidro .client-switch-pop, html.ui-vidro .config-panel, html.ui-vidro #campaign-editor {
   background: var(--ui-glass) !important;
   border-color: var(--ui-glass-line) !important;
   -webkit-backdrop-filter: blur(var(--ui-blur)) saturate(140%);
@@ -432,7 +432,7 @@ html.ui-vidro[data-theme="light"], html.ui-vidro.marca-zioon[data-theme="light"]
   --ui-lift-shadow: 0 32px 60px -22px rgba(70, 45, 20, .45), 0 3px 10px rgba(70, 45, 20, .1);
 }
 html.ui-vidro :is(.metric-card, .table-card, .integ-card, .help-card, .cfgc-card, .kanban-col, .modal-box, .paleta-card, .topbar, .chart-card, .huv-card, .at-card, .camp-card, .auto-card, .client-card, .cal-grid, .cal-list-ev, .chat-list, .chat-main, .chat-panel, .stat-card, .analise-card),
-html.ui-vidro #huven-modal > div, html.ui-vidro .client-switch-pop, html.ui-vidro .config-panel, html.ui-vidro .ui-menu {
+html.ui-vidro #huven-modal > div, html.ui-vidro .client-switch-pop, html.ui-vidro .config-panel, html.ui-vidro #campaign-editor, html.ui-vidro .ui-menu {
   background: var(--ui-sheen), var(--ui-glass) !important;
   -webkit-backdrop-filter: blur(var(--ui-blur)) saturate(185%) brightness(1.05);
   backdrop-filter: blur(var(--ui-blur)) saturate(185%) brightness(1.05);
