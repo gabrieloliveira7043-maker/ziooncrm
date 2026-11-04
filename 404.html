@@ -16937,7 +16937,9 @@ function startReminderWatch() {
 
 function dueReminders() {
   const now = Date.now();
-  return _reminders.filter(n => !n.done && Date.parse(n.remindAt) <= now && actMine(n)).sort((a, b) => String(a.remindAt).localeCompare(String(b.remindAt)));
+  // O gestor vê os vencidos de toda a equipe; o vendedor, só os dele.
+  const mgr = actIsManager();
+  return _reminders.filter(n => !n.done && Date.parse(n.remindAt) <= now && (mgr || actMine(n))).sort((a, b) => String(a.remindAt).localeCompare(String(b.remindAt)));
 }
 
 function chatReminderFor(act, key) {
@@ -16970,7 +16972,7 @@ function renderReminders() {
     <div class="rem-list">${due.map(n => {
       const id = escapeJsString(n.id);
       return `<div class="rem-row" data-rem="${escapeHtml(n.id)}">
-        <div class="rem-row-top"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${isAdmin ? escapeHtml(getClientDisplayName(n.act) || '') + ' · ' : ''}${escapeHtml(n.chatName || '')} · ${when(n)}</span><button class="x" title="Esconder" onclick="hideReminder('${id}')">×</button></div>
+        <div class="rem-row-top"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${isAdmin ? escapeHtml(getClientDisplayName(n.act) || '') + ' · ' : ''}${escapeHtml(n.chatName || '')} · ${when(n)}${actIsManager() && !actMine(n) && actAssigneeLabel(n) ? ' · para ' + escapeHtml(actAssigneeLabel(n)) : ''}</span><button class="x" title="Esconder" onclick="hideReminder('${id}')">×</button></div>
         <div class="rem-row-text" title="${escapeHtml(n.text || '')}">${escapeHtml(limitText(n.text || '', 240))}</div>
         <div class="rem-row-acts">
           ${n.chatKey ? `<button onclick="openChatByKey('${escapeJsString(n.act)}','${escapeJsString(n.chatKey)}')">Abrir conversa</button>` : `<button onclick="switchView('atividades')">Ver atividades</button>`}
