@@ -2927,6 +2927,34 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
 .actv-when{font-size:12.5px;color:var(--muted2);white-space:nowrap;}
 .actv-when.late{color:var(--red);font-weight:600;}
 .actv-btns{display:flex;gap:4px;flex:none;}
+.rot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:12px;}
+.rot-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;}
+.rot-card.ok{border-color:#1FA855;}
+.rot-card.late{border-color:var(--red);}
+.rot-card.late .actv-bar span{background:var(--red);}
+.rot-card-top{display:flex;align-items:center;gap:6px;margin-bottom:2px;}
+.rot-name{flex:1;min-width:0;font-size:12.5px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rot-when{flex:none;font-size:11.5px;color:var(--muted2);}
+.rot-acts{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;}
+.rot-btn{padding:5px 10px;font-size:12px;width:auto;}
+.rot-btn:disabled{opacity:.45;cursor:default;}
+.rot-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+.rot-sec{font-size:13px;font-weight:700;color:var(--text);margin:6px 0 8px;}
+.rot-table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:var(--surface);}
+.rot-table{width:100%;border-collapse:collapse;font-size:13px;}
+.rot-table th{padding:8px 10px;text-align:center;font-weight:600;color:var(--text);border-bottom:1px solid var(--border);white-space:nowrap;}
+.rot-table th:first-child,.rot-table td.rot-who{text-align:left;}
+.rot-table th small{display:block;font-weight:400;font-size:11px;color:var(--muted2);}
+.rot-table td{padding:8px 10px;text-align:center;border-bottom:1px solid var(--border);font-weight:600;white-space:nowrap;}
+.rot-table tr:last-child td{border-bottom:none;}
+.rot-table td.rot-who{font-weight:500;color:var(--text);}
+.rot-table td.rot-ok{background:rgba(31,168,85,.16);color:#1FA855;}
+.rot-table td.rot-wip{background:rgba(224,164,58,.16);color:#B7791F;}
+.rot-table td.rot-late{background:rgba(248,113,113,.14);color:var(--red);}
+.rot-table td.rot-na{color:var(--muted2);font-weight:400;}
+.rot-models{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+.rot-days,.rot-who-list{display:flex;gap:6px 12px;flex-wrap:wrap;}
+.rot-day{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--text);cursor:pointer;}
 .actv-empty{padding:28px;text-align:center;color:var(--muted2);border:1px dashed var(--border);border-radius:12px;}
 .actv-team{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin-bottom:12px;}
 .actv-team-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;}
@@ -16933,6 +16961,7 @@ function startReminderWatch() {
   if (_remUnsub || !window._fb || typeof window._fb.listenOpenReminders !== 'function') return;
   _remUnsub = window._fb.listenOpenReminders(list => { _reminders = list || []; _actLeadIdx = null; renderReminders(); renderChatList(); actRefreshIfOpen(); });
   setInterval(renderReminders, 30000);
+  rotWatchStart();
 }
 
 function dueReminders() {
@@ -16956,20 +16985,22 @@ function toggleReminderPanel(open) {
 function hideReminder(id) { _remShown.add(id + ':hidden'); renderReminders(); }
 function renderReminders() {
   const due = dueReminders().filter(n => !_remShown.has(n.id + ':hidden'));
+  const rotAl = (_rot.alerts || []).filter(a => !_remShown.has(a.id + ':hidden'));
   let el = document.getElementById('rem-stack');
-  if (!due.length) { if (el) el.remove(); return; }
+  if (!due.length && !rotAl.length) { if (el) el.remove(); return; }
   if (!el) { el = document.createElement('div'); el.id = 'rem-stack'; el.className = 'rem-stack'; document.body.appendChild(el); }
   let fresh = false;
-  due.forEach(n => { if (!_remShown.has(n.id)) { _remShown.add(n.id); fresh = true; } });
+  [...due, ...rotAl].forEach(n => { if (!_remShown.has(n.id)) { _remShown.add(n.id); fresh = true; } });
   if (fresh && typeof playLeadNotificationSound === 'function') try { playLeadNotificationSound(); } catch (e) {}
-  const label = `${due.length} lembrete${due.length > 1 ? 's' : ''}`;
+  const total = due.length + rotAl.length;
+  const label = `${total} lembrete${total > 1 ? 's' : ''}`;
   if (!_remOpen) {
-    el.innerHTML = `<button type="button" class="rem-pill${fresh ? ' pulse' : ''}" onclick="toggleReminderPanel(true)" title="Ver lembretes">${uiIco('bell', 14)} Lembretes <span class="rem-count">${due.length}</span></button>`;
+    el.innerHTML = `<button type="button" class="rem-pill${fresh ? ' pulse' : ''}" onclick="toggleReminderPanel(true)" title="Ver lembretes">${uiIco('bell', 14)} Lembretes <span class="rem-count">${total}</span></button>`;
     return;
   }
   const when = n => new Date(n.remindAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   el.innerHTML = `<div class="rem-panel"><div class="rem-panel-head">${uiIco('bell', 13)} ${label}<button type="button" onclick="toggleReminderPanel(false)">Minimizar ▾</button></div>
-    <div class="rem-list">${due.map(n => {
+    <div class="rem-list">${rotAl.map(a => `<div class="rem-row"><div class="rem-row-top"><span>Rotina · ${escapeHtml(a.label)}</span><button class="x" title="Esconder" onclick="hideReminder('${escapeJsString(a.id)}')">×</button></div><div class="rem-row-text">${escapeHtml(a.name)}: ${a.done} de ${a.goal}</div><div class="rem-row-acts"><button onclick="rotOpenTab()">Ver rotinas</button></div></div>`).join('')}${due.map(n => {
       const id = escapeJsString(n.id);
       return `<div class="rem-row" data-rem="${escapeHtml(n.id)}">
         <div class="rem-row-top"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${isAdmin ? escapeHtml(getClientDisplayName(n.act) || '') + ' · ' : ''}${escapeHtml(n.chatName || '')} · ${when(n)}${actIsManager() && !actMine(n) && actAssigneeLabel(n) ? ' · para ' + escapeHtml(actAssigneeLabel(n)) : ''}</span><button class="x" title="Esconder" onclick="hideReminder('${id}')">×</button></div>
@@ -17142,11 +17173,12 @@ function renderAtividadesView() {
   const act = actCurrentAct();
   if (!act) { document.getElementById('actv-main').innerHTML = '<div class="actv-empty">Escolha o cliente para ver as atividades.</div>'; return; }
   actLoadDone(act);
+  rotLoad(act);
   const mgr = actIsManager();
   const team = actTeam(act);
   const lists = actTabLists(act);
   const done = actDoneVisible(act);
-  const tabs = [['hoje', 'Hoje', lists.hoje.length], ['atrasadas', 'Atrasadas', lists.atrasadas.length], ['proximas', 'Próximas', lists.proximas.length], ['concluidas', 'Concluídas (30 dias)', done.length]];
+  const tabs = [['hoje', 'Hoje', lists.hoje.length], ['atrasadas', 'Atrasadas', lists.atrasadas.length], ['proximas', 'Próximas', lists.proximas.length], ['concluidas', 'Concluídas (30 dias)', done.length], ['rotinas', 'Rotinas', rotPendingCount(act)]];
   const list = _actv.tab === 'concluidas' ? done : lists[_actv.tab] || [];
   const pendingFocus = [...lists.atrasadas, ...lists.hoje];
   const t0 = actDayStart(Date.now());
@@ -17169,9 +17201,10 @@ function renderAtividadesView() {
       ${mgr ? `<select class="field-input actv-filter" onchange="_actv.who = this.value; renderAtividadesView()"><option value="">Todos da equipe</option><option value="__me"${_actv.who === '__me' ? ' selected' : ''}>Só as minhas</option>${team.map(t => `<option value="${escapeHtml(t.login)}"${_actv.who === t.login ? ' selected' : ''}>${escapeHtml(t.name)}</option>`).join('')}</select>` : ''}
       <select class="field-input actv-filter" onchange="_actv.kind = this.value; renderAtividadesView()"><option value="">Todos os tipos</option>${Object.entries(ACT_KINDS).map(([k, v]) => `<option value="${k}"${_actv.kind === k ? ' selected' : ''}>${v[0]}</option>`).join('')}</select>
     </div>
-    ${summary}
+    ${_actv.tab === 'rotinas' ? '' : summary}
+    ${_actv.tab === 'hoje' ? rotStripHtml(act) : ''}
     <div class="actv-tabs">${tabs.map(([id, label, n]) => `<button class="actv-tab${_actv.tab === id ? ' on' : ''}${id === 'atrasadas' && n ? ' late' : ''}" onclick="_actv.tab='${id}'; renderAtividadesView()">${label} <span>${n}</span></button>`).join('')}</div>
-    <div class="actv-list">${list.length ? list.map(actRowHtml).join('') : `<div class="actv-empty">${_actv.tab === 'concluidas' ? 'Nada concluído nos últimos 30 dias.' : 'Nenhuma atividade aqui.'}</div>`}</div>`;
+    ${_actv.tab === 'rotinas' ? rotTabHtml(act) : `<div class="actv-list">${list.length ? list.map(actRowHtml).join('') : `<div class="actv-empty">${_actv.tab === 'concluidas' ? 'Nada concluído nos últimos 30 dias.' : 'Nenhuma atividade aqui.'}</div>`}</div>`}`;
 }
 
 function actRowHtml(n) {
@@ -17197,6 +17230,297 @@ function actFind(id) { return (_reminders || []).find(n => n.id === id) || (_act
 function actCall(id) {
   const n = actFind(id);
   if (n) callWhatsApp({ leadId: n.leadId || '', phone: n.phone || '', act: n.act, chatKey: n.chatKey || '', name: n.leadName || n.chatName || '' });
+}
+
+// ----- Rotinas: metas diárias, semanais ou mensais. O Worker guarda e conta; o dia é o de Brasília. -----
+const ROT_TYPES = { ligacoes: ['Ligações', 'phone', 'ligações'], conversas: ['Conversas', 'message', 'conversas'], tarefa: ['Tarefa', 'clipboard', 'vezes'] };
+const ROT_FREQ = { dia: ['Diária', 'por dia'], semana: ['Semanal', 'por semana'], mes: ['Mensal', 'por mês'] };
+const ROT_DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const ROT_MODELS = [
+  { label: '10 ligações por dia', type: 'ligacoes', goal: 10, freq: 'dia' },
+  { label: '20 conversas por dia', type: 'conversas', goal: 20, freq: 'dia' },
+  { label: '50 ligações por semana', type: 'ligacoes', goal: 50, freq: 'semana' },
+  { label: '100 conversas por semana', type: 'conversas', goal: 100, freq: 'semana' },
+  { label: '200 ligações por mês', type: 'ligacoes', goal: 200, freq: 'mes' },
+  { label: 'Atualizar o funil toda semana', type: 'tarefa', goal: 1, freq: 'semana', name: 'Atualizar o funil' }
+];
+const ROT_MAX_BACK = 6;
+let _rot = { act: '', at: 0, sig: '', routines: [], logs: {}, offset: 0, months: 0, busy: false, again: false, alerts: [] };
+
+function rotToday() { const d = new Date(Date.now() - 10800000); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); }
+function rotIso(d) { return d.toISOString().slice(0, 10); }
+function rotAdd(d, n) { return new Date(d.getTime() + n * 86400000); }
+function rotDaysOn(r) { return Array.isArray(r.days) && r.days.length ? r.days.map(Number) : [0, 1, 2, 3, 4, 5, 6]; }
+function rotPeriod(r, offset) {
+  const t = rotToday(), o = offset || 0;
+  const fmt = d => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
+  if (r.freq === 'semana') {
+    const from = rotAdd(t, -((t.getUTCDay() + 6) % 7) - 7 * o);
+    const to = rotAdd(from, 6);
+    return { from, to, label: o ? fmt(from) + ' a ' + fmt(to) : 'Esta semana', closed: o > 0, off: false };
+  }
+  if (r.freq === 'mes') {
+    const from = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() - o, 1));
+    const to = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() - o + 1, 0));
+    return { from, to, label: o ? from.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : 'Este mês', closed: o > 0, off: false };
+  }
+  const on = rotDaysOn(r);
+  if (!o) return { from: t, to: t, label: 'Hoje', closed: false, off: !on.includes(t.getUTCDay()) };
+  let d = t;
+  for (let n = o; n > 0;) { d = rotAdd(d, -1); if (on.includes(d.getUTCDay())) n--; }
+  return { from: d, to: d, label: fmt(d), closed: true, off: false };
+}
+function rotCount(r, login, p) {
+  const seen = new Set();
+  let sum = 0;
+  for (let d = p.from; d <= p.to; d = rotAdd(d, 1)) {
+    const iso = rotIso(d);
+    const log = _rot.logs[login + '|' + iso.slice(0, 7)];
+    if (!log) continue;
+    const dd = iso.slice(8, 10);
+    if (r.type === 'conversas') (log['c' + dd] || []).forEach(k => seen.add(k));
+    else if (r.type === 'ligacoes') sum += Number(log['n' + dd]) || 0;
+    else sum += Number(log['r_' + r.id + '_' + dd]) || 0;
+  }
+  return r.type === 'conversas' ? seen.size : sum;
+}
+// Quem faz a rotina. "Toda a equipe" são os logins extras; sem nenhum, o login principal.
+function rotAssignees(r, act) {
+  const me = actMe();
+  const team = actTeam(act).filter(t => !(isAdmin && t.login === me.login));
+  if (!r.all) return team.filter(t => (r.logins || []).includes(t.login));
+  const subs = new Set((SUB_LOGINS || []).filter(s => normalizeActValue(s.act) === normalizeActValue(act)).map(s => s.login));
+  const list = team.filter(t => subs.has(t.login));
+  return list.length ? list : team;
+}
+function rotIsMine(r) {
+  if (!actIsManager()) return true;
+  const me = actMe();
+  return !isAdmin && rotAssignees(r, normalizeActValue(r.act)).some(t => t.login === me.login);
+}
+function rotGoalText(r) { return (r.type === 'tarefa' && r.goal === 1 ? '1 vez' : r.goal + ' ' + ROT_TYPES[r.type][2]) + ' ' + ROT_FREQ[r.freq][1]; }
+
+async function rotLoad(act, force) {
+  if (!act) return;
+  if (_rot.busy) { if (force) _rot.again = true; return; }
+  const need = _rot.offset + 2;
+  if (!force && _rot.act === act && _rot.months >= need && Date.now() - _rot.at < 55000) return;
+  _rot.busy = true;
+  try {
+    const t = rotToday();
+    const months = [];
+    for (let i = 0; i < need; i++) months.push(new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() - i, 1)).toISOString().slice(0, 7));
+    const r = await window._fb.adminApi('/rotinas/list', { act, months });
+    const logs = {};
+    (r.logs || []).forEach(l => { logs[l.login + '|' + l.month] = l; });
+    const sig = JSON.stringify([r.routines, r.logs]);
+    const changed = sig !== _rot.sig || _rot.act !== act;
+    Object.assign(_rot, { act, at: Date.now(), months: need, routines: r.routines || [], logs, sig });
+    rotAlertsUpdate();
+    if (changed) actRefreshIfOpen();
+  } catch (e) {
+    console.warn('Rotinas indisponíveis:', e);
+    Object.assign(_rot, { act, at: Date.now(), months: need });
+  } finally {
+    _rot.busy = false;
+    if (_rot.again) { _rot.again = false; rotLoad(act, true); }
+  }
+}
+function rotWatchStart() {
+  setTimeout(() => rotLoad(actCurrentAct()), 3000);
+  setInterval(() => {
+    rotAlertsUpdate();
+    if (document.hidden) return;
+    const v = document.getElementById('atividades-view');
+    if ((v && v.style.display !== 'none') || Date.now() - _rot.at > 600000) rotLoad(actCurrentAct());
+  }, 60000);
+}
+
+// Aviso no CRM: no último dia do período, a partir do horário escolhido, para quem ainda não bateu a meta.
+function rotAlertsUpdate() {
+  const me = actMe();
+  const t = rotToday();
+  const sp = new Date(Date.now() - 10800000).toISOString();
+  const nowHm = sp.slice(11, 16);
+  _rot.alerts = (_rot.routines || []).filter(r => r.alertAt && rotIsMine(r)).map(r => {
+    const p = rotPeriod(r, 0);
+    if (p.off) return null;
+    const deadline = r.freq === 'semana' ? rotAdd(p.from, 4) : p.to;
+    if (t < deadline || (rotIso(t) === rotIso(deadline) && nowHm < r.alertAt)) return null;
+    const done = rotCount(r, me.login, p);
+    return done >= r.goal ? null : { id: 'rot:' + r.id + ':' + rotIso(p.from), name: r.name, done, goal: r.goal, label: p.label };
+  }).filter(Boolean);
+  renderReminders();
+}
+function rotOpenTab() { _actv.tab = 'rotinas'; _rot.offset = 0; switchView('atividades'); renderAtividadesView(); }
+
+function rotLogCall(act, key, ifNew) {
+  window._fb.adminApi('/rotinas/log', { act, kind: 'call', key: key || '', ifNew: !!ifNew }).then(() => rotLoad(act, true)).catch(e => console.warn('Ligação não contada na rotina:', e));
+}
+async function rotBump(id, delta) {
+  const r = _rot.routines.find(x => x.id === id);
+  if (!r) return;
+  const act = normalizeActValue(r.act);
+  try {
+    const out = await window._fb.adminApi('/rotinas/log', r.type === 'tarefa' ? { act, kind: 'task', routineId: id, delta } : { act, kind: 'call', delta });
+    if (out.counted) showToast(delta > 0 ? 'Contado.' : 'Tirei 1 da contagem.', 'success', 1500);
+    rotLoad(act, true);
+  } catch (e) { showToast('Erro: ' + e.message, 'error'); }
+}
+
+function rotCardHtml(r, login, offset) {
+  const p = rotPeriod(r, offset);
+  const n = rotCount(r, login, p);
+  const pct = Math.min(100, Math.round(n / r.goal * 100));
+  const ok = n >= r.goal;
+  const id = escapeJsString(r.id);
+  let acts = '';
+  if (!offset && !p.off) {
+    if (r.type === 'ligacoes') acts = `<button class="huv-btn rot-btn" onclick="rotBump('${id}',1)">+1 ligação</button>${n > 0 ? `<button class="huv-btn rot-btn" title="Tirar 1 da contagem" onclick="rotBump('${id}',-1)">−1</button>` : ''}`;
+    else if (r.type === 'tarefa') acts = r.goal === 1 && !n ? `<button class="huv-btn rot-btn" onclick="rotBump('${id}',1)">Marcar como feita</button>` : `<button class="huv-btn rot-btn" onclick="rotBump('${id}',1)">+1</button>${n > 0 ? `<button class="huv-btn rot-btn" title="Tirar 1 da contagem" onclick="rotBump('${id}',-1)">−1</button>` : ''}`;
+    else acts = '<span class="integ-muted" style="font-size:11.5px;">Conta sozinho ao enviar pelo CRM</span>';
+  }
+  return `<div class="rot-card${ok ? ' ok' : p.closed ? ' late' : ''}">
+    <div class="rot-card-top"><span class="actv-ico">${uiIco(ROT_TYPES[r.type][1], 14)}</span><span class="rot-name" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</span><span class="rot-when">${escapeHtml(p.label)}</span></div>
+    ${p.off ? '<div class="integ-muted" style="font-size:12.5px;">Sem meta hoje.</div>' : `<div class="actv-team-num">${n}<small> de ${r.goal}${ok ? ' · meta batida' : p.closed ? ' · não bateu' : ''}</small></div>
+    <div class="actv-bar"><span style="width:${pct}%"></span></div>`}
+    ${acts ? `<div class="rot-acts">${acts}</div>` : ''}
+  </div>`;
+}
+function rotMineList() { return (_rot.routines || []).filter(rotIsMine); }
+function rotPendingCount(act) {
+  if (_rot.act !== act) return 0;
+  if (actIsManager()) return _rot.routines.length;
+  const me = actMe();
+  return rotMineList().filter(r => { const p = rotPeriod(r, 0); return !p.off && rotCount(r, me.login, p) < r.goal; }).length;
+}
+function rotStripHtml(act) {
+  if (_rot.act !== act) return '';
+  const me = actMe();
+  const mine = rotMineList().filter(r => !rotPeriod(r, 0).off);
+  return mine.length ? `<div class="rot-grid">${mine.map(r => rotCardHtml(r, me.login, 0)).join('')}</div>` : '';
+}
+function rotShift(d) {
+  _rot.offset = Math.max(0, Math.min(ROT_MAX_BACK, _rot.offset + d));
+  renderAtividadesView();
+}
+function rotTableHtml(act) {
+  const o = _rot.offset;
+  const rs = _rot.routines;
+  const people = {};
+  rs.forEach(r => rotAssignees(r, act).forEach(t => { people[t.login] = t.name; }));
+  const logins = Object.keys(people).sort((a, b) => people[a].localeCompare(people[b], 'pt-BR'));
+  if (!logins.length) return '<div class="actv-empty">As rotinas ainda não têm vendedores.</div>';
+  const cell = (r, login) => {
+    if (!rotAssignees(r, act).some(t => t.login === login)) return '<td class="rot-na">-</td>';
+    const p = rotPeriod(r, o);
+    if (p.off) return '<td class="rot-na">-</td>';
+    const n = rotCount(r, login, p);
+    return `<td class="${n >= r.goal ? 'rot-ok' : p.closed ? 'rot-late' : 'rot-wip'}">${n}/${r.goal}</td>`;
+  };
+  return `<div class="rot-table-wrap"><table class="rot-table"><thead><tr><th>Vendedor</th>${rs.map(r => `<th>${escapeHtml(r.name)}<small>${escapeHtml(rotPeriod(r, o).label)}</small></th>`).join('')}</tr></thead>
+    <tbody>${logins.map(l => `<tr><td class="rot-who">${escapeHtml(people[l])}</td>${rs.map(r => cell(r, l)).join('')}</tr>`).join('')}</tbody></table></div>
+    <div class="integ-muted" style="font-size:11.5px;margin:6px 0 14px;">Verde: bateu a meta. Amarelo: em andamento. Vermelho: período encerrado sem bater.</div>`;
+}
+function rotTabHtml(act) {
+  if (_rot.act !== act) return '<div class="actv-empty">Carregando rotinas...</div>';
+  const mgr = actIsManager();
+  const me = actMe();
+  const o = _rot.offset;
+  const nav = `<div class="rot-nav"><button class="huv-btn rot-btn" ${o >= ROT_MAX_BACK ? 'disabled' : ''} onclick="rotShift(1)">‹ Período anterior</button><span class="integ-muted" style="font-size:12.5px;">${o ? (o === 1 ? 'Período passado' : o + ' períodos atrás') : 'Período atual'}</span><button class="huv-btn rot-btn" ${o ? '' : 'disabled'} onclick="rotShift(-1)">Próximo ›</button></div>`;
+  const top = mgr ? `<div class="actv-bar-top"><button class="btn-save" style="width:auto;padding:8px 14px;" onclick="rotOpenForm()">+ Nova rotina</button></div>` : '';
+  if (!_rot.routines.length) return top + `<div class="actv-empty">${mgr ? 'Nenhuma rotina ainda. Crie metas como 10 ligações por dia ou 20 conversas por dia.' : 'Nenhuma rotina para você por enquanto.'}</div>`;
+  const mine = rotMineList();
+  const cards = mine.length ? `${mgr ? '<div class="rot-sec">As suas</div>' : ''}<div class="rot-grid">${mine.map(r => rotCardHtml(r, me.login, o)).join('')}</div>` : '';
+  const manage = mgr ? `<div class="rot-sec">Rotinas criadas</div><div class="actv-list">${_rot.routines.map(r => {
+    const id = escapeJsString(r.id);
+    const who = r.all ? 'Toda a equipe' : rotAssignees(r, act).map(t => t.name).join(', ') || 'Ninguém';
+    return `<div class="actv-row"><div class="actv-ico">${uiIco(ROT_TYPES[r.type][1], 14)}</div><div class="actv-main"><div class="actv-text">${escapeHtml(r.name)}</div><div class="actv-sub">${escapeHtml(rotGoalText(r))} · ${escapeHtml(who)}${r.alertAt ? ' · aviso às ' + escapeHtml(r.alertAt) : ''}</div></div><div class="actv-btns"><button class="chat-pill" title="Editar" onclick="rotOpenForm('${id}')">${uiIco('edit', 13)}</button><button class="chat-pill" title="Excluir" onclick="rotDelete('${id}')">${uiIco('trash', 13)}</button></div></div>`;
+  }).join('')}</div>` : '';
+  return top + nav + (mgr ? rotTableHtml(act) : '') + cards + manage;
+}
+
+function rotOpenForm(id) {
+  const act = actCurrentAct();
+  if (!act) return showToast('Escolha o cliente primeiro.', 'warning');
+  const r = id ? _rot.routines.find(x => x.id === id) : null;
+  if (id && !r) return;
+  const me = actMe();
+  const team = actTeam(act).filter(t => !(isAdmin && t.login === me.login));
+  const days = r ? rotDaysOn(r) : [1, 2, 3, 4, 5];
+  const type = r ? r.type : 'ligacoes';
+  const freq = r ? r.freq : 'dia';
+  openHuvenModal(r ? 'Editar rotina' : 'Nova rotina', `
+    <input type="hidden" id="rf-id" value="${escapeHtml(id || '')}">
+    ${r ? '' : `<div class="field-label">Modelos prontos</div><div class="rot-models">${ROT_MODELS.map((m, i) => `<button type="button" class="huv-btn rot-btn" onclick="rotApplyModel(${i})">${escapeHtml(m.label)}</button>`).join('')}</div>`}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+      <label style="flex:1;min-width:130px;"><span class="field-label">Tipo</span><select class="field-input" id="rf-type" onchange="rotFormSync()">${Object.entries(ROT_TYPES).map(([k, v]) => `<option value="${k}"${type === k ? ' selected' : ''}>${v[0]}</option>`).join('')}</select></label>
+      <label style="width:100px;"><span class="field-label">Quantidade</span><input type="number" min="1" max="10000" class="field-input" id="rf-goal" value="${r ? r.goal : 10}"></label>
+      <label style="flex:1;min-width:120px;"><span class="field-label">Frequência</span><select class="field-input" id="rf-freq" onchange="rotFormSync()">${Object.entries(ROT_FREQ).map(([k, v]) => `<option value="${k}"${freq === k ? ' selected' : ''}>${v[0]}</option>`).join('')}</select></label>
+    </div>
+    <div id="rf-hint" class="integ-muted" style="font-size:12px;margin-bottom:10px;"></div>
+    <div id="rf-days-box" style="margin-bottom:10px;"><div class="field-label">Dias</div><div class="rot-days">${ROT_DAYS.map((d, i) => `<label class="rot-day"><input type="checkbox" class="rf-day" value="${i}"${days.includes(i) ? ' checked' : ''}> ${d}</label>`).join('')}</div></div>
+    <label class="field-label">Nome</label>
+    <input class="field-input" id="rf-name" maxlength="60" value="${escapeHtml(r ? r.name : '')}" placeholder="Em branco, usa a meta como nome" style="margin-bottom:10px;">
+    <div class="field-label">Quem faz</div>
+    <label class="integ-toggle" style="margin-bottom:6px;"><input type="checkbox" id="rf-all"${!r || r.all ? ' checked' : ''} onchange="rotFormSync()"> Toda a equipe (cada vendedor tem a própria meta)</label>
+    <div id="rf-who" class="rot-who-list">${team.map(t => `<label class="rot-day"><input type="checkbox" class="rf-login" value="${escapeHtml(t.login)}"${r && (r.logins || []).includes(t.login) ? ' checked' : ''}> ${escapeHtml(t.name)}</label>`).join('')}</div>
+    <label class="integ-toggle" style="margin:10px 0 6px;"><input type="checkbox" id="rf-alert"${!r || r.alertAt ? ' checked' : ''} onchange="rotFormSync()"> Avisar quem estiver abaixo da meta</label>
+    <div id="rf-alert-box" style="margin-bottom:12px;"><input type="time" class="field-input" id="rf-alert-at" value="${escapeHtml((r && r.alertAt) || '16:00')}" style="width:130px;"><div class="integ-muted" style="font-size:12px;margin-top:4px;">Aviso dentro do CRM, no último dia do período. Na semanal, na sexta-feira.</div></div>
+    <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="rotSaveForm()">${r ? 'Salvar' : 'Criar rotina'}</button> <span id="rf-fb" class="integ-muted"></span>`, 540);
+  rotFormSync();
+}
+function rotFormSync() {
+  const type = document.getElementById('rf-type').value;
+  document.getElementById('rf-days-box').style.display = document.getElementById('rf-freq').value === 'dia' ? '' : 'none';
+  document.getElementById('rf-who').style.display = document.getElementById('rf-all').checked ? 'none' : '';
+  document.getElementById('rf-alert-box').style.display = document.getElementById('rf-alert').checked ? '' : 'none';
+  document.getElementById('rf-hint').textContent = type === 'conversas' ? 'Conta sozinho: cada conversa diferente em que o vendedor enviou mensagem pelo CRM vale 1. Grupos e mensagens enviadas pelo celular não contam.'
+    : type === 'ligacoes' ? 'Conta ao ligar pelo CRM (atendida ou não), ao concluir uma atividade de ligação ou no botão +1 ligação.'
+    : 'O vendedor marca quando fizer.';
+}
+function rotApplyModel(i) {
+  const m = ROT_MODELS[i];
+  document.getElementById('rf-type').value = m.type;
+  document.getElementById('rf-goal').value = m.goal;
+  document.getElementById('rf-freq').value = m.freq;
+  document.getElementById('rf-name').value = m.name || '';
+  rotFormSync();
+}
+async function rotSaveForm() {
+  const fb = document.getElementById('rf-fb');
+  const act = actCurrentAct();
+  const type = document.getElementById('rf-type').value;
+  const freq = document.getElementById('rf-freq').value;
+  const goal = Math.floor(Number(document.getElementById('rf-goal').value));
+  if (!(goal >= 1 && goal <= 10000)) { fb.textContent = 'Informe a quantidade.'; return; }
+  const days = [...document.querySelectorAll('.rf-day:checked')].map(c => Number(c.value));
+  if (freq === 'dia' && !days.length) { fb.textContent = 'Escolha ao menos um dia.'; return; }
+  const all = document.getElementById('rf-all').checked;
+  const logins = [...document.querySelectorAll('.rf-login:checked')].map(c => c.value);
+  if (!all && !logins.length) { fb.textContent = 'Escolha quem faz a rotina.'; return; }
+  const alertOn = document.getElementById('rf-alert').checked;
+  const alertAt = alertOn ? document.getElementById('rf-alert-at').value : '';
+  if (alertOn && !alertAt) { fb.textContent = 'Escolha o horário do aviso.'; return; }
+  const name = document.getElementById('rf-name').value.trim() || rotGoalText({ type, goal, freq });
+  fb.textContent = 'Salvando...';
+  try {
+    await window._fb.adminApi('/rotinas/save', { act, id: document.getElementById('rf-id').value, name, type, goal, freq, days, all, logins, alertAt });
+    closeHuvenModal();
+    _actv.tab = 'rotinas';
+    showToast('Rotina salva.', 'success', 1800);
+    await rotLoad(act, true);
+    renderAtividadesView();
+  } catch (e) { fb.textContent = 'Erro: ' + e.message; }
+}
+async function rotDelete(id) {
+  if (!await showConfirm('Excluir esta rotina? Ela some para toda a equipe.', 'Excluir rotina', 'Excluir', true)) return;
+  const act = actCurrentAct();
+  try {
+    await window._fb.adminApi('/rotinas/delete', { act, id });
+    await rotLoad(act, true);
+    renderAtividadesView();
+  } catch (e) { showToast('Erro: ' + e.message, 'error'); }
 }
 
 // ----- Criar e editar -----
@@ -17293,6 +17617,7 @@ async function actDoComplete(id, result, retry) {
   const doneAt = new Date().toISOString();
   try {
     await window._fb.updateChatNote(id, { done: true, doneAt, doneBy: me.name, result, isTask: true });
+    if (n.kind === 'ligacao') rotLogCall(normalizeActValue(n.act), n.phone ? chatPhoneKey(n.phone) : '', true);
     if (_actv.doneAct === normalizeActValue(n.act)) _actv.done.push({ ...n, done: true, doneAt, doneBy: me.name, result });
     if (retry) {
       const next = new Date(n.remindAt); const t = new Date(Date.now() + 86400000);
@@ -22577,6 +22902,7 @@ function callWhatsApp(opts) {
   const name = opts.name || (lead && lead.name) || chatFormatPhone(digits);
   const info = { leadId: lead ? lead.id : '', act, chatKey, name, noteId: '' };
   if (lead) logWhatsAppCall(lead);
+  if (act) rotLogCall(act, chatPhoneKey(digits));
   if (act && chatKey) {
     const me = chatMe();
     window._fb.addChatNote({ act, chatKey, chatName: name, text: '📞 Tentativa de ligação pelo WhatsApp', by: me.name, byUid: me.uid, at: new Date().toISOString(), done: true, call: 'whatsapp' })
