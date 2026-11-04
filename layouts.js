@@ -18,6 +18,7 @@
   // Itens que ficam à mostra no topo e nas bolinhas (o resto vai em "Mais").
   var TOP = ['report', 'crm', 'chat', 'calendario', 'campanhas', 'automacoes'];
   var DOCK = ['report', 'crm', 'chat', 'calendario', 'contatos', 'campanhas', 'automacoes', 'integracoes'];
+  var DOCK_MAX = 10;
   var H = document.documentElement;
   var prefs = read();
   var built = false, loadedUid = '', counterObs = null;
@@ -27,6 +28,11 @@
     return { theme: 'atual', bg: 'por-do-sol', calm: false };
   }
   function store(p) { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch (e) {} }
+  // Barras escolhidas por este login (Personalizar menu); sem escolha, o padrão.
+  function navCurrent() {
+    var n = prefs.nav || {};
+    return { top: Array.isArray(n.top) ? n.top : TOP, dock: Array.isArray(n.dock) ? n.dock : DOCK };
+  }
   function bgUrl(bg) { return /^https:\/\//.test(bg || '') ? bg : '/fundos/' + (bg || 'por-do-sol') + '.jpg'; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
@@ -41,7 +47,7 @@
     H.classList.toggle('ui-anim', on && !p.calm);
     H.style.setProperty('--ui-bg-img', 'url("' + bgUrl(p.bg).replace(/"/g, '') + '")');
     ensureBg();
-    if (on) { build(); sync(); } else teardown();
+    if (on) { build(); renderNav(); } else teardown();
     renderAparencia();
   }
   function ensureBg() {
@@ -121,7 +127,7 @@
     // Permissões ou itens que aparecem/somem depois do login: refaz o menu.
     var sb = document.querySelector('.sidebar');
     if (sb) new MutationObserver(debounce(function () { if (built) renderNav(); }, 120)).observe(sb, { attributes: true, subtree: true, attributeFilter: ['style', 'class'] });
-    window.addEventListener('resize', debounce(moveInd, 100));
+    window.addEventListener('resize', debounce(sync, 100));
     renderNav();
     startCounters();
   }
@@ -142,24 +148,52 @@
     var items = navItems();
     var byId = {};
     items.forEach(function (i) { byId[i.id] = i; });
-    var top = TOP.map(function (id) { return byId[id]; }).filter(Boolean);
-    var rest = items.filter(function (i) { return TOP.indexOf(i.id) < 0; });
+    var nav = navCurrent();
+    var top = nav.top.map(function (id) { return byId[id]; }).filter(Boolean);
+    var rest = items.filter(function (i) { return nav.top.indexOf(i.id) < 0; });
     // Só refaz quando a lista muda (trocar de tela só move o destaque, com animação).
-    var sig = items.map(function (i) { return i.id + ':' + i.label; }).join('|');
-    pills._rest = rest;
+    var sig = items.map(function (i) { return i.id + ':' + i.label; }).join('|') + '#' + JSON.stringify(prefs.nav || null);
+    pills._baseRest = rest;
+    pills._byId = byId;
     if (pills._sig === sig) { sync(); return; }
     pills._sig = sig;
     pills.innerHTML = '<span class="ui-ind" id="ui-ind"></span>' +
       top.map(function (i) { return '<button type="button" class="ui-pill" data-id="' + i.id + '">' + esc(i.label) + '</button>'; }).join('') +
-      (rest.length ? '<button type="button" class="ui-pill" data-id="__mais" id="ui-more">Mais <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>' : '');
+      '<button type="button" class="ui-pill" data-id="__mais" id="ui-more">Mais <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>';
     pills.querySelectorAll('.ui-pill').forEach(function (b) {
       b.onclick = function (ev) { ev.stopPropagation(); if (b.dataset.id === '__mais') openMore(b, pills._rest || rest); else go(b.dataset.id); };
     });
-    var dk = DOCK.map(function (id) { return byId[id]; }).filter(Boolean);
+    var dk = nav.dock.map(function (id) { return byId[id]; }).filter(function (i) { return i && i.id !== 'conta'; }).slice(0, DOCK_MAX);
     dock.innerHTML = dk.map(function (i) { return '<button type="button" class="ui-dot" data-id="' + i.id + '" data-tip="' + esc(i.label) + '" aria-label="' + esc(i.label) + '">' + i.icon + '</button>'; }).join('') +
-      '<div class="ui-dock-sep"></div><button type="button" class="ui-dot" data-id="conta" data-tip="Conta e aparência" aria-label="Conta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></button>';
+      (dk.length ? '<div class="ui-dock-sep"></div>' : '') + '<button type="button" class="ui-dot" data-id="conta" data-tip="Conta e aparência" aria-label="Conta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></button>';
     dock.querySelectorAll('.ui-dot').forEach(function (b) { b.onclick = function () { go(b.dataset.id); }; });
     sync();
+  }
+  // Barra superior: o que não couber na largura da tela vai para o botão "Mais".
+  function fitPills() {
+    var pills = document.getElementById('ui-pills');
+    var nav = pills && pills.parentElement;
+    var more = document.getElementById('ui-more');
+    if (!nav || !more || !nav.clientWidth) return;
+    var btns = [].slice.call(pills.querySelectorAll('.ui-pill:not(#ui-more)'));
+    btns.forEach(function (b) { b.style.display = ''; });
+    more.style.display = '';
+    var brand = nav.querySelector('.ui-brand'), right = nav.querySelector('.ui-right');
+    var room = nav.clientWidth - (brand ? brand.offsetWidth : 0) - (right ? right.offsetWidth : 0) - 34;
+    var w = function (b) { return b.offsetWidth + 2; };
+    var base = pills._baseRest || [];
+    var used = btns.reduce(function (t, b) { return t + w(b); }, 0);
+    var over = [];
+    if (base.length || used > room) {
+      used += w(more);
+      for (var i = btns.length - 1; i >= 0 && used > room; i--) {
+        used -= w(btns[i]);
+        over.unshift(pills._byId[btns[i].dataset.id]);
+        btns[i].style.display = 'none';
+      }
+    }
+    more.style.display = base.length || over.length ? '' : 'none';
+    pills._rest = over.filter(Boolean).concat(base);
   }
   function activeId() {
     var a = document.querySelector('.sidebar .nav-item.active');
@@ -168,7 +202,8 @@
   function sync() {
     if (!built) return;
     var id = activeId();
-    var inTop = TOP.indexOf(id) >= 0;
+    fitPills();
+    var inTop = [].some.call(document.querySelectorAll('#ui-pills .ui-pill'), function (b) { return b.dataset.id === id && b.style.display !== 'none'; });
     document.querySelectorAll('#ui-pills .ui-pill').forEach(function (b) {
       b.classList.toggle('on', b.dataset.id === id || (!inTop && id && b.dataset.id === '__mais'));
     });
@@ -342,7 +377,10 @@
     window._fb.adminApi('/ui/prefs', {}).then(function (r) {
       if (r && r.prefs && r.prefs.theme) {
         var np = { theme: r.prefs.theme, bg: r.prefs.bg || 'por-do-sol', calm: !!r.prefs.calm };
-        if (JSON.stringify(np) !== JSON.stringify({ theme: prefs.theme, bg: prefs.bg, calm: !!prefs.calm })) { store(np); apply(np); }
+        if (r.prefs.nav) np.nav = { top: r.prefs.nav.top || [], dock: r.prefs.nav.dock || [] };
+        var was = { theme: prefs.theme, bg: prefs.bg, calm: !!prefs.calm };
+        if (prefs.nav) was.nav = prefs.nav;
+        if (JSON.stringify(np) !== JSON.stringify(was)) { store(np); apply(np); }
       } else if (r && prefs.theme !== 'atual') {
         // Este login nunca escolheu um layout: fica no visual de sempre, mesmo que outra pessoa tenha escolhido outro neste aparelho.
         var def = { theme: 'atual', bg: 'por-do-sol', calm: false };
@@ -351,6 +389,9 @@
     }).catch(function () {});
   }
   function save(np) {
+    // Trocar fundo ou layout não mexe no menu; só Personalizar menu envia o campo (null = voltar ao padrão).
+    if (np.nav === undefined && prefs.nav) np.nav = prefs.nav;
+    if (!np.nav) delete np.nav;
     store(np);
     apply(np);
     if (window._fb && window._fb.adminApi) window._fb.adminApi('/ui/prefs', { save: true, prefs: np }).catch(function (e) { if (window.showToast) window.showToast('A aparência ficou só neste aparelho: ' + e.message, 'warning'); });
@@ -371,14 +412,135 @@
         BGS.map(function (b) { return '<button type="button" class="ui-ap-bg' + (p.bg === b[0] ? ' on' : '') + '" data-bg="' + b[0] + '" style="background-image:url(\'/fundos/' + b[0] + '-mini.jpg\')"><span>' + b[1] + '</span></button>'; }).join('') +
         (custom ? '<button type="button" class="ui-ap-bg on" data-bg="' + esc(p.bg) + '" style="background-image:url(\'' + esc(p.bg) + '\')"><span>Sua foto</span></button>' : '') +
         '<label class="ui-ap-bg ui-ap-up"><input type="file" accept="image/jpeg,image/png,image/webp" id="ui-ap-file" style="display:none;"><b style="font-size:18px;">+</b>Subir foto</label></div>' : '') +
+      (p.theme === 'vidro' || p.theme === 'quente' ? '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;"><button type="button" class="huv-btn" id="ui-ap-nav">Personalizar menu</button><span class="ui-ap-sub" style="margin:0;">Escolha as opções e a ordem da barra superior e da lateral.</span></div>' : '') +
       '<label class="integ-toggle"><input type="checkbox" id="ui-ap-calm"' + (p.calm ? ' checked' : '') + '> Reduzir efeitos (sem desfoque nem animações, para aparelhos mais lentos)</label></div>';
     box.querySelectorAll('.ui-ap-opt').forEach(function (b) { b.onclick = function () { save({ theme: b.dataset.theme, bg: prefs.bg || 'por-do-sol', calm: !!prefs.calm }); }; });
     box.querySelectorAll('.ui-ap-bg[data-bg]').forEach(function (b) { b.onclick = function () { save({ theme: prefs.theme, bg: b.dataset.bg, calm: !!prefs.calm }); }; });
+    var navBtn = document.getElementById('ui-ap-nav');
+    if (navBtn) navBtn.onclick = openNavEditor;
     var calm = document.getElementById('ui-ap-calm');
     if (calm) calm.onchange = function () { save({ theme: prefs.theme, bg: prefs.bg, calm: calm.checked }); };
     var file = document.getElementById('ui-ap-file');
     if (file) file.onchange = function () { upload(file.files[0]); };
   }
+  // ---------- Personalizar menu (Vidro e Escuro quente): cada login escolhe o que vai em cada barra e em que ordem ----------
+  var navEd = null;
+  function openNavEditor() {
+    if (!window.openHuvenModal) return;
+    var items = navItems().filter(function (i) { return i.id !== 'conta'; });
+    var byId = {};
+    items.forEach(function (i) { byId[i.id] = i; });
+    var cur = navCurrent();
+    var has = function (id) { return !!byId[id]; };
+    navEd = { items: items, byId: byId, top: cur.top.filter(has), dock: cur.dock.filter(has), drag: null };
+    window.openHuvenModal('Personalizar menu', '<div id="ui-ne"></div>', 900);
+    var box = document.getElementById('ui-ne');
+    box.addEventListener('click', neClick);
+    box.addEventListener('dragstart', function (ev) {
+      var r = ev.target.closest && ev.target.closest('[data-row]');
+      if (!r) return;
+      navEd.drag = { from: r.dataset.list, id: r.dataset.row };
+      ev.dataTransfer.effectAllowed = 'move';
+      ev.dataTransfer.setData('text/plain', r.dataset.row);
+    });
+    box.addEventListener('dragover', function (ev) {
+      var col = ev.target.closest && ev.target.closest('[data-col]');
+      if (!col || !navEd.drag) return;
+      ev.preventDefault();
+      neMark(col, neDropIndex(col, ev.clientY));
+    });
+    box.addEventListener('dragend', function () { navEd.drag = null; neMark(); });
+    box.addEventListener('drop', function (ev) {
+      var col = ev.target.closest && ev.target.closest('[data-col]');
+      if (!col || !navEd.drag) return;
+      ev.preventDefault();
+      nePlace(navEd.drag.from, navEd.drag.id, col.dataset.col, neDropIndex(col, ev.clientY));
+      navEd.drag = null;
+      renderNavEd();
+    });
+    renderNavEd();
+  }
+  function neDropIndex(col, y) {
+    var rows = col.querySelectorAll('[data-row]');
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i].getBoundingClientRect();
+      if (y < r.top + r.height / 2) return i;
+    }
+    return rows.length;
+  }
+  function neMark(col, idx) {
+    document.querySelectorAll('#ui-ne .ne-before, #ui-ne .ne-end').forEach(function (e) { e.classList.remove('ne-before', 'ne-end'); });
+    if (!col || col.dataset.col === 'avail') return;
+    var rows = col.querySelectorAll('[data-row]');
+    if (rows[idx]) rows[idx].classList.add('ne-before'); else col.classList.add('ne-end');
+  }
+  function nePlace(from, id, to, idx) {
+    if (to === 'avail') { if (from !== 'avail') navEd[from].splice(navEd[from].indexOf(id), 1); return; }
+    var list = navEd[to];
+    var old = list.indexOf(id);
+    if (to === 'dock' && old < 0 && list.length >= DOCK_MAX) {
+      if (window.showToast) window.showToast('A barra lateral vai até ' + DOCK_MAX + ' opções. Tire uma para colocar outra.', 'warning');
+      return;
+    }
+    if (from !== 'avail' && from !== to) navEd[from].splice(navEd[from].indexOf(id), 1);
+    if (old >= 0) { list.splice(old, 1); if (old < idx) idx--; }
+    list.splice(idx, 0, id);
+  }
+  function neClick(ev) {
+    var b = ev.target.closest && ev.target.closest('[data-a]');
+    if (!b) return;
+    var a = b.dataset.a, id = b.dataset.id, l = b.dataset.list;
+    if (a === 'up' || a === 'down') {
+      var i = navEd[l].indexOf(id), j = i + (a === 'up' ? -1 : 1);
+      if (j < 0 || j >= navEd[l].length) return;
+      navEd[l].splice(i, 1);
+      navEd[l].splice(j, 0, id);
+    } else if (a === 'rm') {
+      navEd[l].splice(navEd[l].indexOf(id), 1);
+    } else if (a === 'tog') {
+      if (navEd[l].indexOf(id) >= 0) navEd[l].splice(navEd[l].indexOf(id), 1);
+      else nePlace('avail', id, l, navEd[l].length);
+    } else if (a === 'save') {
+      // O que este login não enxerga agora (ex.: área desligada) continua guardado no lugar para quando voltar.
+      var cur = navCurrent();
+      var gone = function (x) { return !navEd.byId[x] && x !== 'conta'; };
+      saveNav({ top: navEd.top.concat(cur.top.filter(gone)), dock: navEd.dock.concat(cur.dock.filter(gone)) }, 'Menu salvo.');
+      return;
+    } else if (a === 'reset') {
+      saveNav(null, 'Menu de volta ao padrão.');
+      return;
+    }
+    renderNavEd();
+  }
+  function saveNav(nav, msg) {
+    save({ theme: prefs.theme, bg: prefs.bg, calm: !!prefs.calm, nav: nav });
+    if (window.closeHuvenModal) window.closeHuvenModal();
+    if (window.showToast) window.showToast(msg, 'success');
+  }
+  function renderNavEd() {
+    var box = document.getElementById('ui-ne');
+    if (!box || !navEd) return;
+    var btn = function (a, id, list, label, title, on) { return '<button type="button" class="ne-btn' + (on ? ' on' : '') + '" data-a="' + a + '" data-id="' + esc(id) + '" data-list="' + list + '" title="' + esc(title) + '">' + label + '</button>'; };
+    var row = function (id, list) {
+      var i = navEd.byId[id];
+      var acts = list === 'avail'
+        ? btn('tog', id, 'top', 'Topo', 'Colocar ou tirar da barra superior', navEd.top.indexOf(id) >= 0) + btn('tog', id, 'dock', 'Lateral', 'Colocar ou tirar da barra lateral', navEd.dock.indexOf(id) >= 0)
+        : btn('up', id, list, '↑', 'Subir') + btn('down', id, list, '↓', 'Descer') + btn('rm', id, list, '×', 'Tirar desta barra');
+      return '<div class="ne-row" draggable="true" data-row="' + esc(id) + '" data-list="' + list + '"><span class="ne-ico">' + i.icon + '</span><span class="ne-name">' + esc(i.label) + '</span><span class="ne-acts">' + acts + '</span></div>';
+    };
+    var col = function (key, title, sub, ids) {
+      return '<div class="ne-col" data-col="' + key + '"><div class="ne-head"><b>' + title + '</b><small>' + sub + '</small></div>' +
+        (ids.length ? ids.map(function (id) { return row(id, key); }).join('') : '<div class="ne-empty">Vazia. Arraste uma opção para cá.</div>') + '</div>';
+    };
+    box.innerHTML = '<div class="ui-ap-sub">Arraste para trocar a ordem ou mudar de barra. O que ficar fora das barras continua no botão "Mais". Vale só para o seu login.</div>' +
+      '<div class="ne-cols">' +
+        col('top', 'Barra superior', navEd.top.length + ' opções. O que não couber na tela vai para "Mais".', navEd.top) +
+        col('dock', 'Barra lateral', navEd.dock.length + ' de ' + DOCK_MAX + ' opções.', navEd.dock) +
+        col('avail', 'Todas as opções', 'Clique em Topo ou Lateral para colocar ou tirar.', navEd.items.map(function (i) { return i.id; })) +
+      '</div>' +
+      '<div class="ne-foot"><button type="button" class="btn-save" style="width:auto;padding:9px 16px;" data-a="save">Salvar menu</button><button type="button" class="huv-btn" data-a="reset">Voltar ao padrão</button></div>';
+  }
+
   function upload(f) {
     if (!f) return;
     if (!/^image\/(jpeg|png|webp)$/.test(f.type)) return window.showToast && window.showToast('Use uma foto JPG, PNG ou WEBP.', 'warning');

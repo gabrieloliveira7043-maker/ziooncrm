@@ -466,3 +466,23 @@ html.ui-vidro[data-theme="light"] .chat-day { background: rgba(255, 255, 255, .7
 html.ui-vidro[data-theme="light"] .ct-stage { color: var(--text) !important; }
 /* Avatar da Zioon no escuro: letra branca sobre azul-claro. */
 html.ui-vidro.marca-zioon:not([data-theme="light"]) .ui-avatar { color: #0B1430; }
+
+/* Personalizar menu */
+.ne-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.ne-col { display: flex; flex-direction: column; gap: 4px; min-height: 260px; padding: 8px; border: 1px solid var(--border); border-radius: 12px; }
+.ne-col.ne-end { box-shadow: inset 0 -2px 0 var(--accent); }
+.ne-head { display: flex; flex-direction: column; gap: 2px; padding: 2px 4px 6px; }
+.ne-head b { font-size: 13px; color: var(--text); }
+.ne-head small { font-size: 11.5px; color: var(--muted2); line-height: 1.35; }
+.ne-row { display: flex; align-items: center; gap: 7px; padding: 6px 7px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); cursor: grab; }
+.ne-row.ne-before { box-shadow: 0 -2px 0 var(--accent); }
+.ne-ico { display: flex; flex: none; color: var(--muted2); }
+.ne-ico svg { width: 14px; height: 14px; }
+.ne-name { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ne-acts { display: flex; flex: none; gap: 3px; }
+.ne-btn { min-width: 24px; height: 24px; padding: 0 6px; border: 1px solid var(--border); border-radius: 7px; background: transparent; color: var(--muted2); font-size: 11.5px; line-height: 1; cursor: pointer; }
+.ne-btn:hover { color: var(--text); border-color: var(--border2); }
+.ne-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ne-empty { padding: 18px 8px; text-align: center; font-size: 12px; color: var(--muted2); }
+.ne-foot { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+@media (max-width: 760px) { .ne-cols { grid-template-columns: 1fr; } .ne-col { min-height: 0; } }
