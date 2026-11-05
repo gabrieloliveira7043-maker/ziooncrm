@@ -216,13 +216,13 @@ html.ui-vidro .integ-btn, html.ui-vidro .huv-btn, html.ui-vidro .chat-pill, html
 @keyframes ui-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @keyframes ui-in-soft { from { opacity: 0; } to { opacity: 1; } }
 html.ui-anim .ui-enter { animation: ui-in-soft .35s ease both; }
-html.ui-anim .ui-enter :is(.table-card, .integ-card, .help-card, .kanban-col, .cfgc-card, .huv-card, .cal-list-day, .at-card, .chart-card) { animation: ui-in .55s cubic-bezier(.2, .8, .2, 1) both; }
-html.ui-anim .ui-enter :is(.kanban-col, .integ-card, .help-card, .huv-card, .at-card):nth-child(2) { animation-delay: .04s; }
-html.ui-anim .ui-enter :is(.kanban-col, .integ-card, .help-card, .huv-card, .at-card):nth-child(3) { animation-delay: .08s; }
-html.ui-anim .ui-enter :is(.kanban-col, .integ-card, .help-card, .huv-card, .at-card):nth-child(4) { animation-delay: .12s; }
-html.ui-anim .ui-enter :is(.kanban-col, .integ-card, .help-card, .huv-card, .at-card):nth-child(5) { animation-delay: .16s; }
-html.ui-anim .ui-enter :is(.kanban-col, .integ-card, .help-card, .huv-card, .at-card):nth-child(6) { animation-delay: .2s; }
-html.ui-anim .ui-enter :is(.kanban-col, .integ-card, .help-card, .huv-card, .at-card):nth-child(n+7) { animation-delay: .24s; }
+html.ui-anim .ui-enter :is(.table-card, .integ-card, .help-card, .cfgc-card, .huv-card, .cal-list-day, .at-card, .chart-card) { animation: ui-in .55s cubic-bezier(.2, .8, .2, 1) both; }
+html.ui-anim .ui-enter :is(.integ-card, .help-card, .huv-card, .at-card):nth-child(2) { animation-delay: .04s; }
+html.ui-anim .ui-enter :is(.integ-card, .help-card, .huv-card, .at-card):nth-child(3) { animation-delay: .08s; }
+html.ui-anim .ui-enter :is(.integ-card, .help-card, .huv-card, .at-card):nth-child(4) { animation-delay: .12s; }
+html.ui-anim .ui-enter :is(.integ-card, .help-card, .huv-card, .at-card):nth-child(5) { animation-delay: .16s; }
+html.ui-anim .ui-enter :is(.integ-card, .help-card, .huv-card, .at-card):nth-child(6) { animation-delay: .2s; }
+html.ui-anim .ui-enter :is(.integ-card, .help-card, .huv-card, .at-card):nth-child(n+7) { animation-delay: .24s; }
 html.ui-anim :is(.metric-card, .integ-card, .help-card, .huv-card, .at-card, .cfgc-card) { transition: transform .3s cubic-bezier(.2, .8, .2, 1), box-shadow .3s; }
 html.ui-anim :is(.metric-card, .help-card, .huv-card, .at-card):hover { transform: translateY(-3px); }
 html.ui-anim .kanban-card { transition: transform .2s ease, box-shadow .2s; }
@@ -492,5 +492,7 @@ html.ui-vidro.marca-zioon:not([data-theme="light"]) .ui-avatar { color: #0B1430;
 .ne-foot { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 @media (max-width: 760px) { .ne-cols { grid-template-columns: 1fr; } .ne-col { min-height: 0; } }
 
-/* Cards fora da tela não são desenhados até a rolagem chegar neles. */
+/* Listas longas: o que está fora da tela não é desenhado até a rolagem chegar nele. */
+#chat-list > .chat-row { flex-shrink: 0; content-visibility: auto; contain-intrinsic-size: auto 72px; }
+.ct-table > .ct-row:not(.ct-head) { content-visibility: auto; contain-intrinsic-size: auto 56px; }
 .kanban-cards > .kanban-card { flex-shrink: 0; content-visibility: auto; contain-intrinsic-size: auto 120px; }

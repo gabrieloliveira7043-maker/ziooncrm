@@ -2170,7 +2170,7 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
 }
 
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
 <script type="module">
   import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, getDocs, getDoc, setDoc, updateDoc, deleteDoc, doc, query, where, onSnapshot, writeBatch, limit, orderBy, deleteField } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -2895,7 +2895,7 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
 })();
 </script>
 <link rel="stylesheet" href="tema-novo.css?v=5">
-<link rel="stylesheet" href="layouts.css?v=5">
+<link rel="stylesheet" href="layouts.css?v=6">
 <script>
 // Layout escolhido em Conta → Aparência (vidro / escuro quente): aplicado já aqui para não piscar o layout antigo.
 (function () {
@@ -7286,6 +7286,11 @@ async function getLeadsAsync() {
 let _leadsMemo = null;
 function getLeads() {
   return _leadsMemo || normalizeImportedLeadsFields(_leadsCache || []);
+}
+function findLead(id) {
+  if (_leadsMemo) return _leadsMemo.find(l => l.id === id);
+  const raw = (_leadsCache || []).find(l => l.id === id);
+  return raw ? normalizeImportedLeadFields(raw) : undefined;
 }
 // Um redesenho pede os leads várias vezes: normaliza uma vez só. Vale apenas enquanto fn roda.
 function withLeadsMemo(fn) {
@@ -15641,10 +15646,10 @@ function chatTime(iso) {
   const d = new Date(iso);
   if (isNaN(d)) return '';
   const today = new Date();
-  if (d.toDateString() === today.toDateString()) return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === today.toDateString()) return _cardTimeFmt.format(d);
   const y = new Date(today); y.setDate(today.getDate() - 1);
   if (d.toDateString() === y.toDateString()) return 'Ontem';
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  return _cardDayFmt.format(d);
 }
 
 function renderChatView() {
@@ -15899,7 +15904,7 @@ async function renderLeadAiSummary(lead) {
   box.innerHTML = `<label class="modal-label">${uiIco('sparkles', 12)} Resumo do lead (IA)</label><div style="border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--surface2);">${aiSummaryHtml(lead.aiSummary, `<button type="button" class="chat-pill" style="margin-left:auto;" onclick="leadModalRefreshSummary('${id}', this)">${lead.aiSummary ? 'Atualizar resumo' : 'Gerar resumo'}</button>`)}</div>`;
 }
 async function leadModalRefreshSummary(id, btn) {
-  const lead = getLeads().find(l => l.id === id);
+  const lead = findLead(id);
   if (!lead) return;
   if (btn) { btn.disabled = true; btn.textContent = 'Procurando conversa...'; }
   const key = await findLeadChatKey(lead);
@@ -17723,7 +17728,7 @@ function actOpenForm(id, preset) {
   const leadMap = actLeadOptions(act);
   window._actLeadMap = leadMap;
   const leadId = n ? n.leadId : p.leadId;
-  const lead = leadId ? getLeads().find(l => l.id === leadId) : null;
+  const lead = leadId ? findLead(leadId) : null;
   const leadLabel = lead ? Object.keys(leadMap).find(k => leadMap[k] === lead.id) || '' : '';
   const soon = new Date(Date.now() + 60 * 60000); soon.setMinutes(0, 0, 0);
   const due = n ? new Date(n.remindAt) : p.remindAt ? new Date(p.remindAt) : soon;
@@ -17760,7 +17765,7 @@ async function actSaveForm() {
   const leadLabel = leadInput.disabled ? null : leadInput.value.trim();
   const leadId = leadLabel ? (window._actLeadMap || {})[leadLabel] : '';
   if (leadLabel && !leadId) { fb.textContent = 'Escolha o lead da lista (ou deixe em branco).'; return; }
-  const lead = leadId ? getLeads().find(l => l.id === leadId) : null;
+  const lead = leadId ? findLead(leadId) : null;
   const f = { kind: document.getElementById('af-kind').value, text, remindAt: when.toISOString(), assigneeLogin: who ? who.login : me.login, assigneeName: who ? who.name : me.name };
   fb.textContent = 'Salvando...';
   try {
@@ -17824,7 +17829,7 @@ async function actDelete(id) {
 
 // ----- Atividades de um lead (chip e botão do card) -----
 function actLeadModal(leadId) {
-  const lead = getLeads().find(l => l.id === leadId);
+  const lead = findLead(leadId);
   if (!lead) return;
   const list = actForLead(lead);
   const me = actMe();
@@ -17918,7 +17923,7 @@ function actFocusRender() {
   }
   const n = (_reminders || []).find(x => x.id === f.ids[f.i]);
   const k = ACT_KINDS[n.kind] || ACT_KINDS.lembrete;
-  const lead = n.leadId ? getLeads().find(l => l.id === n.leadId) : null;
+  const lead = n.leadId ? findLead(n.leadId) : null;
   const stage = lead ? ((getAllStages(normalizeActValue(lead.act)) || []).find(s => s.id === lead.stage) || {}).label : '';
   const id = escapeJsString(n.id);
   const late = Date.parse(n.remindAt) < Date.now();
@@ -18038,7 +18043,7 @@ async function actImportCreate() {
   const batchId = 'd' + Date.now();
   const docs = items.map(it => {
     const who = team.find(t => t.login === it.who);
-    const lead = it.leadId ? getLeads().find(l => l.id === it.leadId) : null;
+    const lead = it.leadId ? findLead(it.leadId) : null;
     const link = lead ? actLeadLink(lead) : it.phone ? { phone: it.phone, leadName: it.leadName || '', chatKey: actChatKeyFor(ctx.act, it.phone, ''), chatName: it.leadName || chatFormatPhone(chatPhoneKey(it.phone)) } : {};
     return actBaseDoc(ctx.act, { kind: it.kind, text: it.text, remindAt: new Date(it.when).toISOString(), assigneeLogin: who ? who.login : me.login, assigneeName: who ? who.name : me.name, batchId, ...link });
   });
@@ -18231,7 +18236,7 @@ async function openChatWith({ act, phone, jid, name, line }) {
 }
 
 function openLeadChat(id) {
-  const lead = getLeads().find(l => l.id === id);
+  const lead = findLead(id);
   if (!lead) return;
   openChatWith({ act: lead.act, phone: lead.phone, jid: lead.whatsappJid, name: lead.name, line: leadAttendantLine(lead) });
 }
@@ -22052,12 +22057,25 @@ function loadFunnelChatLines(act) {
     if (items && items.length) renderKanban();
   });
 }
+let _chatLineIndex = { src: null, n: 0, map: null };
+function chatLineIndex() {
+  if (_chatLineIndex.src !== _chatItems || _chatLineIndex.n !== _chatItems.length) {
+    const map = new Map();
+    _chatItems.forEach(x => {
+      if (x.isGroup) return;
+      const k = String(x.id || '').replace(/^[a-z0-9]{1,12}__/, '');
+      if (!map.has(k)) map.set(k, x);
+    });
+    _chatLineIndex = { src: _chatItems, n: _chatItems.length, map };
+  }
+  return _chatLineIndex.map;
+}
 function leadLineFromChats(lead) {
   const act = normalizeActValue(lead.act);
   const base = leadChatBase(lead.phone);
   if (!base) return '';
   if (typeof _chatItems !== 'undefined' && typeof _chatAct !== 'undefined' && _chatAct === act) {
-    const c = _chatItems.find(x => !x.isGroup && String(x.id || '').replace(/^[a-z0-9]{1,12}__/, '') === base);
+    const c = chatLineIndex().get(base);
     if (c) return c.line || waLineOfKey(c.id);
   }
   return (_funnelChatLines[act] && _funnelChatLines[act].map[base]) || '';
@@ -22816,7 +22834,7 @@ function openLeadModal() {
 }
 
 function editLead(id) {
-  let lead = getLeads().find(l => l.id === id);
+  let lead = findLead(id);
   if (!lead) return;
   const meetBtn = document.getElementById('btn-lead-meeting');
   if (meetBtn) meetBtn.style.display = lead._docId && userCanView('calendario') ? '' : 'none';
@@ -22985,7 +23003,7 @@ async function saveLead() {
 
 async function deleteLead(id) {
   if (!await showConfirm('Esta ação não pode ser desfeita.', 'Remover lead?', 'Remover')) return;
-  const gone = getLeads().find(l => l.id === id);
+  const gone = findLead(id);
   await deleteLeadFromDb(id);
   if (gone) auditLog(gone.act, 'excluir', `Excluiu o lead "${gone.name || ''}"${gone.phone ? ' (' + gone.phone + ')' : ''} da coluna ${auditStageLabel(gone.act, gone.stage)}`, { leadId: id });
   renderKanban(); renderFunilChart(); renderFunilEvolucao();
@@ -23070,7 +23088,7 @@ function buildFirstWhatsAppMessage(lead) {
 // Envia a primeira mensagem pelo WhatsApp conectado do cliente (Evolution API), sem abrir o navegador.
 const _firstMessageSending = new Set();
 async function openFirstWhatsAppMessage(id) {
-  const lead = getLeads().find(l => l.id === id);
+  const lead = findLead(id);
   if (!lead) return;
   if (!normalizeWhatsAppPhone(lead.phone) && !lead.whatsappJid) {
     alert('Esse lead ainda não tem telefone cadastrado.');
@@ -23104,7 +23122,7 @@ window.openFirstWhatsAppMessage = openFirstWhatsAppMessage;
 function waCallTarget() { try { return localStorage.getItem('huven_wa_call_target') || ''; } catch (e) { return ''; } }
 
 function callWhatsApp(opts) {
-  const lead = opts.leadId ? getLeads().find(l => l.id === opts.leadId) : null;
+  const lead = opts.leadId ? findLead(opts.leadId) : null;
   let digits = String(opts.phone || (lead && (lead.phone || lead.whatsappPhone)) || '').replace(/\D/g, '');
   if (!digits) return showToast('Este contato não tem telefone.', 'warning');
   if (!(digits.startsWith('55') && digits.length >= 12)) digits = '55' + digits;
@@ -23186,7 +23204,7 @@ async function saveCallNoteResult(noteId, result, quiet) {
 }
 async function saveCallResult(leadId, result, index, quiet) {
   closeHuvenModal();
-  const lead = getLeads().find(l => l.id === leadId);
+  const lead = findLead(leadId);
   if (!lead) return;
   const history = Array.isArray(lead.history) ? lead.history.slice() : [];
   // A tentativa mais recente ainda sem resultado.
@@ -23229,7 +23247,7 @@ async function logWhatsAppCall(lead) {
 window.callWhatsApp = callWhatsApp;
 
 function showHistory(id) {
-  const lead = getLeads().find(l => l.id === id);
+  const lead = findLead(id);
   if (!lead) return;
   const history = lead.history || [];
   const content = document.getElementById('history-content');
@@ -23257,7 +23275,7 @@ function showHistory(id) {
 
 
 function openMoveModal(id) {
-  const lead = getLeads().find(l => l.id === id);
+  const lead = findLead(id);
   if (!lead) return;
   const STAGES = getStages(lead.act, leadPipeline(lead));
   document.getElementById('move-lead-id').value = id;
