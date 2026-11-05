@@ -7604,6 +7604,63 @@ function openContatoChat(key) {
   openChatWith({ act: e.act, phone: e.phone, jid: e.lead ? e.lead.whatsappJid : '', name: e.name });
 }
 
+// ----- Clicar fora fecha -----
+// Vale para todo o CRM: menus e listas fecham ao clicar fora; janelas fecham ao clicar no fundo escuro.
+// Janela com algo preenchido não fecha sozinha, para ninguém perder o que digitou.
+const OUTSIDE_POPS = [
+  { sel: '#chat-stk-pop.open', keep: '[onclick*="toggleEmojiPicker"],[onclick*="toggleStickerPack"]', close: el => el.classList.remove('open') },
+  { sel: '#chat-qr-pop.open', keep: '[onclick*="toggleQuickReplies"],#chat-text', close: () => { closeQuickReplies(); closeChatMention(); } },
+  { sel: '[id$="-mpop"].open', keep: el => '#' + el.id.replace(/-mpop$/, ''), close: el => mboxClose(el.id.replace(/-mpop$/, '')) },
+  { sel: '.metric-picker.open', close: el => el.classList.remove('open') },
+  { sel: 'details.capi-origins[open],details.stage-pick[open]', close: el => { el.open = false; } },
+  { sel: '#rem-stack .rem-panel', keep: '#rem-stack', close: () => toggleReminderPanel(false) },
+];
+const OUTSIDE_MODALS = '.modal-overlay,#confirm-modal,#huven-modal';
+// Formulários longos: só fecham pelo botão, mesmo sem nada digitado.
+const OUTSIDE_LONG_FORMS = new Set(['ai-agent-modal', 'ai-sim-modal', 'ig-auto-modal', 'post-modal', 'import-map-modal']);
+const _outsideDirty = new Set();
+let _outsideDown = null;
+function outsideMarkDirty(ev) {
+  const t = ev.target;
+  if (!t || !t.closest || t.matches('input[type="search"],[placeholder^="Buscar"],[placeholder^="Procurar"]')) return;
+  const ov = t.closest(OUTSIDE_MODALS);
+  if (ov) _outsideDirty.add(ov);
+}
+function outsideModalVisible(ov) { return ov.isConnected && getComputedStyle(ov).display !== 'none'; }
+function outsideModalCloseBtn(ov) {
+  const direct = ov.querySelector('.btn-close-panel,[title="Fechar"]');
+  if (direct) return direct;
+  return [...ov.querySelectorAll('button')].find(b => /^(×|cancelar|fechar)$/i.test(b.textContent.trim())) || null;
+}
+document.addEventListener('input', outsideMarkDirty, true);
+document.addEventListener('change', outsideMarkDirty, true);
+document.addEventListener('pointerdown', ev => {
+  _outsideDown = ev.target;
+  // Janela fechada por qualquer caminho volta limpa da próxima vez.
+  _outsideDirty.forEach(ov => { if (!outsideModalVisible(ov)) _outsideDirty.delete(ov); });
+}, true);
+// Na captura: um clique dentro do menu pode redesenhá-lo, e aí o alvo já não estaria mais lá dentro.
+document.addEventListener('click', ev => {
+  const down = _outsideDown, target = ev.target;
+  _outsideDown = null;
+  // Sem o toque do ponteiro (teclado ou clique feito pelo código), ou se o alvo sumiu no caminho, não decide nada.
+  if (!down || !down.isConnected || !target || !target.closest) return;
+  OUTSIDE_POPS.forEach(p => document.querySelectorAll(p.sel).forEach(el => {
+    if (el.contains(down) || el.contains(target)) return;
+    const keep = typeof p.keep === 'function' ? p.keep(el) : p.keep;
+    if (keep && (down.closest(keep) || target.closest(keep))) return;
+    p.close(el);
+  }));
+  // Arrastar a seleção de texto de dentro para fora da janela não fecha: o clique tem de começar e terminar no fundo.
+  if (down !== target || !target.matches(OUTSIDE_MODALS)) return;
+  if (_outsideDirty.has(target) || OUTSIDE_LONG_FORMS.has(target.id)) {
+    showToast('Use o botão de fechar para sair. Assim você não perde o que preencheu.', 'warning');
+    return;
+  }
+  const btn = outsideModalCloseBtn(target);
+  if (btn) btn.click();
+}, true);
+
 // ----- Janela simples (etiquetas e envio para o funil) -----
 function openHuvenModal(title, html, width) {
   closeHuvenModal();
@@ -7616,7 +7673,6 @@ function openHuvenModal(title, html, width) {
       <button class="btn-close-panel" onclick="closeHuvenModal()">×</button>
     </div>
     <div id="huven-modal-body">${html}</div></div>`;
-  el.addEventListener('click', ev => { if (ev.target === el) closeHuvenModal(); });
   document.body.appendChild(el);
 }
 
@@ -15917,7 +15973,7 @@ function openChat(key) {
       <div class="chat-qr-pop" id="chat-qr-pop"></div>
       <div class="chat-qr-pop chat-stk-pop" id="chat-stk-pop"></div>
       <div class="chat-input">
-        <label class="chat-pill chat-tool" title="Enviar foto, vídeo ou áudio" aria-label="Anexar arquivo">${uiIco('clip', 18)}<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,audio/*" style="display:none;" onchange="attachChatMedia(this)"></label>
+        <label class="chat-pill chat-tool" title="Enviar foto, vídeo, áudio, PDF ou documento" aria-label="Anexar arquivo">${uiIco('clip', 18)}<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.rtf,.odt,.ods,.odp,.zip,.rar,.7z" style="display:none;" onchange="attachChatMedia(this)"></label>
         <button class="chat-pill chat-tool" title="Respostas prontas (ou digite / no começo da mensagem)" onclick="toggleQuickReplies()" aria-label="Respostas prontas">${uiIco('bolt', 18)}</button>
         <button class="chat-pill chat-tool" title="Emojis e figurinhas" onclick="toggleEmojiPicker()" aria-label="Emojis e figurinhas">${uiIco('smile', 18)}</button>
         <textarea id="chat-text" class="field-input" rows="1" placeholder="Mensagem ( / respostas prontas)" onkeydown="chatTextKey(event)" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,140)+'px';chatQrInput(this)" onblur="setTimeout(() => { if (_qrBySlash) closeQuickReplies(); }, 200)"></textarea>
@@ -16140,7 +16196,7 @@ function renderChatMessages() {
     } else if (m.mediaUrl && m.type === 'audio') {
       media = `<audio src="${escapeHtml(m.mediaUrl)}" controls style="max-width:240px;display:block;margin-bottom:4px;"></audio>`;
     } else if (m.mediaUrl && m.type === 'document') {
-      media = `<a href="${escapeHtml(m.mediaUrl)}" target="_blank" rel="noopener" style="color:var(--accent2);">${uiIco('download', 13)} ${escapeHtml(m.fileName || 'Abrir PDF')}</a><br>`;
+      media = `<a href="${escapeHtml(m.mediaUrl)}" target="_blank" rel="noopener" style="color:var(--accent2);">${uiIco('download', 13)} ${escapeHtml(m.fileName || 'Abrir arquivo')}</a><br>`;
     } else if (['image', 'video', 'audio', 'document', 'sticker'].includes(m.type)) {
       const loaded = _chatMedia[m.id];
       if (loaded && loaded.url) {
@@ -16284,6 +16340,12 @@ async function attachChatMedia(input) {
   if (!file || !_chatAct) return;
   const chip = document.getElementById('chat-media-chip');
   chip.style.display = 'block';
+  const openChat = _chatItems.find(x => x.id === _chatOpenKey);
+  if (openChat && openChat.channel === 'instagram') {
+    _chatPendingMedia = null;
+    chip.innerHTML = '<span style="color:var(--red);">No Instagram o Chat envia só texto.</span>';
+    return;
+  }
   chip.textContent = 'Enviando arquivo...';
   try {
     _chatPendingMedia = await window._fb.uploadCampaignMedia(_chatAct, file);
@@ -17913,6 +17975,7 @@ const SCHED_MEDIA_KINDS = [
   ['image', 'Imagem', 'image/jpeg,image/png,image/webp'],
   ['video', 'Vídeo', 'video/mp4'],
   ['mic', 'Áudio', 'audio/*'],
+  ['clip', 'Documento', '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.rtf,.odt,.ods,.odp,.zip,.rar,.7z'],
 ];
 
 function schedMediaHtml() {
