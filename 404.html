@@ -2334,13 +2334,15 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
     },
     listenLeads(callback) {
       if (!currentProfile) return null;
+      // Só reprocessa os leads que mudaram: refazer todos a cada alteração travava a tela em contas grandes.
+      const known = new Map();
       return onSnapshot(leadsQuery(), snap => {
-        const leads = mapLeads(snap);
-        const changed = snap.docChanges().map(change => ({
-          type: change.type,
-          lead: normalizeImportedLeadFields({ ...change.doc.data(), _docId: change.doc.id })
-        }));
-        callback(leads, changed);
+        const changed = snap.docChanges().map(change => {
+          const lead = normalizeImportedLeadFields({ ...change.doc.data(), _docId: change.doc.id });
+          if (change.type === 'removed') known.delete(change.doc.id); else known.set(change.doc.id, lead);
+          return { type: change.type, lead };
+        });
+        callback(snap.docs.map(d => known.get(d.id)), changed);
       }, error => console.warn('Firestore realtime error:', error));
     },
     async saveLead(lead) {
@@ -2893,7 +2895,7 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
 })();
 </script>
 <link rel="stylesheet" href="tema-novo.css?v=5">
-<link rel="stylesheet" href="layouts.css?v=4">
+<link rel="stylesheet" href="layouts.css?v=5">
 <script>
 // Layout escolhido em Conta → Aparência (vidro / escuro quente): aplicado já aqui para não piscar o layout antigo.
 (function () {
@@ -5692,7 +5694,20 @@ function renderFunilChart() {
   const bgColors = stages.map((_, i) => colors[i % colors.length] + '99');
   const borderColors = stages.map((_, i) => colors[i % colors.length]);
 
+  // Atualiza o gráfico existente, sem recriar: recriar a cada lead que muda era o trecho mais pesado do funil.
+  window._funilChartTotal = total;
+  const chartSig = JSON.stringify([labels, values]);
+  if (window._funilChart && window._funilChart.canvas === ctx) {
+    if (window._funilChartSig === chartSig) return;
+    const ds = window._funilChart.data.datasets[0];
+    window._funilChart.data.labels = labels;
+    ds.data = values; ds.backgroundColor = bgColors; ds.borderColor = borderColors;
+    window._funilChart.update('none');
+    window._funilChartSig = chartSig;
+    return;
+  }
   if (window._funilChart) window._funilChart.destroy();
+  window._funilChartSig = chartSig;
 
   window._funilChart = new Chart(ctx, {
     type: 'bar',
@@ -5723,7 +5738,8 @@ function renderFunilChart() {
           padding: 12,
           callbacks: {
             label: ctx => {
-              const pct = total > 0 ? Math.round(ctx.parsed.y * 100 / total) : 0;
+              const all = window._funilChartTotal || 0;
+              const pct = all > 0 ? Math.round(ctx.parsed.y * 100 / all) : 0;
               return '  ' + ctx.parsed.y + ' leads (' + pct + '%)';
             }
           }
@@ -6496,12 +6512,16 @@ const STAGES_ARTE_AZULEJO = [
   { id: 'nfechou',  label: 'Não Fechou',    cls: 'col-fechado' },
 ];
 
+const _stageNameMemo = new Map();
 function normalizeClientNameForStages(name) {
-  return String(name || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase();
+  const key = String(name || '');
+  let v = _stageNameMemo.get(key);
+  if (v === undefined) {
+    v = key.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+    if (_stageNameMemo.size > 5000) _stageNameMemo.clear();
+    _stageNameMemo.set(key, v);
+  }
+  return v;
 }
 
 function isArteAzulejoClient(act) {
@@ -7263,8 +7283,15 @@ async function getLeadsAsync() {
   return normalizeImportedLeadsFields(_leadsCache || []);
 }
 
+let _leadsMemo = null;
 function getLeads() {
-  return normalizeImportedLeadsFields(_leadsCache || []);
+  return _leadsMemo || normalizeImportedLeadsFields(_leadsCache || []);
+}
+// Um redesenho pede os leads várias vezes: normaliza uma vez só. Vale apenas enquanto fn roda.
+function withLeadsMemo(fn) {
+  if (_leadsMemo) return fn();
+  _leadsMemo = normalizeImportedLeadsFields(_leadsCache || []);
+  try { return fn(); } finally { _leadsMemo = null; }
 }
 
 function getLeadCrmSortTime(lead) {
@@ -15638,6 +15665,7 @@ function renderChatView() {
   onChatClientChange();
 }
 
+let _chatRenderTimer = null;
 function onChatClientChange() {
   const act = chatAct();
   if (_chatUnsub && _chatAct !== act) { _chatUnsub(); _chatUnsub = null; _chatExtra = {}; closeChat(); }
@@ -15657,9 +15685,14 @@ function onChatClientChange() {
     _chatUnsub = window._fb.listenInboxChats(act, _chatLimit, (items, error) => {
       if (!items) { list.innerHTML = `<div class="chat-empty" style="color:var(--red);">Não foi possível carregar: ${escapeHtml(error && error.message || '')}</div>`; return; }
       _chatItems = items.concat(Object.values(_chatExtra).filter(x => !items.some(i => i.id === x.id))).filter(chatVisibleFilter(act));
-      renderChatList();
-      renderChatHeader();
-      chatResumeOpenLast();
+      // Várias conversas mudando ao mesmo tempo viram um redesenho só.
+      if (!_chatRenderTimer) _chatRenderTimer = setTimeout(() => {
+        _chatRenderTimer = null;
+        if (_chatAct !== act) return;
+        renderChatList();
+        renderChatHeader();
+        chatResumeOpenLast();
+      }, 100);
       const open = items.find(c => c.id === _chatOpenKey);
       if (open && open.unread > 0 && document.getElementById('chat-view').style.display !== 'none' && !document.hidden) {
         window._fb.updateInboxChat(act, open.id, { unread: 0 }).catch(() => {});
@@ -22142,9 +22175,36 @@ function renderAttendantFilter(filterAct) {
   sel.style.display = '';
 }
 
-function renderKanban() {
+// Colunas grandes: os primeiros cards saem na hora e o resto entra em pequenos lotes, sem travar a tela.
+const KANBAN_FIRST_CARDS = 30;
+let _kbQueue = [], _kbTimer = null;
+function kanbanPumpCards() {
+  _kbTimer = null;
+  const end = performance.now() + 8;
+  while (_kbQueue.length && performance.now() < end) {
+    const q = _kbQueue[0];
+    q.add(q.leads[q.i++]);
+    if (q.i >= q.leads.length) _kbQueue.shift();
+  }
+  if (_kbQueue.length) _kbTimer = setTimeout(kanbanPumpCards, 16);
+}
+function kanbanQueueCards(list, leads, add) {
+  _kbQueue.push({ list, leads, add, i: 0 });
+  if (!_kbTimer) _kbTimer = setTimeout(kanbanPumpCards, 16);
+}
+// Quem precisa da coluna completa (arrastar, buscar, voltar à rolagem) pede o resto na hora.
+function kanbanFlushCards(list) {
+  _kbQueue = _kbQueue.filter(q => {
+    if (list && q.list !== list) return true;
+    while (q.i < q.leads.length) q.add(q.leads[q.i++]);
+    return false;
+  });
+}
+function renderKanban() { return withLeadsMemo(renderKanbanNow); }
+function renderKanbanNow() {
   // Com um card sendo arrastado, redesenhar tiraria o card da mão: redesenha quando ele for solto.
   if (_cardDrag && _cardDrag.active) { _kanbanRenderDeferred = true; return; }
+  _kbQueue = [];
   const sel = document.getElementById('crm-client-select');
   const fromSel = sel && sel.value !== 'all' ? sel.value : null;
   const filterAct = isAdmin ? (fromSel || crmClientFilter) : crmClientFilter;
@@ -22197,11 +22257,21 @@ function renderKanban() {
   board.querySelectorAll('.kanban-cards').forEach(c => { keepScroll.cols[c.id] = c.scrollTop; });
   board.innerHTML = '';
 
+  // Coluna de cada lead, calculada uma vez só.
+  const boardStageOf = new Map(), leadsByStage = new Map();
+  leads.forEach(l => {
+    const id = getArteAzulejoStageForBoard(l, filterAct);
+    boardStageOf.set(l, id);
+    if (!leadsByStage.has(id)) leadsByStage.set(id, []);
+    leadsByStage.get(id).push(l);
+  });
+  const tagIndexByAct = {};
+
   // Calcular faturamento: soma todos os leads em fechou/fechado com valor
   let totalFechado = 0;
   let qtdFechado = 0;
   leads.forEach(l => {
-    if (isWonStage(getArteAzulejoStageForBoard(l, filterAct), STAGES) && l.valor) {
+    if (isWonStage(boardStageOf.get(l), STAGES) && l.valor) {
       const raw = String(l.valor).replace(/[^0-9,.]/g,'').replace(/\.(?=\d{3})/g,'').replace(',','.'); // "3.100" = 3100, "1.500,00" = 1500
       const val = parseFloat(raw);
       if (!isNaN(val) && val > 0) { totalFechado += val; qtdFechado++; }
@@ -22217,7 +22287,7 @@ function renderKanban() {
 
 
   STAGES.forEach(stage => {
-    const stageLeads = leads.filter(l => getArteAzulejoStageForBoard(l, filterAct) === stage.id);
+    const stageLeads = leadsByStage.get(stage.id) || [];
     const col = document.createElement('div');
     col.className = `kanban-col ${stage.cls}`;
     col.dataset.stage = stage.id;
@@ -22362,14 +22432,15 @@ function renderKanban() {
         empty.textContent = filterText ? 'Nenhum resultado' : 'Nenhum lead';
         cardsDiv.appendChild(empty);
       }
-      filteredLeads.forEach(lead => {
+      const appendCard = lead => {
       const card = document.createElement('div');
       card.className = 'kanban-card';
       card.dataset.id = lead.id;
       bindCardDrag(card);
       let cardHTML = '';
       const safeLeadId = escapeJsString(lead.id);
-      const leadTagsById = Object.fromEntries(((typeof _contactTagsCache !== 'undefined' && _contactTagsCache[normalizeActValue(lead.act)]) || []).map(t => [t.id, t]));
+      const tagAct = normalizeActValue(lead.act);
+      const leadTagsById = tagIndexByAct[tagAct] || (tagIndexByAct[tagAct] = Object.fromEntries(((typeof _contactTagsCache !== 'undefined' && _contactTagsCache[tagAct]) || []).map(t => [t.id, t])));
       const chips = [];
       if (lead.origem) chips.push(`<span class="kc-chip kc-origin" title="${escapeHtml(limitText(lead.origem, 300))}">${escapeHtml(limitText(lead.origem, 42))}</span>`);
       (Array.isArray(lead.tags) ? lead.tags : []).map(id => leadTagsById[id]).filter(Boolean).forEach(t => chips.push(tagChipHtml(t)));
@@ -22409,7 +22480,9 @@ function renderKanban() {
       cardHTML = cardHTML.replace(`openFirstWhatsAppMessage('${lead.id}')`, `openFirstWhatsAppMessage('${safeLeadId}')`);
       card.innerHTML = cardHTML;
       cardsDiv.appendChild(card);
-    });
+    };
+      filteredLeads.slice(0, KANBAN_FIRST_CARDS).forEach(appendCard);
+      if (filteredLeads.length > KANBAN_FIRST_CARDS) kanbanQueueCards(cardsDiv, filteredLeads.slice(KANBAN_FIRST_CARDS), appendCard);
     } // fim renderColCards
     renderColCards('');
     col.appendChild(cardsDiv);
@@ -22421,25 +22494,29 @@ function renderKanban() {
   if (boardScroll) boardScroll.scrollLeft = keepScroll.left;
   adjustKanbanBoardScroll();
   lockMobileKanbanColumnScroll();
-  board.querySelectorAll('.kanban-cards').forEach(c => { if (keepScroll.cols[c.id]) c.scrollTop = keepScroll.cols[c.id]; });
+  board.querySelectorAll('.kanban-cards').forEach(c => { if (keepScroll.cols[c.id]) { kanbanFlushCards(c); c.scrollTop = keepScroll.cols[c.id]; } });
 }
 
 // Data e hora de chegada no card. Leads importados só com a data (gravados ao meio-dia em ponto) mostram só o dia.
+const _cardDayFmt = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });
+const _cardTimeFmt = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' });
 function cardArrivalLabel(lead) {
   const d = leadArrivalDate(lead);
   if (!d) return '';
-  const day = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  const day = _cardDayFmt.format(d);
   const dateOnly = d.getHours() === 12 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0;
-  return dateOnly ? day : day + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return dateOnly ? day : day + ' ' + _cardTimeFmt.format(d);
 }
 
 function filtrarColuna(stageId, text) {
   const q = text.toLowerCase().trim();
   const cardsDiv = document.getElementById('col-' + stageId);
   if (!cardsDiv) return;
+  kanbanFlushCards(cardsDiv);
+  const leadById = new Map(getLeads().map(l => [l.id, l]));
   cardsDiv.querySelectorAll('.kanban-card').forEach(card => {
     const id = card.dataset.id;
-    const lead = getLeads().find(l => l.id === id);
+    const lead = leadById.get(id);
     if (!lead) { card.style.display = ''; return; }
     const match = !q ||
       (lead.name||'').toLowerCase().includes(q) ||
@@ -22514,6 +22591,7 @@ function cardDragPrime(card, x, y, mode) {
 }
 
 function cardDragBegin() {
+  kanbanFlushCards();
   const d = _cardDrag;
   if (!d || d.active || !d.card.isConnected) return;
   d.active = true;
@@ -24024,9 +24102,7 @@ function processLeadNotificationSnapshot(leads) {
       lead._crmArrivalSeenAt = arrivalSeenAt + index;
       if (!lead.updatedAt) lead.updatedAt = new Date(arrivalSeenAt + index).toISOString();
     });
-    renderKanban();
-    if (typeof renderFunilChart === 'function') renderFunilChart();
-    if (typeof renderFunilEvolucao === 'function') renderFunilEvolucao();
+    crmScheduleRender();
     notifyNewLeadArrival(newLeads);
   }
 }
@@ -24035,15 +24111,11 @@ function startLeadRealtimeListener() {
   if (!window._fbReady || !window._fb || typeof window._fb.listenLeads !== 'function') return false;
   if (_leadRealtimeUnsubscribe) return true;
   try {
-    _leadRealtimeUnsubscribe = window._fb.listenLeads((freshLeads) => {
+    _leadRealtimeUnsubscribe = window._fb.listenLeads((freshLeads, changed) => {
       _leadsCache = normalizeImportedLeadsFields(freshLeads || []);
       if (!_leadRealtimeReady) { _leadRealtimeReady = true; _leadRealtimeReadyResolve(); }
       processLeadNotificationSnapshot(_leadsCache);
-      if (document.getElementById('crm-view') && document.getElementById('crm-view').style.display === 'block') {
-        renderKanban();
-        if (typeof renderFunilChart === 'function') renderFunilChart();
-        if (typeof renderFunilEvolucao === 'function') renderFunilEvolucao();
-      }
+      if (crmChangeTouchesBoard(changed)) crmScheduleRender();
     });
     return true;
   } catch(e) {
@@ -24051,6 +24123,30 @@ function startLeadRealtimeListener() {
     return false;
   }
 }
+
+// Funil ao vivo: no máximo um redesenho a cada 800 ms, só com a tela do funil aberta e a aba visível.
+let _crmRenderTimer = null, _crmRenderLast = 0, _crmRenderDirty = false;
+const crmBoardOpen = () => { const v = document.getElementById('crm-view'); return !!v && v.style.display === 'block'; };
+function crmChangeTouchesBoard(changed) {
+  if (!Array.isArray(changed) || !changed.length) return true;
+  const sel = document.getElementById('crm-client-select');
+  const fromSel = sel && sel.value !== 'all' ? sel.value : null;
+  const filterAct = isAdmin ? (fromSel || crmClientFilter) : crmClientFilter;
+  return !filterAct || changed.some(c => leadMatchesClient(c.lead, filterAct));
+}
+function crmScheduleRender() {
+  if (_crmRenderTimer || !crmBoardOpen()) return;
+  if (document.hidden) { _crmRenderDirty = true; return; }
+  _crmRenderTimer = setTimeout(() => {
+    _crmRenderTimer = null;
+    if (!crmBoardOpen()) return;
+    _crmRenderLast = Date.now();
+    withLeadsMemo(() => { renderKanban(); renderFunilChart(); renderFunilEvolucao(); });
+  }, Math.max(60, 800 - (Date.now() - _crmRenderLast)));
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && _crmRenderDirty) { _crmRenderDirty = false; crmScheduleRender(); }
+});
 
 // ===== AVISO: WHATSAPP DESCONECTADO =====
 // O Worker confere as conexões a cada 2 min e grava whatsapp_status. Aqui mostramos o aviso na hora.
@@ -25224,7 +25320,7 @@ function onCrmClientChange() {
 </script>
 <script src="ajuda-ia.js?v=3" defer></script>
 <script src="modelos.js?v=2" defer></script>
-<script src="layouts.js?v=3"></script>
+<script src="layouts.js?v=4"></script>
 </body>
 </html>
 

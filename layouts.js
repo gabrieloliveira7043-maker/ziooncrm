@@ -164,8 +164,8 @@
       b.onclick = function (ev) { ev.stopPropagation(); if (b.dataset.id === '__mais') openMore(b, pills._rest || rest); else go(b.dataset.id); };
     });
     var dk = nav.dock.map(function (id) { return byId[id]; }).filter(function (i) { return i && i.id !== 'conta'; }).slice(0, DOCK_MAX);
-    dock.innerHTML = dk.map(function (i) { return '<button type="button" class="ui-dot" data-id="' + i.id + '" data-tip="' + esc(i.label) + '" aria-label="' + esc(i.label) + '">' + i.icon + '</button>'; }).join('') +
-      (dk.length ? '<div class="ui-dock-sep"></div>' : '') + '<button type="button" class="ui-dot" data-id="conta" data-tip="Conta e aparência" aria-label="Conta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></button>';
+    dock.innerHTML = dk.map(function (i) { return '<button type="button" class="ui-dot" data-id="' + i.id + '" data-tip="' + esc(i.label) + '" aria-label="' + esc(i.label) + '"><span class="ui-dot-ico">' + i.icon + '</span><span class="ui-dot-txt">' + esc(i.label) + '</span></button>'; }).join('') +
+      (dk.length ? '<div class="ui-dock-sep"></div>' : '') + '<button type="button" class="ui-dot" data-id="conta" data-tip="Conta e aparência" aria-label="Conta"><span class="ui-dot-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span><span class="ui-dot-txt">Conta e aparência</span></button>';
     dock.querySelectorAll('.ui-dot').forEach(function (b) { b.onclick = function () { go(b.dataset.id); }; });
     sync();
   }
@@ -338,7 +338,7 @@
       var seen = [];
       list.forEach(function (r) {
         var n = r.target.nodeType === 3 ? r.target.parentElement : r.target;
-        if (!n || !n.closest) return;
+        if (!n || !n.closest || n.closest('#kanban-board, #chat-view')) return; // funil e chat não têm contadores e mudam o tempo todo
         var el = n.closest(sel);
         if (el && seen.indexOf(el) < 0) seen.push(el);
         if (r.type === 'childList') r.addedNodes.forEach(function (a) { if (a.querySelectorAll) a.querySelectorAll(sel).forEach(function (x) { if (seen.indexOf(x) < 0) seen.push(x); }); });
