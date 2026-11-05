@@ -1384,6 +1384,9 @@ html[data-theme="light"] .login-overlay { background: var(--paper); }
 .integ-forms { margin-top:12px; border-top:1px solid var(--border); padding-top:10px; }
 .integ-form-row { display:grid; grid-template-columns:2fr 1.3fr 1.3fr 1.3fr; gap:8px; align-items:center; padding:6px 0; border-bottom:1px solid var(--border); }
 .integ-form-row .field-input { padding:6px 8px; font-size:12px; }
+.integ-form-block { padding:10px 0; border-bottom:1px solid var(--border); }
+.integ-form-block .field-input { padding:6px 8px; font-size:12px; }
+.integ-form-block .field-input:disabled { opacity:.55; }
 .integ-toggle { display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700; color:var(--text); }
 
 /* Instagram e Postagens */
@@ -14924,6 +14927,79 @@ function renderInboundCode() {
 }
 
 // ----- Formulários da Meta (Lead Ads) -----
+// ----- Funil, coluna e origem de cada formulário (mesma tela para o admin e para o cliente) -----
+function metaPipeOf(act, stage, pipeline) {
+  const pls = pipelineList(act);
+  if (pipeline && pls.some(p => p.id === pipeline)) return pipeline;
+  if (stage) { const owner = pls.find(p => (getStages(act, p.id) || []).some(s => s.id === stage)); if (owner) return owner.id; }
+  return 'principal';
+}
+
+function metaPipeOptions(act, selected, emptyLabel) {
+  return (emptyLabel ? `<option value="">${escapeHtml(emptyLabel)}</option>` : '') +
+    pipelineList(act).map(p => `<option value="${escapeHtml(p.id)}" ${p.id === selected ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
+}
+
+function metaStageOptions(act, pipeline, selected) {
+  if (!act) return integStageOptions('', selected);
+  return (getStages(act, pipeline) || []).map(s => `<option value="${escapeHtml(s.id)}" ${s.id === selected ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('');
+}
+
+function metaSyncStages(act, pipeline, stageElId) {
+  const el = document.getElementById(stageElId);
+  if (el) el.innerHTML = metaStageOptions(normalizeActValue(act), pipeline, '');
+}
+
+// Uma linha de formulário. pageAct: cliente da página. withClient: só o admin manda um formulário para outro cliente.
+function metaFormBlockHtml(f, c, pageAct, withClient) {
+  const act = normalizeActValue(c.act || pageAct);
+  const pipe = c.stage ? metaPipeOf(act, c.stage, c.pipeline) : (c.act ? 'principal' : '');
+  return `<div class="integ-form-block" data-form="${escapeHtml(f.id)}" data-name="${escapeHtml(f.name)}" data-page-act="${escapeHtml(pageAct || '')}">
+    <label class="integ-toggle"><input type="checkbox" class="mf-active" ${c.active === false ? '' : 'checked'}> ${escapeHtml(f.name)} <span class="integ-muted">(${f.status === 'ACTIVE' ? 'ativo' : 'arquivado'} · ${f.leads} leads)</span></label>
+    <div class="integ-grid">
+      ${withClient ? `<label>Cliente<select class="field-input mf-act" onchange="metaFormActChanged(this)">${integClientOptions(c.act || '', 'Mesmo cliente da página')}</select></label>` : ''}
+      <label>Funil<select class="field-input mf-pipe" onchange="metaFormPipeChanged(this)">${metaPipeOptions(act, pipe, c.act ? '' : 'Mesmo funil da página')}</select></label>
+      <label>Coluna<select class="field-input mf-stage" ${pipe ? '' : 'disabled'}>${pipe ? metaStageOptions(act, pipe, c.stage) : '<option value="">Mesma coluna da página</option>'}</select></label>
+      <label>Origem no card<input class="field-input mf-origem" value="${escapeHtml(c.origem || '')}" placeholder="Mesma origem da página"></label>
+    </div>
+  </div>`;
+}
+
+function metaFormPipeChanged(sel) {
+  const row = sel.closest('[data-form]');
+  const clientSel = row.querySelector('.mf-act');
+  const act = normalizeActValue((clientSel && clientSel.value) || row.dataset.pageAct);
+  const stage = row.querySelector('.mf-stage');
+  stage.disabled = !sel.value;
+  stage.innerHTML = sel.value ? metaStageOptions(act, sel.value, '') : '<option value="">Mesma coluna da página</option>';
+}
+
+async function metaFormActChanged(sel) {
+  const row = sel.closest('[data-form]');
+  const act = normalizeActValue(sel.value || row.dataset.pageAct);
+  await pipelinesReady(act);
+  const pipe = row.querySelector('.mf-pipe');
+  // Outro cliente não tem "mesmo funil da página": a coluna precisa ser dele.
+  pipe.innerHTML = metaPipeOptions(act, sel.value ? 'principal' : '', sel.value ? '' : 'Mesmo funil da página');
+  metaFormPipeChanged(pipe);
+}
+
+function metaCollectForms(root) {
+  const forms = {};
+  root.querySelectorAll('[data-form]').forEach(row => {
+    const clientSel = row.querySelector('.mf-act');
+    forms[row.dataset.form] = {
+      name: row.dataset.name,
+      active: row.querySelector('.mf-active').checked,
+      act: clientSel ? clientSel.value : '',
+      pipeline: row.querySelector('.mf-pipe').value,
+      stage: row.querySelector('.mf-stage').value,
+      origem: row.querySelector('.mf-origem').value.trim()
+    };
+  });
+  return forms;
+}
+
 // ===== "CONECTAR FACEBOOK" (cada cliente liga as próprias páginas) =====
 let _fbForms = {};
 
@@ -14938,7 +15014,8 @@ async function renderFbConnectBox(act, el) {
   catch (e) { el.innerHTML = `<div class="integ-error">${escapeHtml(e.message)}</div>`; return; }
   const a = escapeJsString(act);
   const elId = el.id;
-  el.innerHTML = `<button class="integ-btn primary" onclick="startFbConnect('${a}', '${elId}')">${pages.length ? 'Conectar outras páginas' : 'Conectar Facebook'}</button>
+  const noConnect = el.dataset.noConnect === '1';
+  el.innerHTML = `${noConnect ? '' : `<button class="integ-btn primary" onclick="startFbConnect('${a}', '${elId}')">${pages.length ? 'Conectar outras páginas' : 'Conectar Facebook'}</button>`}
     <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">${pages.map(p => {
       const pid = escapeJsString(p.id);
       const box = `fbp-${elId}-${p.id}`;
@@ -14947,7 +15024,8 @@ async function renderFbConnectBox(act, el) {
           <div class="integ-muted">${p.count} leads recebidos · último: ${escapeHtml(integWhen(p.lastAt))} · ${p.via === 'facebook-login' ? 'conectada pelo Facebook' + (p.connectedByName ? ' de ' + escapeHtml(p.connectedByName) : '') : 'ligada pela Zioon'}</div></div>
           <span class="integ-chip ${p.active ? 'ok' : 'off'}">${p.active ? 'Recebendo leads' : 'Desligada'}</span></div>
         <div class="integ-grid">
-          <label>Coluna onde o lead entra<select class="field-input" id="${box}-stage">${integStageOptions(act, p.stage)}</select></label>
+          <label>Funil<select class="field-input" id="${box}-pipe" onchange="metaSyncStages('${a}', this.value, '${box}-stage')">${metaPipeOptions(act, metaPipeOf(act, p.stage, p.pipeline))}</select></label>
+          <label>Coluna onde o lead entra<select class="field-input" id="${box}-stage">${metaStageOptions(act, metaPipeOf(act, p.stage, p.pipeline), p.stage)}</select></label>
           <label>Origem no card (opcional)<input class="field-input" id="${box}-origem" value="${escapeHtml(p.origem)}" placeholder="Meta Ads - nome do formulário"></label>
         </div>
         <div class="integ-row">
@@ -14958,7 +15036,7 @@ async function renderFbConnectBox(act, el) {
         </div>
         <div id="${box}-forms"></div>
       </div>`;
-    }).join('') || '<div class="integ-muted">Nenhuma página ligada ainda.</div>'}</div>`;
+    }).join('') || `<div class="integ-muted">${noConnect ? 'Nenhuma página ligada ao seu funil ainda.' : 'Nenhuma página ligada ainda.'}</div>`}</div>`;
 }
 
 async function startFbConnect(act, elId) {
@@ -15023,20 +15101,17 @@ async function linkFbPicked(act, elId, pending, btn) {
   renderFbConnectBox(act, document.getElementById(elId));
 }
 
-async function saveFbPage(act, pageId, elId, active) {
+async function saveFbPage(act, pageId, elId, active, formsOnly) {
   const box = `fbp-${elId}-${pageId}`;
-  const data = { pageId, active, stage: document.getElementById(box + '-stage')?.value, origem: document.getElementById(box + '-origem')?.value.trim() };
+  const data = { pageId, active, pipeline: document.getElementById(box + '-pipe')?.value, stage: document.getElementById(box + '-stage')?.value, origem: document.getElementById(box + '-origem')?.value.trim() };
   const formsBox = document.getElementById(box + '-forms');
-  if (formsBox && formsBox.querySelector('[data-fbform]')) {
-    data.forms = {};
-    formsBox.querySelectorAll('[data-fbform]').forEach(row => {
-      data.forms[row.dataset.fbform] = { name: row.dataset.name, active: row.querySelector('.fbf-active').checked, stage: row.querySelector('.fbf-stage').value, origem: '' };
-    });
-  }
+  const formsOpen = !!(formsBox && formsBox.querySelector('[data-form]'));
+  if (formsOpen) data.forms = metaCollectForms(formsBox);
   try {
     await window._fb.whatsapp('/fb/page-save', act, data);
-    showToast(active ? 'Página salva.' : 'Página pausada: os formulários dela param de criar leads.', 'success');
-    renderFbConnectBox(act, document.getElementById(elId));
+    showToast(formsOnly ? 'Formulários salvos.' : active ? 'Página salva.' : 'Página pausada: os formulários dela param de criar leads.', 'success');
+    await renderFbConnectBox(act, document.getElementById(elId));
+    if (formsOpen) loadFbForms(act, pageId, box);
   } catch (e) { showToast('Erro: ' + e.message, 'error'); }
 }
 
@@ -15045,15 +15120,12 @@ async function loadFbForms(act, pageId, box) {
   out.innerHTML = '<div class="integ-muted" style="margin-top:8px;">Buscando os formulários...</div>';
   try {
     const [r, pages] = await Promise.all([window._fb.whatsapp('/fb/forms', act, { pageId }), window._fb.whatsapp('/fb/pages', act)]);
-    const cfg = ((pages.pages || []).find(p => p.id === pageId) || {}).forms || {};
-    out.innerHTML = `<div class="integ-forms"><div class="integ-muted" style="margin-bottom:6px;">Desmarque os formulários que não devem criar leads. A coluna vazia usa a da página. Depois clique em Salvar.</div>${(r.forms || []).map(f => {
-      const c = cfg[f.id] || {};
-      return `<div class="integ-form-row" data-fbform="${escapeHtml(f.id)}" data-name="${escapeHtml(f.name)}">
-        <label class="integ-toggle"><input type="checkbox" class="fbf-active" ${c.active === false ? '' : 'checked'}> ${escapeHtml(f.name)} <span class="integ-muted">(${f.status === 'ACTIVE' ? 'ativo' : 'arquivado'} · ${f.leads} leads)</span></label>
-        <select class="field-input fbf-stage"><option value="">Mesma coluna da página</option>${integStageOptions(act, c.stage || '__none__')}</select>
-      </div>`;
-    }).join('') || '<div class="integ-muted">Nenhum formulário nesta página.</div>'}</div>`;
-    out.querySelectorAll('[data-fbform]').forEach(row => { const c = cfg[row.dataset.fbform] || {}; if (c.stage) row.querySelector('.fbf-stage').value = c.stage; });
+    const page = (pages.pages || []).find(p => p.id === pageId) || {};
+    const cfg = page.forms || {};
+    const forms = r.forms || [];
+    out.innerHTML = forms.length
+      ? `<div class="integ-forms"><div class="integ-muted" style="margin-bottom:6px;">Por padrão, cada formulário segue o funil, a coluna e a origem da página. Ajuste só o que for diferente e desligue o que não deve criar leads.</div>${forms.map(f => metaFormBlockHtml(f, cfg[f.id] || {}, act, false)).join('')}<div class="integ-row" style="margin-top:10px;"><button class="integ-btn primary" onclick="saveFbPage('${escapeJsString(act)}','${escapeJsString(pageId)}','${escapeJsString(box.slice(4, box.length - pageId.length - 1))}', ${page.active !== false}, true)">Salvar formulários</button></div></div>`
+      : '<div class="integ-muted" style="margin-top:8px;">Nenhum formulário nesta página.</div>';
   } catch (e) { out.innerHTML = `<div class="integ-error" style="margin-top:8px;">${escapeHtml(e.message)}</div>`; }
 }
 
@@ -15066,11 +15138,23 @@ async function disconnectFbPage(act, pageId, elId) {
   } catch (e) { showToast('Erro: ' + e.message, 'error'); }
 }
 
-// Cliente: vê só as páginas e formulários da Meta ligados ao funil dele (quem configura é o admin).
+// Cliente: o gestor configura as páginas dele; o vendedor só vê. As páginas vêm filtradas pelo servidor.
 async function renderIntegMetaClient() {
   const body = document.getElementById('integ-body');
   if (!body) return;
   const act = flowAct();
+  if (actIsManager()) {
+    body.innerHTML = `
+      <div class="integ-intro">
+        <div>
+          <div class="integ-h2">Formulários da Meta</div>
+          <div class="integ-muted">Escolha em qual funil e coluna cada formulário cai, e a origem que aparece no card. Aparecem aqui só as páginas ligadas ao seu funil. Para ligar uma página nova, fale com a nossa equipe.</div>
+        </div>
+      </div>
+      <div id="fb-pages-client" data-no-connect="1"></div>`;
+    renderFbConnectBox(act, document.getElementById('fb-pages-client'));
+    return;
+  }
   body.innerHTML = '<div class="integ-muted">Carregando...</div>';
   let pages;
   try { pages = await window._fb.listMetaPages(); }
@@ -15102,7 +15186,7 @@ async function renderIntegMetaClient() {
     <div class="integ-intro">
       <div>
         <div class="integ-h2">Formulários da Meta</div>
-        <div class="integ-muted">Páginas e formulários de anúncio ligados ao seu funil. Quem preencher esses formulários cai direto no CRM, na coluna indicada. A configuração é feita pela nossa equipe: fale com a gente para ligar uma página ou um formulário novo.</div>
+        <div class="integ-muted">Páginas e formulários de anúncio ligados ao seu funil. Quem preencher esses formulários cai direto no CRM, na coluna indicada. Quem configura é o gestor da conta.</div>
       </div>
     </div>
     ${cards || '<div class="integ-empty">Nenhum formulário da Meta ligado ao seu funil ainda.</div>'}`;
@@ -15128,12 +15212,6 @@ async function renderIntegMeta() {
       </div>
       <span class="integ-chip ${st.configured ? 'ok' : 'off'}">${st.configured ? 'Conectado à Meta' : 'Falta configurar'}</span>
     </div>
-    <div class="integ-card">
-      <div class="integ-title">Conectar pelo Facebook do cliente</div>
-      <div class="integ-muted" style="margin-bottom:10px;">O cliente (ou você, com o Facebook dele) entra com o Facebook e escolhe as páginas: elas ficam ligadas ao funil desse cliente, sem precisar atribuir nada no seu Business Manager. O cliente também faz isso sozinho na tela Conexões.</div>
-      <label style="display:block;max-width:320px;margin-bottom:10px;">Cliente<select class="field-input" onchange="renderFbConnectBox(this.value, document.getElementById('fb-connect-admin'))">${integClientOptions('', 'Escolha o cliente')}</select></label>
-      <div id="fb-connect-admin"></div>
-    </div>
     <details class="integ-card" ${st.configured ? '' : 'open'}>
       <summary class="integ-title" style="cursor:pointer;">Passo a passo da configuração (uma vez só)</summary>
       <ol class="integ-steps">
@@ -15156,7 +15234,13 @@ async function renderIntegMeta() {
       <div class="integ-h2">Páginas do Facebook</div>
       <button class="integ-btn primary" onclick="loadMetaPages()">Carregar páginas</button>
     </div>
-    <div id="meta-pages">${metaPagesHtml()}</div>`;
+    <div id="meta-pages">${metaPagesHtml()}</div>
+    <details class="integ-card" style="margin-top:18px;">
+      <summary class="integ-title" style="cursor:pointer;">Conectar pelo Facebook do cliente (só testadores do app, até a aprovação da Meta)</summary>
+      <div class="integ-muted" style="margin:10px 0;">Use só para uma página que não está no seu Business Manager, com o Facebook de alguém que tenha função no app.</div>
+      <label style="display:block;max-width:320px;margin-bottom:10px;">Cliente<select class="field-input" onchange="renderFbConnectBox(this.value, document.getElementById('fb-connect-admin'))">${integClientOptions('', 'Escolha o cliente')}</select></label>
+      <div id="fb-connect-admin"></div>
+    </details>`;
 }
 
 function metaPagesHtml() {
@@ -15178,19 +15262,20 @@ function metaPagesHtml() {
         <span class="integ-chip ${on ? 'ok' : 'off'}">${on ? 'Recebendo leads' : 'Desligada'}</span>
       </div>
       <div class="integ-grid">
-        <label>Cliente<select class="field-input" id="mp-act-${id}" onchange="const a = this.value; pipelinesReady(a).then(() => { document.getElementById('mp-stage-${id}').innerHTML = integStageOptions(a); })">${integClientOptions(act, 'Escolha o cliente')}</select></label>
-        <label>Coluna onde o lead entra<select class="field-input" id="mp-stage-${id}">${integStageOptions(act, s.stage)}</select></label>
+        <label>Cliente<select class="field-input" id="mp-act-${id}" onchange="metaPageActChanged('${pid}', this.value)">${integClientOptions(act, 'Escolha o cliente')}</select></label>
+        <label>Funil<select class="field-input" id="mp-pipe-${id}" onchange="metaSyncStages(document.getElementById('mp-act-${id}').value, this.value, 'mp-stage-${id}')">${metaPipeOptions(act, metaPipeOf(act, s.stage, s.pipeline))}</select></label>
+        <label>Coluna onde o lead entra<select class="field-input" id="mp-stage-${id}">${metaStageOptions(act, metaPipeOf(act, s.stage, s.pipeline), s.stage || 'novo')}</select></label>
         <label>Origem no card (opcional)<input class="field-input" id="mp-origem-${id}" value="${escapeHtml(s.origem || '')}" placeholder="Meta Ads - nome do formulário"></label>
       </div>
       <div class="integ-row">
         <button class="integ-btn primary" onclick="connectMetaPage('${pid}', '${escapeJsString(name)}')">${on ? 'Salvar' : 'Ligar e salvar'}</button>
         ${on ? `<button class="integ-btn" onclick="disconnectMetaPage('${pid}')">Desligar</button>` : ''}
-        <button class="integ-btn" onclick="loadMetaForms('${pid}')">${forms ? 'Atualizar formulários' : 'Ver formulários'}</button>
+        <button class="integ-btn" id="mp-formsbtn-${id}" onclick="loadMetaForms('${pid}')">${forms ? 'Atualizar formulários' : 'Ver formulários'}</button>
         ${on ? `<button class="integ-btn" onclick="diagnoseMetaPage('${pid}')">Diagnóstico</button>
         <button class="integ-btn" onclick="importMetaLeads('${pid}')">Importar leads que já estão nos formulários</button>` : ''}
       </div>
       <div id="mp-diag-${id}"></div>
-      ${forms ? metaFormsHtml(id, forms, s) : ''}
+      <div id="mp-forms-${id}">${forms ? metaFormsHtml(id, forms, s) : ''}</div>
     </div>`;
   }).join('');
 }
@@ -15199,19 +15284,23 @@ function metaFormsHtml(pageId, forms, saved) {
   if (!forms.length) return '<div class="integ-muted" style="margin-top:10px;">Nenhum formulário nesta página.</div>';
   const cfg = saved.forms || {};
   return `<div class="integ-forms">
-    <div class="integ-muted" style="margin-bottom:6px;">Por padrão todos os formulários seguem a configuração da página. Ajuste só o que for diferente.</div>
-    ${forms.map(f => {
-      const c = cfg[f.id] || {};
-      const fid = escapeHtml(f.id);
-      return `<div class="integ-form-row" data-form="${fid}" data-name="${escapeHtml(f.name)}">
-        <label class="integ-toggle"><input type="checkbox" class="mf-active" ${c.active === false ? '' : 'checked'}> ${escapeHtml(f.name)} <span class="integ-muted">(${f.status === 'ACTIVE' ? 'ativo' : 'arquivado'} · ${f.leads} leads)</span></label>
-        <select class="field-input mf-act">${integClientOptions(c.act || '', 'Mesmo cliente da página')}</select>
-        <select class="field-input mf-stage"><option value="">Mesma coluna da página</option>${integStageOptions(c.act || saved.act, '__none__')}</select>
-        <input class="field-input mf-origem" value="${escapeHtml(c.origem || '')}" placeholder="Origem (opcional)">
-      </div>`;
-    }).join('')}
-    <div class="integ-row"><button class="integ-btn primary" onclick="saveMetaForms('${escapeJsString(pageId)}')">Salvar formulários</button></div>
+    <div class="integ-muted" style="margin-bottom:6px;">Por padrão, cada formulário segue o cliente, o funil, a coluna e a origem da página. Ajuste só o que for diferente e desligue o que não deve criar leads.</div>
+    ${forms.map(f => metaFormBlockHtml(f, cfg[f.id] || {}, saved.act || '', true)).join('')}
+    <div class="integ-row" style="margin-top:10px;"><button class="integ-btn primary" onclick="saveMetaForms('${escapeJsString(pageId)}')">Salvar formulários</button></div>
   </div>`;
+}
+
+async function metaPageActChanged(pageId, act) {
+  await pipelinesReady(act);
+  const pipe = document.getElementById('mp-pipe-' + pageId);
+  pipe.innerHTML = metaPipeOptions(normalizeActValue(act), 'principal');
+  metaSyncStages(act, 'principal', 'mp-stage-' + pageId);
+  // As linhas que seguem a página passam a listar os funis do novo cliente.
+  document.querySelectorAll(`#mp-forms-${pageId} [data-form]`).forEach(row => {
+    row.dataset.pageAct = act;
+    const sel = row.querySelector('.mf-act');
+    if (sel && !sel.value) metaFormActChanged(sel);
+  });
 }
 
 async function loadMetaPages() {
@@ -15225,21 +15314,22 @@ async function loadMetaPages() {
 async function loadMetaForms(pageId) {
   try {
     const r = await window._fb.adminApi('/meta/forms', { pageId });
-    _metaForms[pageId] = r.forms || [];
-    document.getElementById('meta-pages').innerHTML = metaPagesHtml();
     const saved = _metaSaved.find(p => p.id === pageId) || {};
-    // Deixa os selects dos formulários com o que já estava salvo.
-    document.querySelectorAll(`.integ-card [data-form]`).forEach(row => {
-      const c = ((saved.forms || {})[row.dataset.form]) || {};
-      if (c.stage) row.querySelector('.mf-stage').value = c.stage;
-    });
+    // Formulários mandados para outro cliente precisam dos funis dele antes de desenhar.
+    await Promise.all(Object.values(saved.forms || {}).map(c => c && c.act).filter(Boolean).map(pipelinesReady));
+    _metaForms[pageId] = r.forms || [];
+    // Só esta página: redesenhar a lista apagaria o que está sendo editado nas outras.
+    document.getElementById('mp-forms-' + pageId).innerHTML = metaFormsHtml(pageId, _metaForms[pageId], saved);
+    document.getElementById('mp-formsbtn-' + pageId).textContent = 'Atualizar formulários';
   } catch (e) { showToast(e.message, 'warning', 6000); }
 }
 
 async function connectMetaPage(pageId, pageName) {
   const act = document.getElementById('mp-act-' + pageId).value;
   if (!act) { showToast('Escolha o cliente desta página.', 'warning'); return; }
-  const data = { pageId, pageName, act, stage: document.getElementById('mp-stage-' + pageId).value || 'novo', origem: document.getElementById('mp-origem-' + pageId).value.trim(), active: true };
+  const data = { pageId, pageName, act, pipeline: document.getElementById('mp-pipe-' + pageId).value || 'principal', stage: document.getElementById('mp-stage-' + pageId).value || 'novo', origem: document.getElementById('mp-origem-' + pageId).value.trim(), active: true };
+  // Salva junto o que estiver aberto nos formulários, para nada se perder ao redesenhar.
+  if ((_metaForms[pageId] || []).length) data.forms = metaCollectForms(document.getElementById('mp-forms-' + pageId));
   try {
     const r = await window._fb.adminApi('/meta/subscribe', { pageId });
     if (!r.subscribed) throw new Error('A Meta não confirmou a ligação da página.');
@@ -15276,7 +15366,7 @@ async function importMetaLeads(pageId) {
   const days = Number(prompt('Importar os leads de quantos dias para trás? (1 a 90)', '7'));
   if (!days) return;
   const saved = _metaSaved.find(p => p.id === pageId) || {};
-  if (!await showConfirm(`Os leads dos últimos ${days} dia(s) desta página entram no funil de ${getClientDisplayName(saved.act) || 'cliente'}, na coluna configurada. Leads que já estão no CRM são pulados. Se a 1ª mensagem automática ou alguma automação estiver ligada para esse cliente, ela vale para esses leads também.`, 'Importar leads da Meta', 'Importar', false)) return;
+  if (!await showConfirm(`Os leads dos últimos ${days} dia(s) desta página entram no funil e na coluna configurados em cada formulário (cliente da página: ${getClientDisplayName(saved.act) || 'não escolhido'}). Leads que já estão no CRM são pulados. Se a 1ª mensagem automática ou alguma automação estiver ligada para esse cliente, ela vale para esses leads também.`, 'Importar leads da Meta', 'Importar', false)) return;
   const box = document.getElementById('mp-diag-' + pageId);
   const say = t => { box.innerHTML = `<div class="integ-muted" style="margin-top:10px;">${t}</div>`; };
   say('Buscando os leads nos formulários...');
@@ -15310,20 +15400,16 @@ async function disconnectMetaPage(pageId) {
 }
 
 async function saveMetaForms(pageId) {
-  const forms = {};
-  document.querySelectorAll('.integ-card [data-form]').forEach(row => {
-    if (!(_metaForms[pageId] || []).some(f => f.id === row.dataset.form)) return;
-    forms[row.dataset.form] = {
-      name: row.dataset.name,
-      active: row.querySelector('.mf-active').checked,
-      act: row.querySelector('.mf-act').value,
-      stage: row.querySelector('.mf-stage').value,
-      origem: row.querySelector('.mf-origem').value.trim()
-    };
-  });
+  const saved = _metaSaved.find(x => x.id === pageId);
+  // Página ainda não ligada: liga junto, senão os formulários salvos nunca receberiam leads.
+  if (!saved || !saved.subscribedAt || !saved.act) {
+    const live = (_metaLive || []).find(x => x.id === pageId) || {};
+    return connectMetaPage(pageId, live.name || (saved && saved.pageName) || pageId);
+  }
+  const forms = metaCollectForms(document.getElementById('mp-forms-' + pageId));
   try {
     await window._fb.saveMetaPage(pageId, { forms });
-    const p = _metaSaved.find(x => x.id === pageId); if (p) p.forms = forms; else _metaSaved.push({ id: pageId, forms });
+    saved.forms = forms;
     showToast('Formulários salvos.', 'success');
   } catch (e) { showToast('Erro: ' + e.message, 'warning'); }
 }
