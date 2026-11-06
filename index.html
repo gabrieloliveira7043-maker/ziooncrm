@@ -4043,7 +4043,7 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
             <div class="help-tag">Atendimento</div>
             <div class="help-demo hs hs-atend" aria-hidden="true"><div class="hs-stat s1"><b>3 min</b>1º contato</div><div class="hs-stat s2 alert"><b>6</b>sem resposta</div><div class="hs-stat s3"><b>39 min</b>com espera</div></div>
             <h3>Tempo de resposta e leads sem resposta</h3>
-            <ol><li>Abra <b>Atendimento</b> no menu e clique em <b>Analisar</b>.</li><li>O cartão <b>Tempo até o 1º contato</b> mostra a média (e a mediana) só de quem já foi respondido.</li><li>O cartão vermelho <b>Sem resposta da equipe</b> mostra quantos leads com conversa ninguém respondeu e há quanto tempo o mais antigo espera.</li><li><b>Tempo incluindo quem espera</b> conta também os leads ainda sem resposta: é o retrato mais fiel do atendimento.</li></ol>
+            <ol><li>Abra <b>Atendimento</b> no menu e clique em <b>Analisar</b>.</li><li>O cartão <b>Tempo até o 1º contato</b> mostra a média (e a mediana) só de quem já foi respondido.</li><li>O cartão vermelho <b>Sem resposta da equipe</b> mostra quantos leads mandaram mensagem e ninguém respondeu, e há quanto tempo o mais antigo espera. Quem só recebeu a mensagem automática e não falou nada aparece em <b>Só receberam a automática</b>.</li><li><b>Tempo incluindo quem espera</b> conta também os leads ainda sem resposta: é o retrato mais fiel do atendimento.</li></ol>
           </section>
           <section class="help-card" data-view="crm">
             <div class="help-tag">Funil</div>
@@ -4958,7 +4958,7 @@ async function buildDashboardPdf() {
         <div class="rp-kpi hi"><div class="l">Tempo até o 1º contato (mediana)</div><div class="v">${anFmt(att.firstMedian)}</div></div>
         <div class="rp-kpi"><div class="l">Respondidos em até 5 min</div><div class="v">${pct(att.within5, att.answered)}</div></div>
         <div class="rp-kpi"><div class="l">Respondidos em até 1 h</div><div class="v">${pct(att.within60, att.answered)}</div></div>
-        <div class="rp-kpi"><div class="l">Sem contato humano</div><div class="v">${att.noContact}</div></div>
+        <div class="rp-kpi"><div class="l">Sem resposta da equipe</div><div class="v">${att.noContact}</div></div>
         <div class="rp-kpi"><div class="l">Tempo de resposta nas conversas</div><div class="v">${anFmt(att.turnMedian)}</div></div>
       </div>
       <div class="rp-avoid"><div class="rp-h small">Quanto tempo levou o 1º contato</div><div class="rp-chart"><canvas id="rp-ch-att" width="${W * 2}" height="400"></canvas></div></div>
@@ -24697,6 +24697,9 @@ async function computeAttendance(act, fromDay, toDay, cfg, onProgress) {
     const after = msgs.filter(m => Date.parse(m.at) >= arrival - 60000);
     const human = after.find(anIsHuman);
     const auto = after.find(m => m.fromMe && m.source);
+    // Sem resposta é quem escreveu e ninguém da equipe respondeu; a espera conta da primeira mensagem do lead.
+    // Quem só recebeu a mensagem automática e não falou nada não está esperando resposta.
+    const leadMsg = after.find(m => !m.fromMe);
     const stage = (getAllStages(act).find(s => s.id === lead.stage) || {}).label || '';
     return {
       lead, name: lead.name || chatFormatPhone(lead.phone) || 'Sem nome', stage, origem: lead.origem || lead.redeSocial || '', arrival, chatKey: leadChats.length ? leadChats[0].id : key,
@@ -24704,7 +24707,8 @@ async function computeAttendance(act, fromDay, toDay, cfg, onProgress) {
       humanAt: human ? Date.parse(human.at) : null, who: human ? anWho(human) : '',
       dur: human ? anDuration(arrival, Date.parse(human.at), cfg) : null,
       autoDur: auto ? Date.parse(auto.at) - arrival : null,
-      waiting: !human ? anDuration(arrival, Math.min(Date.now(), toMs), cfg) : null
+      waiting: !human && leadMsg ? anDuration(Date.parse(leadMsg.at), Math.min(Date.now(), toMs), cfg) : null,
+      quiet: !human && !leadMsg && leadChats.length > 0
     };
   });
 
@@ -24740,7 +24744,7 @@ async function computeAttendance(act, fromDay, toDay, cfg, onProgress) {
   return {
     act, fromDay, toDay, cfg: { ...cfg }, generatedAt: new Date().toISOString(),
     leads: leadRows, totalLeads: leadRows.length, answered: answered.length,
-    noContact: leadRows.filter(r => r.dur == null && r.hasChat).length, noChat: leadRows.filter(r => !r.hasChat).length,
+    noContact: leadRows.filter(r => r.waiting != null && r.hasChat).length, quiet: leadRows.filter(r => r.quiet).length, noChat: leadRows.filter(r => !r.hasChat).length,
     firstMedian: anMedian(firstTimes), firstAvg: anAvg(firstTimes),
     within5: firstTimes.filter(d => d <= 5 * 60000).length, within60: firstTimes.filter(d => d <= 60 * 60000).length,
     autoMedian: anMedian(leadRows.filter(r => r.autoDur != null).map(r => r.autoDur)),
@@ -25048,8 +25052,10 @@ function renderAnaliseResult(d) {
   // Os tempos do cartão "1º contato" só contam quem foi respondido. Aqui entra também quem ainda espera (conta o tempo de espera até agora).
   const withChat = d.leads.filter(r => r.hasChat);
   const allTimes = withChat.map(r => r.dur != null ? r.dur : r.waiting).filter(v => v != null);
-  const oldestWait = Math.max(0, ...withChat.filter(r => r.dur == null).map(r => r.waiting || 0));
-  const worst = d.leads.filter(r => r.hasChat).sort((a, b) => (b.dur == null ? b.waiting + 1e15 : b.dur) - (a.dur == null ? a.waiting + 1e15 : a.dur));
+  const oldestWait = Math.max(0, ...withChat.map(r => r.waiting || 0));
+  // Primeiro quem espera resposta, depois os mais demorados; quem só recebeu a automática fica por último.
+  const worstRank = r => r.dur != null ? r.dur : r.waiting != null ? r.waiting + 1e15 : -1;
+  const worst = d.leads.filter(r => r.hasChat).sort((a, b) => worstRank(b) - worstRank(a));
   out.innerHTML = `
     ${d.cfg.biz ? `<div class="integ-muted" style="margin-bottom:10px;font-size:12px;">Tempos contados só no expediente: ${escapeHtml(d.cfg.bizStart)} às ${escapeHtml(d.cfg.bizEnd)}, segunda a ${d.cfg.bizSat ? 'sábado' : 'sexta'}.</div>` : ''}
     <div class="an-section-title">Primeiro contato com o lead</div>
@@ -25058,7 +25064,8 @@ function renderAnaliseResult(d) {
       ${anKpi('Tempo até o 1º contato', anFmt(d.firstMedian), `mediana · média ${anFmt(d.firstAvg)} · só de quem foi respondido`, 'gold')}
       ${anKpi('Respondidos em até 5 min', pct(d.within5, d.answered), `${n(d.within5)} de ${n(d.answered)} respondidos`, d.answered && d.within5 / d.answered >= 0.5 ? 'green' : '')}
       ${anKpi('Em até 1 hora', pct(d.within60, d.answered), `${n(d.within60)} ${d.within60 === 1 ? 'lead' : 'leads'}`)}
-      ${anKpi('Sem resposta da equipe', n(d.noContact), d.noContact ? `${pct(d.noContact, withChat.length)} dos ${n(withChat.length)} leads com conversa · o mais antigo espera há ${anFmt(oldestWait)}` : 'todos os leads com conversa foram respondidos', d.noContact ? 'red' : 'green')}
+      ${anKpi('Sem resposta da equipe', n(d.noContact), d.noContact ? `mandaram mensagem e ninguém respondeu · o mais antigo espera há ${anFmt(oldestWait)}` : 'todos que mandaram mensagem foram respondidos', d.noContact ? 'red' : 'green')}
+      ${d.quiet ? anKpi('Só receberam a automática', n(d.quiet), 'ainda não falaram nada e a equipe não chamou') : ''}
       ${anKpi('Tempo incluindo quem espera', anFmt(anMedian(allTimes)), `mediana · média ${anFmt(anAvg(allTimes))} · conta quem ainda não foi respondido`, d.noContact ? 'red' : 'gold')}
       ${d.autoMedian != null ? anKpi('1ª mensagem automática', anFmt(d.autoMedian), 'mediana depois da chegada') : ''}
     </div>
@@ -25091,7 +25098,7 @@ function renderAnaliseResult(d) {
           <td><b>${escapeHtml(r.name)}</b><div class="ct-sub">${escapeHtml(limitText(r.origem, 40))}</div></td>
           <td>${new Date(r.arrival).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
           <td>${r.humanAt ? new Date(r.humanAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
-          <td>${r.dur != null ? `<span class="an-pill ${r.dur <= 5 * 60000 ? 'ok' : r.dur <= 3600000 ? 'mid' : 'bad'}">${anFmt(r.dur)}</span>` : `<span class="an-pill bad">sem contato · ${anFmt(r.waiting)}</span>`}</td>
+          <td>${r.dur != null ? `<span class="an-pill ${r.dur <= 5 * 60000 ? 'ok' : r.dur <= 3600000 ? 'mid' : 'bad'}">${anFmt(r.dur)}</span>` : r.waiting != null ? `<span class="an-pill bad">sem resposta · ${anFmt(r.waiting)}</span>` : `<span class="integ-muted" style="font-size:12px;">só automática</span>`}</td>
           <td>${escapeHtml(r.who || '—')}</td>
           <td>${escapeHtml(r.stage)}</td></tr>`).join('') || '<tr><td colspan="6" class="integ-muted" style="padding:14px;">Nenhum lead com conversa no período.</td></tr>'}
       </tbody></table>
