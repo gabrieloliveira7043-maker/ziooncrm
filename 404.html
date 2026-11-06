@@ -11019,7 +11019,7 @@ function resumeWatch(box, save) {
 function resumeFlush() { _resumeSavers.forEach(f => { try { f(); } catch (e) {} }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') resumeFlush(); });
 window.addEventListener('pagehide', resumeFlush);
-// Algum editor aberto com coisa escrita: a atualização automática espera.
+// Algum editor aberto com coisa escrita: o botão de atualizar pergunta antes.
 function resumeEditing() {
   const chatText = document.getElementById('chat-text');
   return !!(_cadenceDraft || _campaignDraft || document.getElementById('sched-text') || (chatText && chatText.value.trim()));
@@ -11323,6 +11323,21 @@ function resumeLastView() {
   if (typeof setMobileNav === 'function') setMobileNav(v);
 }
 
+// Versão nova do CRM: nunca recarrega sozinho, porque isso tiraria a pessoa da tela e perderia o que está sendo feito.
+// Só avisa; quem decide a hora de atualizar é quem está usando.
+function crmUpdateNow() {
+  if (typeof resumeFlush === 'function') resumeFlush();
+  const a = document.activeElement;
+  const typing = a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !['checkbox', 'radio', 'button'].includes(a.type)) || a.isContentEditable);
+  const open = typing || (typeof resumeEditing === 'function' && resumeEditing()) || document.querySelector('#huven-modal, .modal-overlay.open, .modal.open, #move-modal.open, #confirm-modal.open, #campaign-editor[style*="block"]');
+  if (open && !confirm('Você tem algo aberto nesta tela. Atualizar agora pode perder o que ainda não foi salvo. Atualizar mesmo assim?')) return;
+  location.replace(location.pathname + '?v=' + Date.now() + location.hash);
+}
+function crmUpdateLater() {
+  const b = document.getElementById('upd-banner');
+  if (b) b.remove();
+  window._updSnoozeUntil = Date.now() + 60 * 60 * 1000;
+}
 (function setupAutoUpdate() {
   let base = null, pending = false;
   try { const u = new URL(location.href); if (u.searchParams.has('v')) { u.searchParams.delete('v'); history.replaceState(null, '', u.pathname + (u.search || '') + u.hash); } } catch (e) {}
@@ -11332,37 +11347,24 @@ function resumeLastView() {
       return r.ok ? (r.headers.get('etag') || r.headers.get('last-modified') || '') : '';
     } catch (e) { return ''; }
   };
-  const busy = () => {
-    const a = document.activeElement;
-    if (a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !['checkbox', 'radio', 'button'].includes(a.type)) || a.isContentEditable)) return true;
-    if (typeof resumeEditing === 'function' && resumeEditing()) return true;
-    return !!document.querySelector('#huven-modal, .modal-overlay.open, .modal.open, #move-modal.open, #confirm-modal.open, #campaign-editor[style*="block"]');
-  };
-  const reload = () => { location.replace(location.pathname + '?v=' + Date.now() + location.hash); };
-  // Com Cadência, Disparo ou Chat em edição não recarrega nem com a aba escondida (o rascunho fica guardado de qualquer jeito).
-  const editing = () => typeof resumeEditing === 'function' && resumeEditing();
-  const tryReload = () => {
-    if (!pending) return;
-    if (!busy() || (document.visibilityState === 'hidden' && !editing())) reload();
-  };
   const showBanner = () => {
-    if (document.getElementById('upd-banner')) return;
+    if (document.getElementById('upd-banner') || Date.now() < (window._updSnoozeUntil || 0)) return;
     const b = document.createElement('div');
     b.id = 'upd-banner';
-    b.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:10100;background:var(--surface);color:var(--text);border:1px solid var(--border2);border-radius:12px;padding:10px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35);display:flex;gap:10px;align-items:center;font-size:13px;';
-    b.innerHTML = 'Saiu uma versão nova do CRM. <button class="chat-pill active" onclick="location.replace(location.pathname + \'?v=\' + Date.now() + location.hash)">Atualizar agora</button>';
+    b.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:10100;background:var(--surface-solid, var(--surface));color:var(--text);border:1px solid var(--border2);border-radius:12px;padding:10px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35);display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 32px);font-size:13px;';
+    b.innerHTML = 'Saiu uma versão nova do CRM. Atualize quando terminar o que está fazendo. <button class="chat-pill active" onclick="crmUpdateNow()">Atualizar agora</button> <button class="chat-pill" onclick="crmUpdateLater()">Depois</button>';
     document.body.appendChild(b);
   };
   const check = async () => {
+    if (pending) { showBanner(); return; }
     const t = await tag();
     if (!t) return;
     if (base === null) { base = t; return; }
-    if (t !== base) { pending = true; if (busy()) showBanner(); else reload(); }
+    if (t !== base) { pending = true; showBanner(); }
   };
   check();
-  setInterval(() => { if (pending) tryReload(); else check(); }, 3 * 60 * 1000);
-  setInterval(tryReload, 20 * 1000);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { if (pending) tryReload(); else check(); } });
+  setInterval(check, 3 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
 })();
 
 function toggleClientSwitcher(ev) {
@@ -12528,6 +12530,46 @@ async function toggleAutoFirstFromAutomations(act, checkbox) {
 }
 window.toggleAutoFirstFromAutomations = toggleAutoFirstFromAutomations;
 
+// Automação em edição: guardada no aparelho enquanto há mudança sem salvar. Se a página recarregar ou fechar,
+// a tela de Automações oferece continuar de onde parou.
+let _flowDraftHeld = null;
+function flowDraftSave() {
+  if (!_flow) return;
+  if (_flow._dirty) {
+    const { _tplList, ...state } = _flow;
+    resumeSet('automacao', { act: _flow.act, state });
+    _flowDraftHeld = _flow;
+  } else if (_flowDraftHeld === _flow) {
+    resumeClear('automacao');
+    _flowDraftHeld = null;
+  }
+}
+setInterval(flowDraftSave, 3000);
+_resumeSavers.push(flowDraftSave);
+function flowDraftBanner(act) {
+  const r = resumeGet('automacao');
+  if (!r || !r.state || r.act !== act) return '';
+  const when = new Date(r.at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return `<div class="integ-card" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;padding:12px 14px;border:1px solid rgba(201,162,74,.6);"><div style="flex:1;min-width:220px;"><b style="color:var(--text);">Você tem uma automação sem salvar: ${escapeHtml(r.state.name || 'Sem nome')}</b><div class="integ-muted" style="font-size:12.5px;">Última alteração em ${when}.</div></div><button class="btn-save" style="width:auto;padding:8px 14px;" onclick="flowDraftResume()">Continuar editando</button><button class="huv-btn" onclick="flowDraftDiscard()">Descartar</button></div>`;
+}
+function flowDraftResume() {
+  const r = resumeGet('automacao');
+  if (!r || !r.state) return;
+  ensureWaSettings(r.act);
+  _flow = { ...r.state, _dirty: true };
+  _flowDraftHeld = _flow;
+  _flowSel = null;
+  _flowView = { x: 30, y: 30, z: window.innerWidth < 900 ? 0.7 : 1 };
+  document.getElementById('automacoes-view').classList.add('editing');
+  renderFlowEditor();
+  if (_flow.channel === 'cloud') { _flow._tplList = []; loadCloudFlowTemplates(false); }
+}
+async function flowDraftDiscard() {
+  if (!await showConfirm('Descartar a automação que não foi salva? Isso não pode ser desfeito.', 'Descartar', 'Descartar', true)) return;
+  resumeClear('automacao');
+  renderAutomacoesView();
+}
+
 async function renderAutomacoesView() {
   const box = document.getElementById('automacoes-body');
   if (!box) return;
@@ -12540,6 +12582,7 @@ async function renderAutomacoesView() {
   catch (e) { box.innerHTML = `<div class="integ-error">Erro: ${escapeHtml(e.message)}</div>`; return; }
   const leads = (_leadsCache || []).filter(l => leadMatchesClient(l, act));
   box.innerHTML = `
+    ${flowDraftBanner(act)}
     <div class="huv-header" style="margin-bottom:14px;">
       <div style="flex:1;min-width:220px;">
         <div class="huv-crumb">${escapeHtml(getClientDisplayName(act) || act)}  /  Vendas</div>
@@ -13926,6 +13969,7 @@ async function runAiFlow() {
 
 function closeFlowEditor(force) {
   if (!force && _flow && _flow._dirty && !confirm('Sair sem salvar as mudanças?')) return;
+  if (_flowDraftHeld && _flowDraftHeld === _flow) { resumeClear('automacao'); _flowDraftHeld = null; }
   _flow = null; _flowSel = null;
   document.getElementById('automacoes-view').classList.remove('editing');
   if (_flowReturn === 'crm') { _flowReturn = null; switchView('crm'); return; }
