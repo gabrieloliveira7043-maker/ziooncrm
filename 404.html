@@ -2909,7 +2909,7 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
 })();
 </script>
 <link rel="stylesheet" href="tema-novo.css?v=5">
-<link rel="stylesheet" href="layouts.css?v=7">
+<link rel="stylesheet" href="layouts.css?v=8">
 <script>
 // Layout escolhido em Conta → Aparência (vidro / escuro quente): aplicado já aqui para não piscar o layout antigo.
 (function () {
@@ -16288,7 +16288,7 @@ function openChat(key) {
   });
   const c = _chatItems.find(x => x.id === key);
   if (c && c.unread > 0) window._fb.updateInboxChat(act, key, { unread: 0 }).catch(() => {});
-  setTimeout(() => { const t = document.getElementById('chat-text'); if (t && window.innerWidth > 768) t.focus(); }, 50);
+  setTimeout(() => { const t = document.getElementById('chat-text'); if (t && window.innerWidth > 768) t.focus({ preventScroll: true }); }, 50);
 }
 
 // Painel da direita: etapa, valor, etiquetas, anotação e histórico do lead desta conversa.
@@ -22241,8 +22241,10 @@ function renderCrmPeriodSummary(leads, isWon) {
   const fechados = leads.filter(l => isWon(l) && crmDateInPeriod(leadFilterDate(l))).length;
   const deOutroDia = leads.filter(l => { const d = leadSaleDate(l); return d && crmDateInPeriod(d) && !crmDateInPeriod(leadArrivalDate(l)); });
   const fecharamFora = leads.filter(l => { const d = leadSaleDate(l); return d && !crmDateInPeriod(d); });
+  const monthly = /^\d{4}-\d{2}$/.test(sel.value); // filtro por mês fala em outro mês; por dia ou semana, em outros dias
+  const otherSide = monthly ? ['lead de outro mês', 'leads de outros meses'] : ['lead de outro dia', 'leads de outros dias'];
   const parts = [`${novos} ${plural(novos, 'lead novo', 'leads novos')}`, `${fechados} ${plural(fechados, 'fechamento', 'fechamentos')}`];
-  if (deOutroDia.length) parts.push(`${deOutroDia.length} de ${plural(deOutroDia.length, 'lead de outro dia', 'leads de outros dias')}`);
+  if (deOutroDia.length) parts.push(`${deOutroDia.length} de ${plural(deOutroDia.length, otherSide[0], otherSide[1])}`);
   if (fecharamFora.length) {
     const days = new Map();
     fecharamFora.slice().sort((a, b) => leadSaleDate(a) - leadSaleDate(b)).forEach(l => { const k = dayOf(leadSaleDate(l)); days.set(k, (days.get(k) || 0) + 1); });
@@ -22253,7 +22255,7 @@ function renderCrmPeriodSummary(leads, isWon) {
   box.textContent = parts.join(' · ');
   const list = (items, text) => { const shown = items.slice(0, 12).map(text).join(', '); return shown + (items.length > 12 ? ` e mais ${items.length - 12}` : ''); };
   const tips = [];
-  if (deOutroDia.length) tips.push(`O quadro tem ${leads.length} cards porque inclui ${deOutroDia.length} ${plural(deOutroDia.length, 'venda de lead que chegou', 'vendas de leads que chegaram')} em outro dia: ${list(deOutroDia, l => `${nameOf(l)} (chegou ${dayOf(leadArrivalDate(l) || leadSaleDate(l))})`)}.`);
+  if (deOutroDia.length) tips.push(`O quadro tem ${leads.length} cards porque inclui ${deOutroDia.length} ${plural(deOutroDia.length, 'venda de lead que chegou', 'vendas de leads que chegaram')} em outro ${monthly ? 'mês' : 'dia'}: ${list(deOutroDia, l => `${nameOf(l)} (chegou ${dayOf(leadArrivalDate(l) || leadSaleDate(l))})`)}.`);
   if (fecharamFora.length) tips.push(list(fecharamFora, l => `${nameOf(l)} fechou ${dayOf(leadSaleDate(l))}`) + '.');
   box.title = tips.join('\n');
 }

@@ -508,3 +508,10 @@ html.ui-vidro :is(#analise-view, #atividades-view)::before {
 }
 html.ui-calm.ui-vidro :is(#analise-view, #atividades-view)::before { -webkit-backdrop-filter: none; backdrop-filter: none; background: linear-gradient(var(--ui-glass), var(--ui-glass)), linear-gradient(var(--ui-glass), var(--ui-glass)), var(--ui-glass); }
 @media (max-width: 760px) { html.ui-vidro :is(#analise-view, #atividades-view) { padding: 14px 12px 18px; border-radius: 16px; } }
+
+/* Vidro: a tela entra sem fade. Com opacidade no pai, o navegador desliga o desfoque dos vidros dentro dele durante a animação,
+   e eles apareciam transparentes e só depois viravam vidro de repente. */
+html.ui-vidro .ui-enter, html.ui-vidro .ui-enter :is(.table-card, .integ-card, .help-card, .cfgc-card, .huv-card, .cal-list-day, .at-card, .chart-card) { animation: none !important; }
+
+/* Menu no topo: o Chat desconta a altura do menu. Sem isso ele passava 78px da tela, e a página pulava ao abrir uma conversa. */
+@media (min-width: 769px) { html.ui-top .chat-wrap { height: calc(100vh - 118px); } }
