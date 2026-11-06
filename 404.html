@@ -11305,8 +11305,7 @@ function renderClientSwitch() {
 
 // ===== ATUALIZAÇÃO AUTOMÁTICA =====
 // A cada 3 minutos (e quando a aba volta a ficar visível) pergunta ao servidor a "etiqueta" da página publicada.
-// Mudou = saiu versão nova: recarrega sozinho quando ninguém estiver digitando ou com uma janela aberta.
-// Se a pessoa estiver no meio de algo, aparece um aviso com o botão "Atualizar agora" e recarrega na próxima pausa.
+// Mudou = saiu versão nova: com a tela em uso aparece o botão Atualizar; com a aba escondida atualiza sozinho.
 // Última tela aberta: depois de recarregar (versão nova, celular que descarregou a aba), o CRM volta para ela.
 let _bootLastView = null;
 try {
@@ -11314,6 +11313,7 @@ try {
   if (v && Date.now() - v.at < 12 * 3600000 && !/[?&]lead=/.test(location.search)) _bootLastView = v.view;
 } catch (e) {}
 function resumeLastView() {
+  crmUpdScrollBack();
   const v = _bootLastView;
   _bootLastView = null;
   if (!v || v === 'report' || typeof userCanView !== 'function' || !userCanView(v) || !document.getElementById(v + '-view')) return;
@@ -11323,23 +11323,61 @@ function resumeLastView() {
   if (typeof setMobileNav === 'function') setMobileNav(v);
 }
 
-// Versão nova do CRM: nunca recarrega sozinho, porque isso tiraria a pessoa da tela e perderia o que está sendo feito.
-// Só avisa; quem decide a hora de atualizar é quem está usando.
-function crmUpdateNow() {
+// Versão nova do CRM.
+// Tela em uso: só mostra o botão. Ao clicar, a página recarrega e volta para a mesma tela e para o que estava aberto.
+// Aba escondida há mais de 1 minuto e nada em edição: atualiza sozinha, do mesmo jeito.
+function crmUpdateReload() {
   if (typeof resumeFlush === 'function') resumeFlush();
+  window._crmUpdating = true; // a automação guardada abaixo não pode ser apagada quando a página sair
+  try {
+    if (typeof _flow !== 'undefined' && _flow) {
+      const { _tplList, ...state } = _flow;
+      resumeSet('automacao', { act: _flow.act, state, sel: _flowSel, view: _flowView });
+    }
+    const last = JSON.parse(localStorage.getItem('crm_last_view') || 'null');
+    if (last) localStorage.setItem('crm_last_view', JSON.stringify({ ...last, at: Date.now() }));
+    const main = document.querySelector('.main');
+    sessionStorage.setItem('crm_upd_return', JSON.stringify({ flow: typeof _flow !== 'undefined' && !!_flow, y: window.scrollY || 0, main: main ? main.scrollTop : 0 }));
+  } catch (e) {}
+  location.replace(location.pathname + '?v=' + Date.now() + location.hash);
+}
+function crmUpdModalOpen() {
+  return !!document.querySelector('#huven-modal, .modal-overlay.open, .modal.open, #move-modal.open, #confirm-modal.open');
+}
+// Digitando em um campo que não volta sozinho depois de recarregar (Chat, Disparo, Cadência e Automações voltam).
+function crmUpdTypingLoose() {
   const a = document.activeElement;
   const typing = a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !['checkbox', 'radio', 'button'].includes(a.type)) || a.isContentEditable);
-  const open = typing || (typeof resumeEditing === 'function' && resumeEditing()) || document.querySelector('#huven-modal, .modal-overlay.open, .modal.open, #move-modal.open, #confirm-modal.open, #campaign-editor[style*="block"]');
-  if (open && !confirm('Você tem algo aberto nesta tela. Atualizar agora pode perder o que ainda não foi salvo. Atualizar mesmo assim?')) return;
-  location.replace(location.pathname + '?v=' + Date.now() + location.hash);
+  return !!typing && !a.closest('#automacoes-view, #chat-view, #cadence-editor, #campaign-editor');
+}
+function crmUpdateNow() {
+  if ((crmUpdModalOpen() || crmUpdTypingLoose()) && !confirm('Há uma janela aberta ou um campo sendo preenchido, e isso não volta depois de atualizar. Atualizar mesmo assim?')) return;
+  crmUpdateReload();
 }
 function crmUpdateLater() {
   const b = document.getElementById('upd-banner');
   if (b) b.remove();
   window._updSnoozeUntil = Date.now() + 60 * 60 * 1000;
 }
+// Depois de atualizar: devolve a rolagem da tela.
+function crmUpdScrollBack() {
+  let r = null;
+  try { r = JSON.parse(sessionStorage.getItem('crm_upd_return') || 'null'); } catch (e) {}
+  if (!r || (!r.y && !r.main)) return;
+  const apply = () => { if (r.y) window.scrollTo(0, r.y); const main = document.querySelector('.main'); if (main && r.main) main.scrollTop = r.main; };
+  setTimeout(apply, 900);
+  setTimeout(apply, 2200);
+}
+function crmUpdFlowPending() {
+  try {
+    const r = JSON.parse(sessionStorage.getItem('crm_upd_return') || 'null');
+    if (!r || !r.flow) return false;
+    sessionStorage.setItem('crm_upd_return', JSON.stringify({ ...r, flow: false }));
+    return true;
+  } catch (e) { return false; }
+}
 (function setupAutoUpdate() {
-  let base = null, pending = false;
+  let base = null, pending = false, hiddenSince = document.visibilityState === 'hidden' ? Date.now() : 0;
   try { const u = new URL(location.href); if (u.searchParams.has('v')) { u.searchParams.delete('v'); history.replaceState(null, '', u.pathname + (u.search || '') + u.hash); } } catch (e) {}
   const tag = async () => {
     try {
@@ -11352,19 +11390,29 @@ function crmUpdateLater() {
     const b = document.createElement('div');
     b.id = 'upd-banner';
     b.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:10100;background:var(--surface-solid, var(--surface));color:var(--text);border:1px solid var(--border2);border-radius:12px;padding:10px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35);display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 32px);font-size:13px;';
-    b.innerHTML = 'Saiu uma versão nova do CRM. Atualize quando terminar o que está fazendo. <button class="chat-pill active" onclick="crmUpdateNow()">Atualizar agora</button> <button class="chat-pill" onclick="crmUpdateLater()">Depois</button>';
+    b.innerHTML = 'Saiu uma versão nova do CRM. Você continua na mesma tela. <button class="chat-pill active" onclick="crmUpdateNow()">Atualizar</button> <button class="chat-pill" onclick="crmUpdateLater()">Depois</button>';
     document.body.appendChild(b);
   };
+  // Aba escondida: atualiza sozinha, a não ser que haja algo em edição.
+  const tryHidden = () => {
+    if (!pending || document.visibilityState !== 'hidden' || !hiddenSince || Date.now() - hiddenSince < 60000) return;
+    const editing = (typeof resumeEditing === 'function' && resumeEditing()) || (typeof _flow !== 'undefined' && _flow && _flow._dirty);
+    if (!editing && !crmUpdModalOpen() && !crmUpdTypingLoose()) crmUpdateReload();
+  };
   const check = async () => {
-    if (pending) { showBanner(); return; }
+    if (pending) { showBanner(); tryHidden(); return; }
     const t = await tag();
     if (!t) return;
     if (base === null) { base = t; return; }
-    if (t !== base) { pending = true; showBanner(); }
+    if (t !== base) { pending = true; showBanner(); tryHidden(); }
   };
   check();
   setInterval(check, 3 * 60 * 1000);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+  setInterval(tryHidden, 30 * 1000);
+  document.addEventListener('visibilitychange', () => {
+    hiddenSince = document.visibilityState === 'hidden' ? Date.now() : 0;
+    if (document.visibilityState === 'visible') check();
+  });
 })();
 
 function toggleClientSwitcher(ev) {
@@ -12534,10 +12582,10 @@ window.toggleAutoFirstFromAutomations = toggleAutoFirstFromAutomations;
 // a tela de Automações oferece continuar de onde parou.
 let _flowDraftHeld = null;
 function flowDraftSave() {
-  if (!_flow) return;
+  if (!_flow || window._crmUpdating) return;
   if (_flow._dirty) {
     const { _tplList, ...state } = _flow;
-    resumeSet('automacao', { act: _flow.act, state });
+    resumeSet('automacao', { act: _flow.act, state, sel: _flowSel, view: _flowView });
     _flowDraftHeld = _flow;
   } else if (_flowDraftHeld === _flow) {
     resumeClear('automacao');
@@ -12552,17 +12600,20 @@ function flowDraftBanner(act) {
   const when = new Date(r.at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   return `<div class="integ-card" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;padding:12px 14px;border:1px solid rgba(201,162,74,.6);"><div style="flex:1;min-width:220px;"><b style="color:var(--text);">Você tem uma automação sem salvar: ${escapeHtml(r.state.name || 'Sem nome')}</b><div class="integ-muted" style="font-size:12.5px;">Última alteração em ${when}.</div></div><button class="btn-save" style="width:auto;padding:8px 14px;" onclick="flowDraftResume()">Continuar editando</button><button class="huv-btn" onclick="flowDraftDiscard()">Descartar</button></div>`;
 }
-function flowDraftResume() {
+let _flowResuming = false;
+async function flowDraftResume(fromUpdate) {
   const r = resumeGet('automacao');
-  if (!r || !r.state) return;
-  ensureWaSettings(r.act);
-  _flow = { ...r.state, _dirty: true };
+  if (!r || !r.state || _flowResuming) return false;
+  _flowResuming = true;
+  try { ensureWaSettings(r.act); await pipelinesReady(r.act); } catch (e) {} finally { _flowResuming = false; }
+  _flow = { ...r.state, _dirty: fromUpdate === true ? !!r.state._dirty : true };
   _flowDraftHeld = _flow;
-  _flowSel = null;
-  _flowView = { x: 30, y: 30, z: window.innerWidth < 900 ? 0.7 : 1 };
+  _flowSel = fromUpdate === true ? r.sel || null : null;
+  _flowView = fromUpdate === true && r.view ? r.view : { x: 30, y: 30, z: window.innerWidth < 900 ? 0.7 : 1 };
   document.getElementById('automacoes-view').classList.add('editing');
   renderFlowEditor();
   if (_flow.channel === 'cloud') { _flow._tplList = []; loadCloudFlowTemplates(false); }
+  return true;
 }
 async function flowDraftDiscard() {
   if (!await showConfirm('Descartar a automação que não foi salva? Isso não pode ser desfeito.', 'Descartar', 'Descartar', true)) return;
@@ -12575,6 +12626,8 @@ async function renderAutomacoesView() {
   if (!box) return;
   const act = flowAct();
   if (_flow) return renderFlowEditor();
+  if (_flowResuming) return;
+  if (crmUpdFlowPending() && resumeGet('automacao')) return flowDraftResume(true);
   if (!act) { box.innerHTML = '<div class="integ-empty">Escolha o cliente no topo do menu para ver e criar as automações dele.</div>'; return; }
   await pipelinesReady(act);
   box.innerHTML = '<div class="integ-muted">Carregando...</div>';
@@ -14149,6 +14202,7 @@ function renderFlowEditor() {
   const box = document.getElementById('automacoes-body');
   if (!box || !_flow) return;
   const act = _flow.act;
+  const keepScroll = ['.flow-palette', '.flow-inspector', '.flow-body'].map(sel => { const el = box.querySelector(sel); return [sel, el ? el.scrollTop : 0]; });
   const add = (type, kind, label) => `<button class="flow-add" onclick="addFlowNode('${type}', '${kind || ''}')">${flowIcon(kind || type, FLOW_COLORS[type])}<span>${label}</span></button>`;
   box.innerHTML = `
     <div class="flow-editor">
@@ -14187,6 +14241,9 @@ function renderFlowEditor() {
         <aside class="flow-inspector" id="flow-inspector"></aside>
       </div>
     </div>`;
+  const backScroll = () => keepScroll.forEach(([sel, top]) => { const el = top && box.querySelector(sel); if (el) el.scrollTop = top; });
+  backScroll();
+  requestAnimationFrame(backScroll);
   const canvas = document.getElementById('flow-canvas');
   canvas.addEventListener('pointerdown', flowPointerDown);
   canvas.addEventListener('wheel', ev => { if (ev.ctrlKey || ev.metaKey) { ev.preventDefault(); zoomFlow(ev.deltaY < 0 ? 0.08 : -0.08); } else { _flowView.x -= ev.deltaX; _flowView.y -= ev.deltaY; applyFlowView(); ev.preventDefault(); } }, { passive: false });
