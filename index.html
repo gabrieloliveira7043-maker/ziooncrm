@@ -3545,10 +3545,11 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
         <span id="crm-new-lead-banner-text">Novo lead chegou no CRM.</span>
         <button class="crm-new-lead-ack" onclick="clearUnreadLeadNotifications()">Ok, vi</button>
       </div>
-      <div id="valor-fechado-banner" style="background:rgba(52,211,153,0.08); border:1px solid rgba(52,211,153,0.25); border-radius:8px; padding:10px 16px; margin-bottom:14px; align-items:center; gap:10px;">
+      <div id="valor-fechado-banner" style="background:rgba(52,211,153,0.08); border:1px solid rgba(52,211,153,0.25); border-radius:8px; padding:10px 16px; margin-bottom:14px; align-items:center; gap:10px; flex-wrap:wrap;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
         <span style="font-size:13px; color:var(--green); font-weight:500;">Faturamento em fechamentos: <strong id="valor-fechado-total">R$ 0,00</strong></span>
         <span style="font-size:12px; color:var(--muted); margin-left:4px;" id="valor-fechado-qtd"></span>
+        <span id="crm-period-summary" style="margin-left:auto; font-size:12px; color:var(--muted); cursor:default;"></span>
       </div>
       <div class="crm-board-scroll">
         <div class="kanban-board" id="kanban-board"></div>
@@ -21783,7 +21784,7 @@ function populateCrmMonthFilter(leads) {
   if (!sel) return 'all';
   const currentMonth = getCurrentMonthKey();
   const previous = sel.dataset.ready === '1' ? (sel.value || currentMonth) : currentMonth;
-  const monthKeys = [...new Set((leads || []).map(leadFilterMonthKey).filter(Boolean))];
+  const monthKeys = [...new Set((leads || []).flatMap(l => [getLeadMonthKey(l), leadFilterMonthKey(l)]).filter(Boolean))];
   if (!monthKeys.includes(currentMonth)) monthKeys.push(currentMonth);
   monthKeys.sort().reverse();
   const periods = CRM_PERIODS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
@@ -21805,7 +21806,7 @@ function leadArrivalDate(lead) {
   const d = new Date(parseCrmDateToISO(raw, ''));
   return isNaN(d.getTime()) ? null : d;
 }
-// Venda: o card fechado conta no dia em que entrou na coluna de ganho. Os outros contam no dia em que chegaram.
+// Venda: dia em que o card entrou na coluna de ganho (faturamento e resumo). Cards antigos sem essa data ficam com o dia de chegada.
 function leadSaleDate(lead) {
   if (!lead || !lead.stageChangedAt) return null;
   const act = normalizeLeadAccountId(lead) || lead.act;
@@ -21840,23 +21841,56 @@ function crmPeriodRange(value) {
   }
   return null;
 }
+function crmDateInPeriod(d) {
+  const sel = document.getElementById('crm-month-filter');
+  const selected = sel ? sel.value : getCurrentMonthKey();
+  if (!selected || selected === 'all') return true;
+  if (!d) return false;
+  if (selected.startsWith('p:')) {
+    const [from, to] = crmPeriodRange(selected) || [];
+    return (!from || d >= from) && (!to || d < to);
+  }
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === selected;
+}
+// Linha acima do funil: separa leads novos de fechamentos e explica cards que chegaram ou fecharam em outro dia.
+function renderCrmPeriodSummary(leads, isWon) {
+  const box = document.getElementById('crm-period-summary');
+  if (!box) return;
+  const sel = document.getElementById('crm-month-filter');
+  if (!sel || !sel.value || sel.value === 'all') { box.textContent = ''; box.title = ''; return; }
+  const plural = (n, one, many) => n === 1 ? one : many;
+  const dayOf = d => _cardDayFmt.format(d);
+  const nameOf = l => limitText(l.name || 'Lead sem nome', 40);
+  const novos = leads.filter(l => crmDateInPeriod(leadArrivalDate(l))).length;
+  const fechados = leads.filter(l => isWon(l) && crmDateInPeriod(leadFilterDate(l))).length;
+  const deOutroDia = leads.filter(l => { const d = leadSaleDate(l); return d && crmDateInPeriod(d) && !crmDateInPeriod(leadArrivalDate(l)); });
+  const fecharamFora = leads.filter(l => { const d = leadSaleDate(l); return d && !crmDateInPeriod(d); });
+  const parts = [`${novos} ${plural(novos, 'lead novo', 'leads novos')}`, `${fechados} ${plural(fechados, 'fechamento', 'fechamentos')}`];
+  if (deOutroDia.length) parts.push(`${deOutroDia.length} de ${plural(deOutroDia.length, 'lead de outro dia', 'leads de outros dias')}`);
+  if (fecharamFora.length) {
+    const days = new Map();
+    fecharamFora.slice().sort((a, b) => leadSaleDate(a) - leadSaleDate(b)).forEach(l => { const k = dayOf(leadSaleDate(l)); days.set(k, (days.get(k) || 0) + 1); });
+    const n = fecharamFora.length;
+    if (days.size === 1) parts.push(`${n} ${plural(n, 'fechou', 'fecharam')} dia ${[...days.keys()][0]}`);
+    else parts.push(`${n} fecharam em outros dias: ${[...days].map(([k, c]) => `${k} (${c})`).join(', ')}`);
+  }
+  box.textContent = parts.join(' · ');
+  const list = (items, text) => { const shown = items.slice(0, 12).map(text).join(', '); return shown + (items.length > 12 ? ` e mais ${items.length - 12}` : ''); };
+  const tips = [];
+  if (deOutroDia.length) tips.push(`O quadro tem ${leads.length} cards porque inclui ${deOutroDia.length} ${plural(deOutroDia.length, 'venda de lead que chegou', 'vendas de leads que chegaram')} em outro dia: ${list(deOutroDia, l => `${nameOf(l)} (chegou ${dayOf(leadArrivalDate(l) || leadSaleDate(l))})`)}.`);
+  if (fecharamFora.length) tips.push(list(fecharamFora, l => `${nameOf(l)} fechou ${dayOf(leadSaleDate(l))}`) + '.');
+  box.title = tips.join('\n');
+}
 function filterLeadsByCrmMonth(leads) {
   const sel = document.getElementById('crm-month-filter');
   const selected = sel ? sel.value : getCurrentMonthKey();
   if (!selected || selected === 'all') return leads;
-  if (selected.startsWith('p:')) {
-    const [from, to] = crmPeriodRange(selected) || [];
-    return (leads || []).filter(lead => {
-      const d = leadFilterDate(lead);
-      if (!d) return false;
-      return (!from || d >= from) && (!to || d < to);
-    });
-  }
-  return (leads || []).filter(lead => leadFilterMonthKey(lead) === selected);
+  // O card aparece no período se chegou nele ou se fechou nele.
+  return (leads || []).filter(lead => crmDateInPeriod(leadArrivalDate(lead)) || crmDateInPeriod(leadSaleDate(lead)));
 }
 // "Escolher datas...": mostra os campos de data ao lado do filtro.
 function crmCustomRangeUi(sel) {
-  sel.title = 'Cards fechados contam no dia da venda. Os demais, no dia em que o lead chegou.';
+  sel.title = 'Mostra os leads que chegaram ou fecharam no período. O faturamento conta pelo dia da venda.';
   let box = document.getElementById('crm-range-box');
   if (!box) {
     box = document.createElement('span');
@@ -22303,12 +22337,13 @@ function renderKanbanNow() {
   let totalFechado = 0;
   let qtdFechado = 0;
   leads.forEach(l => {
-    if (isWonStage(boardStageOf.get(l), STAGES) && l.valor) {
+    if (isWonStage(boardStageOf.get(l), STAGES) && l.valor && crmDateInPeriod(leadFilterDate(l))) {
       const raw = String(l.valor).replace(/[^0-9,.]/g,'').replace(/\.(?=\d{3})/g,'').replace(',','.'); // "3.100" = 3100, "1.500,00" = 1500
       const val = parseFloat(raw);
       if (!isNaN(val) && val > 0) { totalFechado += val; qtdFechado++; }
     }
   });
+  renderCrmPeriodSummary(leads, l => isWonStage(boardStageOf.get(l), STAGES));
   const banner = document.getElementById('valor-fechado-banner');
   if (banner) {
     banner.style.display = 'flex';
@@ -22474,8 +22509,6 @@ function renderKanbanNow() {
       const tagAct = normalizeActValue(lead.act);
       const leadTagsById = tagIndexByAct[tagAct] || (tagIndexByAct[tagAct] = Object.fromEntries(((typeof _contactTagsCache !== 'undefined' && _contactTagsCache[tagAct]) || []).map(t => [t.id, t])));
       const chips = [];
-      const saleDate = leadSaleDate(lead);
-      if (saleDate) chips.push(`<span class="kc-chip" style="background:var(--green-dim);color:var(--green);" title="Dia e hora em que o card entrou nesta coluna">${uiIco('check', 11)} Fechou ${_cardDayFmt.format(saleDate)} ${_cardTimeFmt.format(saleDate)}</span>`);
       if (lead.origem) chips.push(`<span class="kc-chip kc-origin" title="${escapeHtml(limitText(lead.origem, 300))}">${escapeHtml(limitText(lead.origem, 42))}</span>`);
       (Array.isArray(lead.tags) ? lead.tags : []).map(id => leadTagsById[id]).filter(Boolean).forEach(t => chips.push(tagChipHtml(t)));
       const autoChip = automationCardChip(lead);
