@@ -6890,6 +6890,31 @@ async function deletePipeline(act, id) {
 
 // Coluna de venda fechada: o id padrão ("fechado"/"fechou") ou, nos pipelines e colunas criados pelo cliente, o nome da coluna.
 const WON_STAGE_LABELS = ['fechado', 'fechou', 'venda fechada', 'ganho', 'vendido'];
+// Colunas de venda: as que o cliente marcou em "Notificação de venda" (valem mesmo com o aviso desligado).
+// Sem nada marcado, valem os nomes de sempre.
+function clientSaleKeys(act) {
+  const c = (WHATSAPP_SETTINGS[normalizeActValue(act)] || {}).saleNotify;
+  return c && Array.isArray(c.stages) && c.stages.length ? c.stages : null;
+}
+function leadIsSale(lead, stageId) {
+  const act = normalizeLeadAccountId(lead) || lead.act;
+  const pipe = leadPipeline(lead);
+  const stage = stageId || lead.stage;
+  const keys = clientSaleKeys(act);
+  return keys ? keys.includes(pipe + '|' + stage) : isWonStage(stage, getStages(act, pipe));
+}
+// As marcações de todos os clientes chegam uma vez por sessão; depois disso as telas de números são refeitas.
+let _saleSettingsAsked = false;
+function ensureSaleSettings() {
+  if (_saleSettingsAsked || !window._fb || !window._fb.getWhatsAppSettings) return;
+  _saleSettingsAsked = true;
+  window._fb.getWhatsAppSettings().then(all => {
+    Object.assign(WHATSAPP_SETTINGS, all);
+    crmScheduleRender();
+    const v = document.getElementById('clientes-view');
+    if (v && v.style.display === 'block') renderClientesView();
+  }).catch(() => { _saleSettingsAsked = false; });
+}
 function isWonStage(stageId, stages) {
   if (['fechado', 'fechou'].includes(stageId)) return true;
   const st = (stages || []).find(s => s.id === stageId);
@@ -11409,16 +11434,18 @@ function clientStats(act) {
   const won = ['fechado', 'fechou', 'compareceu'];
   const lost = ['perdido', 'nresp', 'ncompareceu'];
   const stages = getStages(act) || [];
-  const allStages = getAllStages(act);
   const first = stages[0] ? stages[0].id : 'novo';
+  // Com colunas marcadas pelo cliente, só elas contam como venda.
+  const isSale = l => clientSaleKeys(act) ? leadIsSale(l) : (won.includes(l.stage) || leadIsSale(l));
   return {
     month: monthLeads.length,
-    deals: leads.filter(l => l.stage && l.stage !== first && !won.includes(l.stage) && !isWonStage(l.stage, allStages) && !lost.includes(l.stage)).length,
-    won: leads.filter(l => (won.includes(l.stage) || isWonStage(l.stage, allStages)) && leadFilterMonthKey(l) === month).length
+    deals: leads.filter(l => l.stage && l.stage !== first && !isSale(l) && !lost.includes(l.stage)).length,
+    won: leads.filter(l => isSale(l) && leadFilterMonthKey(l) === month).length
   };
 }
 
 function renderClientesView() {
+  ensureSaleSettings();
   const box = document.getElementById('clientes-grid');
   if (!box) return;
   if (!_leadsCache) { box.innerHTML = '<div class="integ-muted">Carregando...</div>'; getLeadsAsync().then(renderClientesView).catch(() => {}); return; }
@@ -21808,9 +21835,7 @@ function leadArrivalDate(lead) {
 }
 // Venda: dia em que o card entrou na coluna de ganho (faturamento e resumo). Cards antigos sem essa data ficam com o dia de chegada.
 function leadSaleDate(lead) {
-  if (!lead || !lead.stageChangedAt) return null;
-  const act = normalizeLeadAccountId(lead) || lead.act;
-  if (!isWonStage(lead.stage, getStages(act, leadPipeline(lead)))) return null;
+  if (!lead || !lead.stageChangedAt || !leadIsSale(lead)) return null;
   const d = new Date(lead.stageChangedAt);
   return isNaN(d.getTime()) ? null : d;
 }
@@ -22268,6 +22293,7 @@ function kanbanFlushCards(list) {
 }
 function renderKanban() { return withLeadsMemo(renderKanbanNow); }
 function renderKanbanNow() {
+  ensureSaleSettings();
   // Com um card sendo arrastado, redesenhar tiraria o card da mão: redesenha quando ele for solto.
   if (_cardDrag && _cardDrag.active) { _kanbanRenderDeferred = true; return; }
   _kbQueue = [];
@@ -22337,13 +22363,13 @@ function renderKanbanNow() {
   let totalFechado = 0;
   let qtdFechado = 0;
   leads.forEach(l => {
-    if (isWonStage(boardStageOf.get(l), STAGES) && l.valor && crmDateInPeriod(leadFilterDate(l))) {
+    if (leadIsSale(l, boardStageOf.get(l)) && l.valor && crmDateInPeriod(leadFilterDate(l))) {
       const raw = String(l.valor).replace(/[^0-9,.]/g,'').replace(/\.(?=\d{3})/g,'').replace(',','.'); // "3.100" = 3100, "1.500,00" = 1500
       const val = parseFloat(raw);
       if (!isNaN(val) && val > 0) { totalFechado += val; qtdFechado++; }
     }
   });
-  renderCrmPeriodSummary(leads, l => isWonStage(boardStageOf.get(l), STAGES));
+  renderCrmPeriodSummary(leads, l => leadIsSale(l, boardStageOf.get(l)));
   const banner = document.getElementById('valor-fechado-banner');
   if (banner) {
     banner.style.display = 'flex';
@@ -23624,6 +23650,7 @@ async function openSaleNotify() {
   openHuvenModal('🎉 Notificação de venda' + (isAdmin ? ' · ' + (getClientDisplayName(act) || act) : ''), `<div style="font-size:12.5px;color:var(--muted2);line-height:1.5;">Quando um card entra numa etapa de venda, a equipe recebe no celular e no computador: <b style="color:var(--text);">"Venda fechada! R$ 3.500,00 · Nome do lead"</b>. Se o card estiver sem valor, o CRM pergunta o valor na hora.</div>
     <label class="integ-toggle" style="display:flex;margin:14px 0 4px;font-weight:600;"><input type="checkbox" id="sale-enabled" ${cfg.enabled ? 'checked' : ''}> Ligar a notificação de venda</label>
     <div style="font-size:12.5px;color:var(--text);font-weight:600;margin-top:12px;">Quais etapas são venda?</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Vale também para os fechamentos e o faturamento do funil, mesmo com a notificação desligada.</div>
     <div style="max-height:300px;overflow:auto;">${groups}</div>
     <div style="font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.5;">Para receber, cada pessoa ativa as notificações no próprio aparelho (no iPhone, com o CRM adicionado à tela de início). <a href="#" onclick="event.preventDefault(); enablePushNotifications();" style="color:var(--gold);">Ativar neste aparelho</a></div>
     <div style="display:flex;justify-content:flex-end;margin-top:14px;"><button class="btn-update" id="sale-save" onclick="saveSaleNotify('${escapeJsString(act)}')">Salvar</button></div>`, 480);
@@ -23640,6 +23667,7 @@ async function saveSaleNotify(act) {
     WHATSAPP_SETTINGS[act] = { ...(WHATSAPP_SETTINGS[act] || {}), saleNotify };
     auditLog(act, 'pipeline', enabled ? `Ligou a notificação de venda (${stages.length} etapa(s))` : 'Desligou a notificação de venda');
     closeHuvenModal();
+    crmScheduleRender();
     showToast(enabled ? 'Notificação de venda ligada.' : 'Notificação de venda desligada.', 'success');
   } catch (e) {
     showToast('Não salvou: ' + e.message, 'error', 6000);
