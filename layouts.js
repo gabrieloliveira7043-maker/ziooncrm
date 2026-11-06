@@ -48,6 +48,7 @@
     H.style.setProperty('--ui-bg-img', 'url("' + bgUrl(p.bg).replace(/"/g, '') + '")');
     ensureBg();
     if (on) { build(); renderNav(); } else teardown();
+    rxSync();
     renderAparencia();
   }
   function ensureBg() {
@@ -413,13 +414,16 @@
         (custom ? '<button type="button" class="ui-ap-bg on" data-bg="' + esc(p.bg) + '" style="background-image:url(\'' + esc(p.bg) + '\')"><span>Sua foto</span></button>' : '') +
         '<label class="ui-ap-bg ui-ap-up"><input type="file" accept="image/jpeg,image/png,image/webp" id="ui-ap-file" style="display:none;"><b style="font-size:18px;">+</b>Subir foto</label></div>' : '') +
       (p.theme === 'vidro' || p.theme === 'quente' ? '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;"><button type="button" class="huv-btn" id="ui-ap-nav">Personalizar menu</button><span class="ui-ap-sub" style="margin:0;">Escolha as opções e a ordem da barra superior e da lateral.</span></div>' : '') +
-      '<label class="integ-toggle"><input type="checkbox" id="ui-ap-calm"' + (p.calm ? ' checked' : '') + '> Reduzir efeitos (sem desfoque nem animações, para aparelhos mais lentos)</label></div>';
+      '<label class="integ-toggle"><input type="checkbox" id="ui-ap-calm"' + (p.calm ? ' checked' : '') + '> Reduzir efeitos (sem desfoque nem animações, para aparelhos mais lentos)</label>' +
+      (p.theme === 'vidro' && !p.calm ? '<label class="integ-toggle" style="margin-top:8px;"><input type="checkbox" id="ui-ap-reflexo"' + (rxPref() ? ' checked' : '') + '> Reflexo do mouse no vidro (luz discreta que acompanha o mouse neste aparelho)</label>' : '') + '</div>';
     box.querySelectorAll('.ui-ap-opt').forEach(function (b) { b.onclick = function () { save({ theme: b.dataset.theme, bg: prefs.bg || 'por-do-sol', calm: !!prefs.calm }); }; });
     box.querySelectorAll('.ui-ap-bg[data-bg]').forEach(function (b) { b.onclick = function () { save({ theme: prefs.theme, bg: b.dataset.bg, calm: !!prefs.calm }); }; });
     var navBtn = document.getElementById('ui-ap-nav');
     if (navBtn) navBtn.onclick = openNavEditor;
     var calm = document.getElementById('ui-ap-calm');
     if (calm) calm.onchange = function () { save({ theme: prefs.theme, bg: prefs.bg, calm: calm.checked }); };
+    var reflexo = document.getElementById('ui-ap-reflexo');
+    if (reflexo) reflexo.onchange = function () { try { localStorage.setItem('crm_ui_reflexo', reflexo.checked ? 'on' : 'off'); } catch (e) {} rxSync(); };
     var file = document.getElementById('ui-ap-file');
     if (file) file.onchange = function () { upload(file.files[0]); };
   }
@@ -602,6 +606,182 @@
     var tries = 0;
     var t = setInterval(function () { hook(); if (++tries > 40 || (window.switchView && window.switchView._ui && window.applyViewPermissions && window.applyViewPermissions._ui)) clearInterval(t); }, 250);
   }
+  // ---------- Reflexo do mouse no vidro ----------
+  // Uma camada só, por cima da tela e sem receber cliques: luz branca fraca, com inércia, recortada nos vidros perto do mouse.
+  // Só desenha enquanto o mouse se move; parado, nada se mexe. Fica de fora no celular, em "Reduzir efeitos" e em quem pede menos movimento.
+  var RX_GLASS = '.metric-card,.table-card,.integ-card,.help-card,.cfgc-card,.kanban-col,.kanban-card,.paleta-card,.topbar,.chart-card,.huv-card,.at-card,.camp-card,.auto-card,.client-card,.cal-grid,.cal-list-ev,.chat-list,.chat-main,.chat-panel,.stat-card,.analise-card,.an-kpi,.an-card,.actd-kpi,.actd-card,.actv-row,.actv-team-card,.flow-editor,.ui-topnav,.ui-dock,#analise-view,#atividades-view';
+  var RX_BLOCK = '.modal-overlay,#huven-modal,.ntc-overlay,.login-overlay,.ui-menu,#confirm-modal,#upd-banner';
+  var rx = { canvas: null, ctx: null, on: false, slow: false, raf: 0, mx: 0, my: 0, lx: 0, ly: 0, fade: 0, inside: false, trail: [], rects: [], sig: '', hitAt: 0, last: 0, w: 0, h: 0, scale: 1, dts: 0, dtN: 0 };
+  function rxPref() { try { return localStorage.getItem('crm_ui_reflexo') !== 'off'; } catch (e) { return true; } }
+  function rxAllowed() {
+    return H.classList.contains('ui-vidro') && !H.classList.contains('ui-calm') && rxPref() && !rx.slow
+      && window.matchMedia('(hover: hover) and (pointer: fine)').matches && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+  function rxSize() {
+    if (!rx.canvas) return;
+    rx.w = window.innerWidth; rx.h = window.innerHeight;
+    rx.scale = Math.min(window.devicePixelRatio || 1, 1.5);
+    rx.canvas.width = Math.round(rx.w * rx.scale);
+    rx.canvas.height = Math.round(rx.h * rx.scale);
+  }
+  function rxSync() {
+    var want = rxAllowed();
+    if (want && !rx.canvas) {
+      rx.canvas = document.createElement('canvas');
+      rx.canvas.id = 'ui-reflexo';
+      rx.canvas.setAttribute('aria-hidden', 'true');
+      rx.canvas.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:301;pointer-events:none;contain:strict;';
+      document.body.appendChild(rx.canvas);
+      rx.ctx = rx.canvas.getContext('2d');
+      rxSize();
+    }
+    if (!want && rx.canvas) { rx.canvas.remove(); rx.canvas = null; rx.ctx = null; rx.rects = []; rx.sig = ''; rx.fade = 0; rx.trail = []; }
+    rx.on = want;
+  }
+  // Vidros perto do mouse, pelo que está de fato visível em volta dele.
+  function rxHit() {
+    var rects = [], seen = [];
+    var points = [[rx.lx, rx.ly]];
+    for (var a = 0; a < 8; a++) {
+      points.push([rx.lx + Math.cos(a * Math.PI / 4) * 150, rx.ly + Math.sin(a * Math.PI / 4) * 150]);
+      points.push([rx.lx + Math.cos(a * Math.PI / 4 + 0.39) * 280, rx.ly + Math.sin(a * Math.PI / 4 + 0.39) * 280]);
+    }
+    var top = document.elementFromPoint(rx.mx, rx.my);
+    if (top && top.closest && top.closest(RX_BLOCK)) return [];
+    points.forEach(function (p) {
+      if (p[0] < 0 || p[1] < 0 || p[0] >= rx.w || p[1] >= rx.h) return;
+      document.elementsFromPoint(p[0], p[1]).forEach(function (el) {
+        if (seen.indexOf(el) >= 0 || !el.matches(RX_GLASS) || el.closest(RX_BLOCK)) return;
+        seen.push(el);
+        var r = el.getBoundingClientRect();
+        if (r.width < 40 || r.height < 24) return;
+        rects.push({ x: r.left, y: r.top, w: r.width, h: r.height, r: Math.min(parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0, r.height / 2) });
+      });
+    });
+    return rects;
+  }
+  function rxRefresh() {
+    rx.rects = rxHit();
+    rx.hitAt = performance.now();
+    rx.sig = rx.rects.map(function (r) { return [r.x | 0, r.y | 0, r.w | 0, r.h | 0].join(); }).join(';');
+  }
+  function rxPath(c) {
+    c.beginPath();
+    rx.rects.forEach(function (r) {
+      if (c.roundRect) c.roundRect(r.x, r.y, r.w, r.h, r.r); else c.rect(r.x, r.y, r.w, r.h);
+    });
+  }
+  function rxDraw(now) {
+    var c = rx.ctx, f = rx.fade;
+    c.setTransform(rx.scale, 0, 0, rx.scale, 0, 0);
+    c.clearRect(0, 0, rx.w, rx.h);
+    if (f < 0.01 || !rx.rects.length) return;
+    c.save();
+    rxPath(c);
+    c.clip();
+    // Faixas, como a luz de uma janela no vidro; mudam pouco de lugar com o mouse e só existem perto dele.
+    var shift = (rx.lx - rx.w / 2) * -0.09, lift = (rx.ly - rx.h / 2) * -0.03;
+    [[0.36, 150, 0.05], [0.47, 62, 0.035], [0.78, 210, 0.04]].forEach(function (b) {
+      c.save();
+      c.translate(rx.w * b[0] + shift, rx.h / 2 + lift);
+      c.rotate(0.3);
+      var g = c.createLinearGradient(-b[1] / 2, 0, b[1] / 2, 0);
+      g.addColorStop(0, 'rgba(255,252,245,0)');
+      g.addColorStop(0.5, 'rgba(255,252,245,' + b[2] * f + ')');
+      g.addColorStop(1, 'rgba(255,252,245,0)');
+      c.fillStyle = g;
+      c.fillRect(-b[1] / 2, -2000, b[1], 4000);
+      c.restore();
+    });
+    c.globalCompositeOperation = 'destination-in';
+    var mask = c.createRadialGradient(rx.lx, rx.ly, 0, rx.lx, rx.ly, 560);
+    mask.addColorStop(0, 'rgba(0,0,0,1)');
+    mask.addColorStop(0.55, 'rgba(0,0,0,.75)');
+    mask.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = mask;
+    c.fillRect(0, 0, rx.w, rx.h);
+    c.globalCompositeOperation = 'lighter';
+    // Rastro curto e sem cor, só quando o mouse anda rápido.
+    rx.trail.forEach(function (p) {
+      var age = (now - p.t) / 500;
+      if (age >= 1 || p.v < 0.05) return;
+      var a = Math.pow(1 - age, 1.6) * 0.03 * p.v * f, r = 95 + age * 40;
+      var g = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+      g.addColorStop(0, 'rgba(255,250,240,' + a + ')');
+      g.addColorStop(1, 'rgba(255,250,240,0)');
+      c.fillStyle = g;
+      c.fillRect(p.x - r, p.y - r, r * 2, r * 2);
+    });
+    // Brilho fraco perto do mouse.
+    var core = c.createRadialGradient(rx.lx, rx.ly, 0, rx.lx, rx.ly, 310);
+    core.addColorStop(0, 'rgba(255,250,238,' + 0.085 * f + ')');
+    core.addColorStop(0.5, 'rgba(255,250,238,' + 0.03 * f + ')');
+    core.addColorStop(1, 'rgba(255,250,238,0)');
+    c.fillStyle = core;
+    c.fillRect(rx.lx - 310, rx.ly - 310, 620, 620);
+    c.restore();
+    // Só a borda mais próxima acende, fina.
+    var edge = c.createRadialGradient(rx.lx, rx.ly, 0, rx.lx, rx.ly, 270);
+    edge.addColorStop(0, 'rgba(255,252,245,' + 0.5 * f + ')');
+    edge.addColorStop(1, 'rgba(255,252,245,0)');
+    c.strokeStyle = edge;
+    c.lineWidth = 1.2;
+    rx.rects.forEach(function (r) {
+      c.beginPath();
+      if (c.roundRect) c.roundRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1, r.r); else c.rect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+      c.stroke();
+    });
+  }
+  function rxFrame(now) {
+    rx.raf = 0;
+    if (!rx.on || !rx.ctx) return;
+    var dt = rx.last ? Math.min(now - rx.last, 100) : 16;
+    if (rx.last && now - rx.last < 250) {
+      rx.dts += now - rx.last; rx.dtN++;
+      // Aparelho sofrendo mesmo com o efeito: desliga nesta sessão, para o CRM continuar fluido.
+      if (rx.dtN >= 120) { var avg = rx.dts / rx.dtN; rx.dts = 0; rx.dtN = 0; if (avg > 42) { rx.slow = true; rxSync(); return; } }
+    }
+    rx.last = now;
+    var k = 1 - Math.exp(-dt / 110);
+    var px = rx.lx, py = rx.ly;
+    rx.lx += (rx.mx - rx.lx) * k;
+    rx.ly += (rx.my - rx.ly) * k;
+    rx.fade += ((rx.inside ? 1 : 0) - rx.fade) * (1 - Math.exp(-dt / 200));
+    var dist = Math.hypot(rx.mx - rx.lx, rx.my - rx.ly);
+    var speed = Math.hypot(rx.lx - px, rx.ly - py) / Math.max(dt, 1) * 1000;
+    if (dist > 0.3) rx.trail.push({ x: rx.lx, y: rx.ly, t: now, v: Math.min(speed / 1300, 1) });
+    while (rx.trail.length && (now - rx.trail[0].t > 500 || rx.trail.length > 30)) rx.trail.shift();
+    if (now - rx.hitAt > 90) rxRefresh();
+    rxDraw(now);
+    var fading = Math.abs((rx.inside ? 1 : 0) - rx.fade) > 0.01;
+    if (dist > 0.3 || rx.trail.length || fading) rx.raf = requestAnimationFrame(rxFrame);
+    else rx.last = 0; // parado: não gasta nada
+  }
+  function rxWake() { if (rx.on && !rx.raf) rx.raf = requestAnimationFrame(rxFrame); }
+  function rxRedrawSoon() {
+    if (!rx.on || rx.fade < 0.01) return;
+    rx.hitAt = 0;
+    rxWake();
+  }
+  document.addEventListener('pointermove', function (e) {
+    if (!rx.on || e.pointerType !== 'mouse') return;
+    if (!rx.inside && rx.fade < 0.01) { rx.lx = e.clientX; rx.ly = e.clientY; }
+    rx.mx = e.clientX; rx.my = e.clientY; rx.inside = true;
+    rxWake();
+  }, { passive: true });
+  document.documentElement.addEventListener('mouseleave', function () { rx.inside = false; rxWake(); });
+  window.addEventListener('blur', function () { rx.inside = false; rxWake(); });
+  window.addEventListener('resize', function () { rxSize(); rxRedrawSoon(); });
+  document.addEventListener('scroll', rxRedrawSoon, { passive: true, capture: true });
+  document.addEventListener('click', function () { setTimeout(rxRedrawSoon, 60); setTimeout(rxRedrawSoon, 450); }, { passive: true, capture: true });
+  // Tela mudou com o mouse parado (card novo, troca de tela): acerta os recortes.
+  setInterval(function () {
+    if (!rx.on || rx.raf || rx.fade < 0.01 || document.hidden) return;
+    var old = rx.sig;
+    rxRefresh();
+    if (rx.sig !== old) rxDraw(performance.now());
+  }, 1500);
+
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
   window.uiLayouts = { apply: save, get: function () { return prefs; } };
 })();
