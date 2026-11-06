@@ -2961,6 +2961,29 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
 .rot-days,.rot-who-list{display:flex;gap:6px 12px;flex-wrap:wrap;}
 .rot-day{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--text);cursor:pointer;}
 .actv-empty{padding:28px;text-align:center;color:var(--muted2);border:1px dashed var(--border);border-radius:12px;}
+.actd-periods{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+.actd-dates{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+.actd-dates .field-input{width:auto;margin:0;}
+.actd-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:12px;}
+.actd-kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;cursor:help;}
+.actd-kpi-label{font-size:12.5px;color:var(--muted2);}
+.actd-kpi-num{font-size:28px;font-weight:700;color:var(--text);line-height:1.25;margin:2px 0;}
+.actd-kpi-num.late{color:var(--red);}
+.actd-kpi-sub{font-size:11.5px;color:var(--muted2);}
+.actd-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:10px;margin-bottom:10px;}
+.actd-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;min-width:0;}
+.actd-card.wide{grid-column:1 / -1;}
+.actd-card-title{font-size:14px;font-weight:600;color:var(--text);}
+.actd-card-sub{font-size:12px;color:var(--muted2);margin:2px 0 10px;}
+.actd-table-wrap{overflow-x:auto;margin-bottom:10px;}
+.actd-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px;}
+.actd-table th{text-align:right;font-weight:500;font-size:12px;color:var(--muted2);padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;}
+.actd-table td{text-align:right;color:var(--text);padding:7px 10px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;}
+.actd-table th:first-child,.actd-table td:first-child{text-align:left;}
+.actd-table tr:last-child td{border-bottom:0;}
+.actd-table td.late{color:var(--red);font-weight:600;}
+.actd-details{margin-bottom:12px;}
+.actd-details summary{cursor:pointer;font-size:13px;color:var(--muted2);padding:8px 2px;}
 .actv-team{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin-bottom:12px;}
 .actv-team-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;}
 .actv-team-name{font-size:12.5px;color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -17278,7 +17301,8 @@ async function snoozeReminder(id) {
 // Ligada a um lead ou número, aparece também na conversa do Chat. O vendedor vê as dele; o gestor (login principal) vê as de todos.
 const ACT_KINDS = { ligacao: ['Ligação', 'phone'], whatsapp: ['WhatsApp', 'message'], reuniao: ['Reunião', 'calendar'], email: ['E-mail', 'note'], visita: ['Visita', 'pin'], tarefa: ['Tarefa', 'clipboard'], lembrete: ['Lembrete', 'bell'] };
 const ACT_RESULTS = { atendeu: 'Atendeu', nao_atendeu: 'Não atendeu', caixa: 'Caixa postal', feito: 'Feito' };
-let _actv = { tab: 'hoje', who: '', kind: '', done: [], doneAct: '', doneAt: 0 };
+let _actv = { tab: 'hoje', who: '', kind: '', done: [], doneAct: '', doneAt: 0, doneReady: false, doneErr: false, dash: 'mes', dashFrom: '', dashTo: '', dashData: null };
+try { const p = localStorage.getItem('huven_actd_period'); if (p && p !== 'datas') _actv.dash = p; } catch (e) {}
 let _actLeadIdx = null;
 let _actFocus = null;
 let _actImport = null;
@@ -17400,17 +17424,25 @@ function actDoneVisible(act) {
 }
 async function actLoadDone(act, force) {
   if (!act || (!force && _actv.doneAct === act && Date.now() - _actv.doneAt < 60000)) return;
+  if (_actv.doneAct !== act) _actv.doneReady = false;
   _actv.doneAct = act; _actv.doneAt = Date.now();
   try {
-    const since = new Date(Date.now() - 30 * 86400000).toISOString();
-    _actv.done = (await window._fb.listDoneTasks(act)).filter(n => !n.call && String(n.doneAt || '') >= since);
-  } catch (e) { _actv.done = []; console.warn('Atividades concluídas indisponíveis:', e); }
+    const list = (await window._fb.listDoneTasks(act)).filter(n => !n.call);
+    if (_actv.doneAct !== act) return; // trocou de cliente enquanto lia
+    _actv.done = list;
+    _actv.doneErr = false;
+  } catch (e) {
+    if (_actv.doneAct !== act) return;
+    _actv.done = []; _actv.doneErr = true; console.warn('Atividades concluídas indisponíveis:', e);
+  }
+  _actv.doneReady = true;
   renderAtividadesView();
 }
 
 function renderAtividadesView() {
   const body = document.getElementById('atividades-body');
   if (!body) return;
+  actDashClear();
   let clientSel = '';
   if (isAdmin) {
     const prev = (document.getElementById('actv-client') || {}).value || (activeClient && activeClient.account) || '';
@@ -17432,8 +17464,9 @@ function renderAtividadesView() {
   const mgr = actIsManager();
   const team = actTeam(act);
   const lists = actTabLists(act);
-  const done = actDoneVisible(act);
-  const tabs = [['hoje', 'Hoje', lists.hoje.length], ['atrasadas', 'Atrasadas', lists.atrasadas.length], ['proximas', 'Próximas', lists.proximas.length], ['concluidas', 'Concluídas (30 dias)', done.length], ['rotinas', 'Rotinas', rotPendingCount(act)]];
+  const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
+  const done = actDoneVisible(act).filter(n => String(n.doneAt || '') >= since30);
+  const tabs = [['hoje', 'Hoje', lists.hoje.length], ['atrasadas', 'Atrasadas', lists.atrasadas.length], ['proximas', 'Próximas', lists.proximas.length], ['concluidas', 'Concluídas (30 dias)', done.length], ['rotinas', 'Rotinas', rotPendingCount(act)], ['painel', 'Dashboard', null]];
   const list = _actv.tab === 'concluidas' ? done : lists[_actv.tab] || [];
   const pendingFocus = [...lists.atrasadas, ...lists.hoje];
   const t0 = actDayStart(Date.now());
@@ -17456,10 +17489,172 @@ function renderAtividadesView() {
       ${mgr ? `<select class="field-input actv-filter" onchange="_actv.who = this.value; renderAtividadesView()"><option value="">Todos da equipe</option><option value="__me"${_actv.who === '__me' ? ' selected' : ''}>Só as minhas</option>${team.map(t => `<option value="${escapeHtml(t.login)}"${_actv.who === t.login ? ' selected' : ''}>${escapeHtml(t.name)}</option>`).join('')}</select>` : ''}
       <select class="field-input actv-filter" onchange="_actv.kind = this.value; renderAtividadesView()"><option value="">Todos os tipos</option>${Object.entries(ACT_KINDS).map(([k, v]) => `<option value="${k}"${_actv.kind === k ? ' selected' : ''}>${v[0]}</option>`).join('')}</select>
     </div>
-    ${_actv.tab === 'rotinas' ? '' : summary}
+    ${_actv.tab === 'rotinas' || _actv.tab === 'painel' ? '' : summary}
     ${_actv.tab === 'hoje' ? rotStripHtml(act) : ''}
-    <div class="actv-tabs">${tabs.map(([id, label, n]) => `<button class="actv-tab${_actv.tab === id ? ' on' : ''}${id === 'atrasadas' && n ? ' late' : ''}" onclick="_actv.tab='${id}'; renderAtividadesView()">${label} <span>${n}</span></button>`).join('')}</div>
-    ${_actv.tab === 'rotinas' ? rotTabHtml(act) : `<div class="actv-list">${list.length ? list.map(actRowHtml).join('') : `<div class="actv-empty">${_actv.tab === 'concluidas' ? 'Nada concluído nos últimos 30 dias.' : 'Nenhuma atividade aqui.'}</div>`}</div>`}`;
+    <div class="actv-tabs">${tabs.map(([id, label, n]) => `<button class="actv-tab${_actv.tab === id ? ' on' : ''}${id === 'atrasadas' && n ? ' late' : ''}" onclick="_actv.tab='${id}'; renderAtividadesView()">${label}${n === null ? '' : ` <span>${n}</span>`}</button>`).join('')}</div>
+    ${_actv.tab === 'painel' ? actDashHtml(act) : _actv.tab === 'rotinas' ? rotTabHtml(act) : `<div class="actv-list">${list.length ? list.map(actRowHtml).join('') : `<div class="actv-empty">${_actv.tab === 'concluidas' ? 'Nada concluído nos últimos 30 dias.' : 'Nenhuma atividade aqui.'}</div>`}</div>`}`;
+  if (_actv.tab === 'painel') actDashDraw();
+}
+
+// ----- Dashboard das atividades: números e gráficos do período, respeitando os filtros de pessoa e tipo. -----
+const ACTD_PERIODS = [['hoje', 'Hoje'], ['ontem', 'Ontem'], ['semana', 'Esta semana'], ['semana_passada', 'Semana passada'], ['mes', 'Este mês'], ['mes_passado', 'Mês passado'], ['30d', '30 dias'], ['datas', 'Escolher datas']];
+const ACTD_COLORS = { done: '#1FA855', todo: '#4E7FD6', late: '#E5484D' };
+let _actdCharts = [];
+function actDashClear() { _actdCharts.forEach(c => { try { c.destroy(); } catch (e) {} }); _actdCharts = []; }
+function actDashInputDate(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function actDashRange() {
+  const day = new Date(); day.setHours(0, 0, 0, 0);
+  const add = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+  const monday = add(day, -((day.getDay() + 6) % 7));
+  const month = new Date(day.getFullYear(), day.getMonth(), 1);
+  switch (_actv.dash) {
+    case 'hoje': return [day, add(day, 1)];
+    case 'ontem': return [add(day, -1), day];
+    case 'semana': return [monday, add(monday, 7)];
+    case 'semana_passada': return [add(monday, -7), monday];
+    case 'mes_passado': return [new Date(day.getFullYear(), day.getMonth() - 1, 1), month];
+    case '30d': return [add(day, -29), add(day, 1)];
+    case 'datas': {
+      let a = _actv.dashFrom ? new Date(_actv.dashFrom + 'T00:00:00') : month;
+      let b = _actv.dashTo ? new Date(_actv.dashTo + 'T00:00:00') : day;
+      if (b < a) [a, b] = [b, a];
+      return [a, add(b, 1)];
+    }
+  }
+  return [month, new Date(day.getFullYear(), day.getMonth() + 1, 1)];
+}
+function actDashSetPeriod(id) {
+  if (id === 'datas' && !_actv.dashFrom) {
+    const [a, b] = actDashRange();
+    _actv.dashFrom = actDashInputDate(a);
+    _actv.dashTo = actDashInputDate(new Date(b.getTime() - 86400000));
+  }
+  _actv.dash = id;
+  try { localStorage.setItem('huven_actd_period', id); } catch (e) {}
+  renderAtividadesView();
+}
+// Barras do gráfico principal: por hora num dia só, por dia até dois meses, por mês acima disso.
+function actDashBuckets(from, to) {
+  const days = Math.round((to - from) / 86400000);
+  const two = n => String(n).padStart(2, '0');
+  if (days <= 1) return { unit: 'hora', key: d => d.getHours(), keys: Array.from({ length: 24 }, (_, i) => i), label: k => two(k) + 'h' };
+  if (days <= 62) {
+    const keys = [];
+    for (let d = new Date(from); d < to; d.setDate(d.getDate() + 1)) keys.push(d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate());
+    return { unit: 'dia', key: d => d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(), keys, label: k => { const p = k.split('-'); return two(p[2]) + '/' + two(+p[1] + 1); } };
+  }
+  const keys = [];
+  for (let d = new Date(from.getFullYear(), from.getMonth(), 1); d < to; d.setMonth(d.getMonth() + 1)) keys.push(d.getFullYear() + '-' + d.getMonth());
+  return { unit: 'mês', key: d => d.getFullYear() + '-' + d.getMonth(), keys, label: k => { const p = k.split('-'); return two(+p[1] + 1) + '/' + p[0]; } };
+}
+function actDashData(act) {
+  const [from, to] = actDashRange();
+  const now = Date.now();
+  const inP = iso => { const t = Date.parse(iso); return !isNaN(t) && t >= from.getTime() && t < to.getTime(); };
+  const open = actVisibleOpen(act);
+  const doneAll = actDoneVisible(act);
+  const finalizadas = doneAll.filter(n => inP(n.doneAt));
+  const previstas = [...open, ...doneAll].filter(n => inP(n.remindAt));
+  const openInP = open.filter(n => inP(n.remindAt));
+  const atrasadas = openInP.filter(n => Date.parse(n.remindAt) < now);
+  const aFazer = openInP.filter(n => Date.parse(n.remindAt) >= now);
+  const noPrazo = finalizadas.filter(n => n.remindAt && actDayStart(n.doneAt) <= actDayStart(n.remindAt));
+  const stack = (keyOf, nameOf) => {
+    const m = new Map();
+    const row = n => { const k = keyOf(n); if (!m.has(k)) m.set(k, { name: nameOf(n), done: 0, todo: 0, late: 0, onTime: 0 }); return m.get(k); };
+    finalizadas.forEach(n => { const r = row(n); r.done++; if (noPrazo.includes(n)) r.onTime++; });
+    aFazer.forEach(n => { row(n).todo++; });
+    atrasadas.forEach(n => { row(n).late++; });
+    return [...m.values()].sort((a, b) => (b.done + b.todo + b.late) - (a.done + a.todo + a.late) || a.name.localeCompare(b.name, 'pt-BR'));
+  };
+  const b = actDashBuckets(from, to);
+  const count = (list, field) => { const c = {}; list.forEach(n => { const k = b.key(new Date(n[field])); c[k] = (c[k] || 0) + 1; }); return c; };
+  const cPrev = count(previstas, 'remindAt'), cDone = count(finalizadas, 'doneAt');
+  let keys = b.keys;
+  if (b.unit === 'hora') { // num dia só, mostra o horário comercial e o que tiver fora dele
+    const used = keys.filter(k => cPrev[k] || cDone[k]);
+    const lo = Math.min(8, ...used), hi = Math.max(18, ...used);
+    keys = keys.filter(k => k >= lo && k <= hi);
+  }
+  const calls = finalizadas.filter(n => n.result && n.result !== 'feito');
+  const results = Object.keys(ACT_RESULTS).filter(r => r !== 'feito').map(r => ({ name: ACT_RESULTS[r], n: calls.filter(n => n.result === r).length }));
+  const answered = calls.filter(n => n.result === 'atendeu').length;
+  const prevDone = previstas.filter(n => n.done).length;
+  return {
+    finalizadas, previstas, atrasadas, aFazer, noPrazo, calls, answered, results, prevDone,
+    atrasadasTotal: open.filter(n => Date.parse(n.remindAt) < now).length,
+    criadas: [...open, ...doneAll].filter(n => inP(n.at)).length,
+    taxa: previstas.length ? Math.round(prevDone / previstas.length * 100) : null,
+    taxaPrazo: finalizadas.length ? Math.round(noPrazo.length / finalizadas.length * 100) : null,
+    byKind: stack(n => n.kind || 'lembrete', n => (ACT_KINDS[n.kind] || ACT_KINDS.lembrete)[0]),
+    byPerson: stack(n => n.assigneeLogin || ('uid:' + (n.byUid || '')), n => actAssigneeLabel(n) || 'Sem responsável'),
+    time: { unit: b.unit, labels: keys.map(b.label), prev: keys.map(k => cPrev[k] || 0), done: keys.map(k => cDone[k] || 0) }
+  };
+}
+function actDashHtml(act) {
+  const periods = ACTD_PERIODS.map(([id, label]) => '<button class="actv-tab' + (_actv.dash === id ? ' on' : '') + '" onclick="actDashSetPeriod(\'' + id + '\')">' + label + '</button>').join('');
+  const dates = _actv.dash === 'datas'
+    ? '<div class="actd-dates"><input type="date" class="field-input" value="' + escapeHtml(_actv.dashFrom || '') + '" onchange="_actv.dashFrom=this.value; renderAtividadesView()"><span class="integ-muted">até</span><input type="date" class="field-input" value="' + escapeHtml(_actv.dashTo || '') + '" onchange="_actv.dashTo=this.value; renderAtividadesView()"></div>' : '';
+  const head = '<div class="actd-periods">' + periods + '</div>' + dates;
+  if (!_actv.doneReady) return head + '<div class="actv-empty">Carregando as atividades...</div>';
+  if (_actv.doneErr) return head + '<div class="actv-empty">Não foi possível ler as atividades concluídas agora. Tente de novo em instantes.</div>';
+  const d = actDashData(act);
+  _actv.dashData = d;
+  const pct = v => v === null ? '-' : v + '%';
+  const kpi = (label, value, sub, tip, cls) => '<div class="actd-kpi" title="' + escapeHtml(tip) + '"><div class="actd-kpi-label">' + label + '</div><div class="actd-kpi-num' + (cls ? ' ' + cls : '') + '">' + value + '</div><div class="actd-kpi-sub">' + sub + '</div></div>';
+  const kpis = '<div class="actd-kpis">'
+    + kpi('Finalizadas', d.finalizadas.length, 'concluídas no período', 'Atividades marcadas como concluídas dentro do período, mesmo que estivessem marcadas para outra data.')
+    + kpi('Previstas', d.previstas.length, d.criadas + ' criadas no período', 'Atividades marcadas para uma data dentro do período, concluídas ou não.')
+    + kpi('Conclusão', pct(d.taxa), d.prevDone + ' de ' + d.previstas.length + ' previstas', 'Das atividades previstas no período, quantas já foram concluídas.')
+    + kpi('No prazo', pct(d.taxaPrazo), d.noPrazo.length + ' de ' + d.finalizadas.length + ' finalizadas', 'Das finalizadas no período, quantas foram concluídas até o dia marcado.')
+    + kpi('Atrasadas', d.atrasadas.length, d.atrasadasTotal + ' no total, de qualquer data', 'Em aberto, marcadas para um horário que já passou dentro do período.', d.atrasadas.length ? 'late' : '')
+    + kpi('A fazer', d.aFazer.length, 'ainda no prazo', 'Em aberto, marcadas para um horário que ainda não chegou dentro do período.')
+    + '</div>';
+  if (!d.previstas.length && !d.finalizadas.length) return head + kpis + '<div class="actv-empty">Nenhuma atividade neste período.</div>';
+  const showPeople = actIsManager() && !_actv.who;
+  const rowsH = list => Math.max(130, list.length * 36 + 56);
+  const card = (title, sub, id, h, wide) => '<div class="actd-card' + (wide ? ' wide' : '') + '"><div class="actd-card-title">' + title + '</div><div class="actd-card-sub">' + sub + '</div><div style="position:relative;height:' + h + 'px;"><canvas id="' + id + '"></canvas></div></div>';
+  const charts = '<div class="actd-grid">'
+    + card('Previstas e finalizadas por ' + d.time.unit, 'Quanto estava marcado e quanto foi concluído', 'actd-time', 250, true)
+    + card('Por tipo', 'Situação das atividades de cada tipo', 'actd-kind', rowsH(d.byKind))
+    + (showPeople ? card('Por pessoa', 'Situação das atividades de cada responsável', 'actd-person', rowsH(d.byPerson)) : '')
+    + (d.calls.length ? card('Resultado das ligações e mensagens', d.answered + ' de ' + d.calls.length + ' atenderam', 'actd-result', 170) : '')
+    + '</div>';
+  const table = showPeople && d.byPerson.length ? '<div class="actd-card wide actd-table-wrap"><div class="actd-card-title">Números por pessoa</div><table class="actd-table"><thead><tr><th>Responsável</th><th>Finalizadas</th><th>No prazo</th><th>A fazer</th><th>Atrasadas</th></tr></thead><tbody>'
+    + d.byPerson.map(r => '<tr><td>' + escapeHtml(r.name) + '</td><td>' + r.done + '</td><td>' + r.onTime + '</td><td>' + r.todo + '</td><td' + (r.late ? ' class="late"' : '') + '>' + r.late + '</td></tr>').join('') + '</tbody></table></div>' : '';
+  const shown = d.finalizadas.slice(0, 100);
+  const list = d.finalizadas.length ? '<details class="actd-details"><summary>Ver as finalizadas do período (' + d.finalizadas.length + ')</summary><div class="actv-list">' + shown.map(actRowHtml).join('') + '</div>' + (d.finalizadas.length > 100 ? '<div class="integ-muted" style="font-size:12px;margin-top:6px;">Mostrando as 100 mais recentes.</div>' : '') + '</details>' : '';
+  return head + kpis + charts + table + list;
+}
+function actDashDraw() {
+  actDashClear();
+  const d = _actv.dashData;
+  if (!d || typeof Chart === 'undefined') return;
+  const css = getComputedStyle(document.getElementById('atividades-body') || document.documentElement);
+  const ink = (css.getPropertyValue('--muted2') || '').trim() || '#8a8f98';
+  const line = (css.getPropertyValue('--border') || '').trim() || 'rgba(128,128,128,.2)';
+  const font = { size: 11 };
+  const bar = { borderRadius: 4, borderWidth: 1, borderColor: 'transparent', borderSkipped: false, maxBarThickness: 22 };
+  const opts = (horizontal, stacked, legend) => {
+    const value = { stacked, beginAtZero: true, grid: { color: line }, border: { display: false }, ticks: { color: ink, font, precision: 0 } };
+    const cat = { stacked, grid: { display: false }, border: { display: false }, ticks: { color: ink, font, autoSkip: !horizontal, maxRotation: 0 } };
+    return { responsive: true, maintainAspectRatio: false, animation: false, indexAxis: horizontal ? 'y' : 'x', interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: legend, position: 'top', align: 'start', labels: { color: ink, font, boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: 'rectRounded' } } },
+      scales: horizontal ? { x: value, y: cat } : { x: cat, y: value } };
+  };
+  const make = (id, config) => { const el = document.getElementById(id); if (el) _actdCharts.push(new Chart(el, config)); };
+  make('actd-time', { type: 'bar', data: { labels: d.time.labels, datasets: [
+    { label: 'Previstas', data: d.time.prev, backgroundColor: ACTD_COLORS.todo, ...bar },
+    { label: 'Finalizadas', data: d.time.done, backgroundColor: ACTD_COLORS.done, ...bar }
+  ] }, options: opts(false, false, true) });
+  const stacked = (id, rows) => make(id, { type: 'bar', data: { labels: rows.map(r => limitText(r.name, 24)), datasets: [
+    { label: 'Finalizadas', data: rows.map(r => r.done), backgroundColor: ACTD_COLORS.done, ...bar },
+    { label: 'A fazer', data: rows.map(r => r.todo), backgroundColor: ACTD_COLORS.todo, ...bar },
+    { label: 'Atrasadas', data: rows.map(r => r.late), backgroundColor: ACTD_COLORS.late, ...bar }
+  ] }, options: opts(true, true, true) });
+  stacked('actd-kind', d.byKind);
+  stacked('actd-person', d.byPerson);
+  make('actd-result', { type: 'bar', data: { labels: d.results.map(r => r.name), datasets: [{ label: 'Atividades', data: d.results.map(r => r.n), backgroundColor: ACTD_COLORS.todo, ...bar }] }, options: opts(true, false, false) });
 }
 
 function actRowHtml(n) {
