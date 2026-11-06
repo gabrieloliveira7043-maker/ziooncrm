@@ -1289,6 +1289,12 @@ html[data-theme="light"] .login-overlay { background: var(--paper); }
 .chat-input { display:flex; gap:8px; align-items:flex-end; padding:10px 12px; border-top:1px solid var(--border); }
 .chat-input textarea { flex:1; resize:none; max-height:140px; min-height:40px; }
 .chat-input .chat-tool { padding:9px 10px; font-size:14px; line-height:1; border-radius:10px; }
+.chat-rec { display:flex; gap:10px; align-items:center; padding:10px 12px; border-top:1px solid var(--border); }
+.chat-rec-status { flex:1; min-width:0; display:flex; gap:8px; align-items:center; font-size:13px; color:var(--text); font-variant-numeric:tabular-nums; }
+.chat-rec-dot { width:10px; height:10px; flex:none; border-radius:50%; background:var(--red); animation:chatRecPulse 1.2s ease-in-out infinite; }
+.chat-rec-dot.off { animation:none; opacity:.4; }
+@keyframes chatRecPulse { 50% { opacity:.25; } }
+@media (prefers-reduced-motion: reduce) { .chat-rec-dot { animation:none; } }
 .chat-compose { position:relative; }
 .chat-qr-pop { display:none; position:absolute; left:12px; right:12px; bottom:100%; margin-bottom:6px; background:var(--surface); border:1px solid var(--border2); border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,.22); max-height:300px; overflow-y:auto; z-index:30; scrollbar-width:none; }
 .chat-qr-pop.open { display:block; }
@@ -16269,7 +16275,13 @@ function openChat(key) {
         <textarea id="chat-text" class="field-input" rows="1" placeholder="Mensagem ( / respostas prontas, Ctrl+V cola print)" onkeydown="chatTextKey(event)" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,140)+'px';chatQrInput(this)" onblur="setTimeout(() => { if (_qrBySlash) closeQuickReplies(); }, 200)"></textarea>
         <button class="chat-pill chat-tool" title="Nota interna ou lembrete (só a equipe vê)" onclick="openChatNote()" aria-label="Nota interna">${uiIco('note', 18)}</button>
         <button class="chat-pill chat-tool" title="Agendar mensagem" onclick="openScheduleMessage()" aria-label="Agendar mensagem">${uiIco('clock', 18)}</button>
+        <button class="chat-pill chat-tool" id="chat-mic-btn" title="Gravar áudio" onclick="chatRecStart()" aria-label="Gravar áudio">${uiIco('mic', 18)}</button>
         <button class="btn-save" id="chat-send-btn" style="width:auto;padding:10px 16px;" onclick="sendChatMessage()">Enviar</button>
+      </div>
+      <div class="chat-rec" id="chat-rec" style="display:none;">
+        <button class="chat-pill" onclick="chatRecDiscard()">Descartar</button>
+        <div class="chat-rec-status" role="status"><span class="chat-rec-dot" id="chat-rec-dot"></span><span id="chat-rec-time">0:00</span><span id="chat-rec-note" style="color:var(--muted2);"></span></div>
+        <button class="btn-save" id="chat-rec-send" style="width:auto;padding:10px 16px;" onclick="chatRecSend()">Enviar áudio</button>
       </div>
     </div>`;
   renderChatHeader();
@@ -16725,7 +16737,10 @@ function sendChatMessage() {
   chatOutboxQueue(item);
 }
 function chatOutboxQueue(item) {
-  _chatSendChain = _chatSendChain.then(() => window._fb.whatsapp(item.path, item.act, item.payload)
+  _chatSendChain = _chatSendChain.then(() => (item.upload && !item.payload.media
+      ? window._fb.uploadCampaignMedia(item.act, item.upload).then(m => { item.payload.media = m; })
+      : Promise.resolve())
+    .then(() => window._fb.whatsapp(item.path, item.act, item.payload))
     .then(() => { item.status = 'sent'; item.sentAt = Date.now(); setTimeout(() => chatOutboxRender(item), 21000); })
     .catch(e => { item.status = 'failed'; item.error = e.message; showToast('Não enviou: ' + e.message, 'error', 6000); })
     .then(() => chatOutboxRender(item)));
@@ -16751,7 +16766,7 @@ function chatOutboxVisible() {
 function chatOutboxHtml(list) {
   return list.map(o => {
     const failed = o.status === 'failed';
-    const media = o.media ? (o.media.fileName ? uiIco('clip', 13) + ' ' + escapeHtml(o.media.fileName) : escapeHtml(CHAT_MEDIA_LABELS[o.media.type] || 'Arquivo')) + '<br>' : '';
+    const media = o.localUrl ? `<audio src="${o.localUrl}" controls style="max-width:240px;display:block;margin-bottom:4px;"></audio>` : o.media ? (o.media.fileName ? uiIco('clip', 13) + ' ' + escapeHtml(o.media.fileName) : escapeHtml(CHAT_MEDIA_LABELS[o.media.type] || 'Arquivo')) + '<br>' : '';
     const err = failed ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">${uiIco('alert', 12)} Não enviou: ${escapeHtml(o.error || '')} · <a href="#" style="color:var(--red);" onclick="chatOutboxRetry('${o.id}');return false;">tentar de novo</a> · <a href="#" style="color:var(--red);" onclick="chatOutboxDrop('${o.id}');return false;">descartar</a></div>` : '';
     const time = new Date(o.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     return `<div class="chat-bubble out"${failed ? '' : ' style="opacity:.8;"'}>${media}${chatMentionsHtml(chatLinkify(escapeHtml(o.text || '')))}${err}<div class="chat-meta">${failed ? '' : uiIco('clock', 11) + (o.status === 'sent' ? ' enviada · ' : ' enviando · ')}${time}</div></div>`;
@@ -16768,6 +16783,125 @@ function chatOutboxDrop(id) {
   const o = _chatOutbox.find(x => x.id === id);
   _chatOutbox = _chatOutbox.filter(x => x.id !== id);
   if (o) chatOutboxRender(o);
+}
+
+// ===== CHAT: GRAVAR ÁUDIO =====
+// Grava no navegador e entra na mesma fila das mensagens. Chega no WhatsApp como mensagem de voz.
+// O texto que estiver sendo digitado fica no campo: o áudio vai sozinho.
+const CHAT_REC_MAX_MS = 15 * 60000;
+let _chatRec = null;
+function chatRecMime(cloud) {
+  // A API oficial não aceita WEBM. Nos números por QR Code o servidor converte qualquer formato.
+  const list = cloud
+    ? ['audio/ogg;codecs=opus', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4']
+    : ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/webm'];
+  return list.find(t => MediaRecorder.isTypeSupported(t)) || '';
+}
+async function chatRecStart() {
+  if (_chatRec || !_chatAct || !_chatOpenKey) return;
+  const key = _chatOpenKey, act = _chatAct;
+  const c = _chatItems.find(x => x.id === key);
+  if (c && c.channel === 'instagram') { showToast('No Instagram o Chat envia só texto.', 'warning'); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) { showToast('Este navegador não grava áudio. Atualize ou use o Chrome.', 'error', 6000); return; }
+  const cloud = !!(c && waIsCloud(c.line || waLineOfKey(c.id)));
+  const mime = chatRecMime(cloud);
+  if (cloud && !mime) { showToast('Este navegador não grava no formato aceito pela API oficial. Atualize o Chrome ou anexe um arquivo de áudio.', 'error', 7000); return; }
+  _chatRec = { starting: true };
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  } catch (e) {
+    _chatRec = null;
+    const msg = e.name === 'NotAllowedError' || e.name === 'SecurityError' ? 'O navegador bloqueou o microfone. Libere no cadeado ao lado do endereço do site e tente de novo.'
+      : e.name === 'NotFoundError' ? 'Nenhum microfone encontrado neste aparelho.'
+      : 'Não consegui usar o microfone: ' + e.message;
+    showToast(msg, 'error', 7000);
+    return;
+  }
+  const stopTracks = () => stream.getTracks().forEach(t => t.stop());
+  const bar = document.getElementById('chat-rec');
+  if (_chatOpenKey !== key || _chatAct !== act || !bar) { stopTracks(); _chatRec = null; return; }
+  let recorder;
+  try {
+    recorder = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), audioBitsPerSecond: 64000 });
+  } catch (e) {
+    stopTracks(); _chatRec = null;
+    showToast('Não consegui iniciar a gravação: ' + e.message, 'error', 6000);
+    return;
+  }
+  const r = { key, act, stream, stopTracks, recorder, mime, chunks: [], startedAt: Date.now(), elapsed: 0 };
+  recorder.ondataavailable = ev => { if (ev.data && ev.data.size) r.chunks.push(ev.data); };
+  r.stopped = new Promise(res => { recorder.onstop = res; });
+  recorder.start(1000);
+  r.timer = setInterval(chatRecTick, 250);
+  _chatRec = r;
+  document.querySelector('.chat-compose .chat-input').style.display = 'none';
+  bar.style.display = 'flex';
+  document.getElementById('chat-rec-dot').classList.remove('off');
+  document.getElementById('chat-rec-note').textContent = '';
+  document.getElementById('chat-rec-time').textContent = '0:00';
+}
+function chatRecTick() {
+  const r = _chatRec;
+  if (!r || r.starting || r.sending) return;
+  const bar = document.getElementById('chat-rec');
+  const view = document.getElementById('chat-view');
+  // Saiu da conversa ou da aba: o microfone não fica ligado escondido.
+  if (_chatOpenKey !== r.key || _chatAct !== r.act || !bar || bar.style.display === 'none' || !view || view.style.display === 'none') {
+    chatRecDiscard(true);
+    return;
+  }
+  if (r.recorder.state === 'recording') {
+    r.elapsed = Date.now() - r.startedAt;
+    if (r.elapsed >= CHAT_REC_MAX_MS) r.recorder.stop();
+  }
+  const secs = Math.floor(r.elapsed / 1000);
+  document.getElementById('chat-rec-time').textContent = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
+  if (r.recorder.state === 'inactive' && !r.ended) {
+    r.ended = true;
+    r.stopTracks();
+    document.getElementById('chat-rec-dot').classList.add('off');
+    document.getElementById('chat-rec-note').textContent = r.elapsed >= CHAT_REC_MAX_MS ? 'Limite de 15 minutos. Envie ou descarte.' : 'Gravação parada. Envie ou descarte.';
+  }
+}
+function chatRecClose(r) {
+  clearInterval(r.timer);
+  r.stopTracks();
+  if (_chatRec === r) _chatRec = null;
+  const bar = document.getElementById('chat-rec');
+  if (bar) bar.style.display = 'none';
+  const input = document.querySelector('.chat-compose .chat-input');
+  if (input) input.style.display = '';
+}
+function chatRecDiscard(auto) {
+  const r = _chatRec;
+  if (!r || r.starting) return;
+  if (r.recorder.state !== 'inactive') r.recorder.stop();
+  chatRecClose(r);
+  if (auto === true) showToast('Gravação descartada: você saiu da conversa.', 'warning');
+}
+async function chatRecSend() {
+  const r = _chatRec;
+  if (!r || r.starting || r.sending) return;
+  r.sending = true;
+  if (r.recorder.state === 'recording') r.elapsed = Date.now() - r.startedAt;
+  if (r.recorder.state !== 'inactive') r.recorder.stop();
+  await r.stopped;
+  chatRecClose(r);
+  if (r.elapsed < 1000 || !r.chunks.length) { showToast('Áudio muito curto. Grave de novo.', 'warning'); return; }
+  const type = String(r.mime || r.recorder.mimeType || 'audio/webm').split(';')[0];
+  const ext = { 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mp4': 'm4a' }[type] || 'webm';
+  const blob = new Blob(r.chunks, { type });
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  const file = new File([blob], `audio-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.${ext}`, { type });
+  const c = _chatItems.find(x => x.id === r.key);
+  const me = chatMe();
+  // Quem responde primeiro fica com a conversa.
+  if (c && !c.assignedTo) window._fb.updateInboxChat(r.act, c.id, { assignedTo: me.uid, assignedName: me.name, assignedAt: new Date().toISOString() }).catch(() => {});
+  const item = { id: 'out' + Date.now() + Math.random().toString(36).slice(2, 6), act: r.act, key: r.key, path: '/whatsapp/chat-send', payload: { chatKey: r.key, text: '' }, upload: file, localUrl: URL.createObjectURL(blob), text: '', media: { type: 'audio' }, at: new Date().toISOString(), status: 'sending' };
+  _chatOutbox.push(item);
+  chatOutboxRender(item, true);
+  chatOutboxQueue(item);
 }
 
 // ===== CHAT: GRUPOS (participantes, configurações e marcação com @) =====
