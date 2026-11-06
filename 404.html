@@ -16128,7 +16128,7 @@ function openChat(key) {
         <label class="chat-pill chat-tool" title="Enviar foto, vídeo, áudio, PDF ou documento" aria-label="Anexar arquivo">${uiIco('clip', 18)}<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.rtf,.odt,.ods,.odp,.zip,.rar,.7z" style="display:none;" onchange="attachChatMedia(this)"></label>
         <button class="chat-pill chat-tool" title="Respostas prontas (ou digite / no começo da mensagem)" onclick="toggleQuickReplies()" aria-label="Respostas prontas">${uiIco('bolt', 18)}</button>
         <button class="chat-pill chat-tool" title="Emojis e figurinhas" onclick="toggleEmojiPicker()" aria-label="Emojis e figurinhas">${uiIco('smile', 18)}</button>
-        <textarea id="chat-text" class="field-input" rows="1" placeholder="Mensagem ( / respostas prontas)" onkeydown="chatTextKey(event)" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,140)+'px';chatQrInput(this)" onblur="setTimeout(() => { if (_qrBySlash) closeQuickReplies(); }, 200)"></textarea>
+        <textarea id="chat-text" class="field-input" rows="1" placeholder="Mensagem ( / respostas prontas, Ctrl+V cola print)" onkeydown="chatTextKey(event)" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,140)+'px';chatQrInput(this)" onblur="setTimeout(() => { if (_qrBySlash) closeQuickReplies(); }, 200)"></textarea>
         <button class="chat-pill chat-tool" title="Nota interna ou lembrete (só a equipe vê)" onclick="openChatNote()" aria-label="Nota interna">${uiIco('note', 18)}</button>
         <button class="chat-pill chat-tool" title="Agendar mensagem" onclick="openScheduleMessage()" aria-label="Agendar mensagem">${uiIco('clock', 18)}</button>
         <button class="btn-save" id="chat-send-btn" style="width:auto;padding:10px 16px;" onclick="sendChatMessage()">Enviar</button>
@@ -16489,7 +16489,38 @@ async function loadChatMedia(id, type) {
 async function attachChatMedia(input) {
   const file = input.files && input.files[0];
   input.value = '';
+  if (file) await chatUploadMedia(file);
+}
+
+// Print colado: Ctrl+V com a conversa aberta deixa a imagem pronta para enviar, como um anexo.
+let _chatMediaUploading = 0;
+function chatPastedImage(e) {
+  const cd = e.clipboardData;
+  if (!cd || (cd.getData('text/plain') || '').trim()) return null; // planilha e Word copiam texto e imagem: fica o texto
+  const item = [...(cd.items || [])].find(i => i.kind === 'file' && /^image\/(png|jpeg|webp)$/.test(i.type));
+  const blob = item && item.getAsFile();
+  if (!blob) return null;
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  const ext = blob.type === 'image/jpeg' ? 'jpg' : blob.type.split('/')[1];
+  return new File([blob], `print-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.${ext}`, { type: blob.type });
+}
+document.addEventListener('paste', e => {
+  if (!_chatOpenKey || !document.getElementById('chat-text')) return;
+  const view = document.getElementById('chat-view');
+  if (!view || view.style.display === 'none') return;
+  const modal = document.getElementById('huven-modal');
+  if (modal && getComputedStyle(modal).display !== 'none') return;
+  const t = e.target;
+  if (t && t.id !== 'chat-text' && t.matches && t.matches('input, textarea, [contenteditable="true"]')) return;
+  const file = chatPastedImage(e);
+  if (!file) return;
+  e.preventDefault();
+  chatUploadMedia(file);
+});
+
+async function chatUploadMedia(file) {
   if (!file || !_chatAct) return;
+  const key = _chatOpenKey;
   const chip = document.getElementById('chat-media-chip');
   chip.style.display = 'block';
   const openChat = _chatItems.find(x => x.id === _chatOpenKey);
@@ -16499,12 +16530,21 @@ async function attachChatMedia(input) {
     return;
   }
   chip.textContent = 'Enviando arquivo...';
+  _chatPendingMedia = null;
+  _chatMediaUploading++;
   try {
-    _chatPendingMedia = await window._fb.uploadCampaignMedia(_chatAct, file);
-    chip.innerHTML = `${uiIco('clip', 13)} ${escapeHtml(_chatPendingMedia.fileName)} <span style="color:var(--muted2);">(o texto vai como legenda)</span> <button class="chat-pill" onclick="clearChatMedia()">remover</button>`;
+    const media = await window._fb.uploadCampaignMedia(_chatAct, file);
+    if (_chatOpenKey !== key) return; // trocou de conversa enquanto subia: o arquivo não vai para a conversa errada
+    _chatPendingMedia = media;
+    const thumb = /^image\//.test(file.type) ? `<img src="${URL.createObjectURL(file)}" alt="" style="height:44px;max-width:80px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:6px;">` : uiIco('clip', 13);
+    chip.innerHTML = `${thumb} ${escapeHtml(_chatPendingMedia.fileName)} <span style="color:var(--muted2);">(o texto vai como legenda)</span> <button class="chat-pill" onclick="clearChatMedia()">remover</button>`;
   } catch (e) {
-    _chatPendingMedia = null;
-    chip.innerHTML = `<span style="color:var(--red);">Erro: ${escapeHtml(e.message)}</span>`;
+    if (_chatOpenKey === key) {
+      _chatPendingMedia = null;
+      chip.innerHTML = `<span style="color:var(--red);">Erro: ${escapeHtml(e.message)}</span>`;
+    }
+  } finally {
+    _chatMediaUploading--;
   }
 }
 
@@ -16520,6 +16560,7 @@ let _chatOutbox = [];
 let _chatSendChain = Promise.resolve();
 function sendChatMessage() {
   if (!_chatAct || !_chatOpenKey) return;
+  if (_chatMediaUploading) { showToast('Aguarde o arquivo terminar de subir.', 'warning'); return; }
   const ta = document.getElementById('chat-text');
   const text = ta.value.trim();
   if (!text && !_chatPendingMedia) return;
