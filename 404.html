@@ -2615,6 +2615,23 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
     async updateInboxChat(act, chatKey, data) {
       await updateDoc(doc(db, 'inbox', normalizeAct(act), 'chats', chatKey), data);
     },
+    // Chat: marca como lidas todas as conversas não lidas (keep = filtro opcional, ex.: só um WhatsApp).
+    async markAllInboxRead(act, keep) {
+      const col = collection(db, 'inbox', normalizeAct(act), 'chats');
+      let total = 0;
+      const done = new Set();
+      for (let round = 0; round < 20; round++) {
+        const snap = await getDocs(query(col, where('unread', '>', 0), limit(400)));
+        const docs = snap.docs.filter(d => !done.has(d.id) && (!keep || keep({ id: d.id, ...d.data() })));
+        if (!docs.length) break;
+        const batch = writeBatch(db);
+        docs.forEach(d => { batch.update(d.ref, { unread: 0 }); done.add(d.id); });
+        await batch.commit();
+        total += docs.length;
+        if (snap.size < 400) break;
+      }
+      return total;
+    },
     // Pipelines do funil (pipelines/{act}).
     async getPipelines(act) {
       const snap = await getDoc(doc(db, 'pipelines', normalizeAct(act)));
@@ -15880,6 +15897,34 @@ function onChatClientChange() {
 
 function setChatFilter(f) { _chatFilter = f; renderChatList(); }
 
+// Zera "não lidas" de todas as conversas do cliente (ou só do WhatsApp escolhido no seletor).
+// Só muda o contador do CRM: não manda confirmação de leitura (tique azul) para os contatos.
+let _chatMarkingRead = false;
+async function chatMarkAllRead() {
+  const act = _chatAct;
+  if (!act || _chatMarkingRead) return;
+  const line = _chatLineFilter;
+  const lineLabel = line !== 'all' ? ((chatLines(act).find(l => l.id === line) || {}).label || 'este WhatsApp') : '';
+  const ok = await showConfirm(
+    'Todas as conversas' + (lineLabel ? ' de ' + lineLabel : '') + ' deixam de aparecer como não lidas. Os contatos não recebem confirmação de leitura.',
+    'Marcar todas como lidas', 'Marcar como lidas', false);
+  if (!ok) return;
+  _chatMarkingRead = true;
+  try {
+    const keep = line === 'all' ? null : c => (c.line || waLineOfKey(c.id)) === line;
+    const n = await window._fb.markAllInboxRead(act, keep);
+    _chatItems.forEach(c => { if (!keep || keep(c)) c.unread = 0; });
+    Object.values(_chatExtra).forEach(c => { if (!keep || keep(c)) c.unread = 0; });
+    renderChatList();
+    if (typeof auditLog === 'function') auditLog(act, 'chat', 'Marcou ' + n + ' conversa(s) como lidas' + (lineLabel ? ' (' + lineLabel + ')' : ''));
+    showToast(n ? n + (n === 1 ? ' conversa marcada como lida.' : ' conversas marcadas como lidas.') : 'Nenhuma conversa não lida.', 'success');
+  } catch (e) {
+    showToast('Não deu para marcar como lidas: ' + e.message, 'error');
+  } finally {
+    _chatMarkingRead = false;
+  }
+}
+
 // ----- Etiquetas no Chat: vêm do lead, do contato da base ou da própria conversa -----
 const _chatTagFilter = new Set();
 
@@ -16101,7 +16146,9 @@ function renderChatFilters() {
   box.innerHTML = CHAT_FILTERS.map(([k, label]) => {
     const n = _chatItems.filter(c => chatMatchesFilter(c, k, me)).length;
     return `<button class="chat-pill ${_chatFilter === k ? 'active' : ''}" onclick="setChatFilter('${k}')">${label}${k !== 'all' && n ? ` · ${n}` : ''}</button>`;
-  }).join('') + (_chatAct && chatLines(_chatAct).length > 1
+  }).join('') + (_chatItems.some(c => c.unread > 0 && (_chatLineFilter === 'all' || (c.line || waLineOfKey(c.id)) === _chatLineFilter))
+    ? `<button class="chat-pill" onclick="chatMarkAllRead()" title="Zera o contador de não lidas de todas as conversas${_chatLineFilter !== 'all' ? ' deste WhatsApp' : ''}">✓ Marcar todas como lidas</button>`
+    : '') + (_chatAct && chatLines(_chatAct).length > 1
     ? `<select class="field-input chat-line-select" onchange="_chatLineFilter=this.value;renderChatList()" title="Qual WhatsApp"><option value="all">Todos os WhatsApps</option>${chatLines(_chatAct).map(l => `<option value="${escapeHtml(l.id)}" ${_chatLineFilter === l.id ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}</select>`
     : '');
 }
