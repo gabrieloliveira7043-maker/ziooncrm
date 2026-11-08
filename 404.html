@@ -15235,7 +15235,10 @@ async function renderFbConnectBox(act, el) {
   catch (e) { el.innerHTML = `<div class="integ-error">${escapeHtml(e.message)}</div>`; return; }
   const a = escapeJsString(act);
   const elId = el.id;
-  const noConnect = el.dataset.noConnect === '1';
+  // Conta de demonstração para a Análise do app da Meta: o revisor precisa ver o botão.
+  const isMetaReviewDemo = META_REVIEW_DEMO_ACTS.includes(act);
+  const noConnect = el.dataset.noConnect === '1' && !isMetaReviewDemo;
+  if (isMetaReviewDemo && el.id === 'fb-connect-own' && el.previousElementSibling) el.previousElementSibling.textContent = 'Conecte sua conta do Facebook, escolha a página e o formulário. Quem preencher os formulários dos seus anúncios cai direto no CRM.';
   el.innerHTML = `${noConnect ? '' : `<button class="integ-btn primary" onclick="startFbConnect('${a}', '${elId}')">${pages.length ? 'Conectar outras páginas' : 'Conectar Facebook'}</button>`}
     <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">${pages.map(p => {
       const pid = escapeJsString(p.id);
@@ -15259,6 +15262,8 @@ async function renderFbConnectBox(act, el) {
       </div>`;
     }).join('') || `<div class="integ-muted">${noConnect ? 'Nenhuma página ligada ao seu funil ainda.' : 'Nenhuma página ligada ainda.'}</div>`}</div>`;
 }
+
+const META_REVIEW_DEMO_ACTS = ['act_huven_testemeta'];
 
 async function startFbConnect(act, elId) {
   try {
@@ -24379,7 +24384,10 @@ function syncLeadNotifierKnownKeys(leads) {
 function getStoredLeadNotifications() {
   try {
     const parsed = JSON.parse(localStorage.getItem(LEAD_NOTIFICATIONS_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    // Os avisos ficam no navegador: um login de cliente só vê os do próprio cliente.
+    if (!isAdmin && activeClient && activeClient.account) return parsed.filter(n => n && n.act === activeClient.account);
+    return parsed;
   } catch(e) { return []; }
 }
 
