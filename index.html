@@ -2191,6 +2191,76 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
 
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
+<script>
+// Preferências e configurações das telas: ficam no servidor (por login ou por cliente) com cópia no navegador.
+// Qualquer gravação no navegador de uma destas chaves também vai para o servidor; ao entrar, o servidor manda o que estiver lá.
+(function () {
+  var SRV_KV = [/^field_config_act_/, /^huven_ai_brief_act_/, /^huven_sheets_integrations$/, /^huven_dashboard_visible_metrics_v1$/, /^huven_metrics_purchases_v1$/,
+    /^huven_table_cols_/, /^huven_analise_cfg$/, /^huven_actd_period$/, /^huven_crm_(from|to)$/, /^huven_rem_open$/, /^huven_emoji_recent$/,
+    /^crm_wa_alert_off$/, /^crm_notice_off:/, /^huven_sidebar_collapsed$/, /^huven_pipeline_/, /^huven_lead_notifications_v1$/,
+    /^huven_first_message_templates_v1$/, /^crm_ui_reflexo$/, /^huven_theme$/];
+  function isSync(k) { k = String(k); return /^[\w:.@-]{1,120}$/.test(k) && SRV_KV.some(function (r) { return r.test(k); }); }
+  var pending = {}, timer = null, applying = false, ready = false;
+  function api() { return window._fb && window._fb.adminApi && window._fb.getProfile && window._fb.getProfile() ? window._fb.adminApi : null; }
+  function flush() {
+    timer = null;
+    var a = api();
+    if (!a || !ready) { timer = setTimeout(flush, 3000); return; }
+    var keys = Object.keys(pending);
+    if (!keys.length) return;
+    var set = {};
+    keys.slice(0, 40).forEach(function (k) { set[k] = pending[k]; delete pending[k]; });
+    a('/ui/kv', { set: set }).then(function () { if (Object.keys(pending).length) flush(); })
+      .catch(function () { Object.keys(set).forEach(function (k) { if (!(k in pending)) pending[k] = set[k]; }); timer = setTimeout(flush, 15000); });
+  }
+  function queue(k, v) { if (applying) return; pending[k] = v; if (timer) clearTimeout(timer); timer = setTimeout(flush, 1200); }
+  var oSet = Storage.prototype.setItem, oRem = Storage.prototype.removeItem;
+  Storage.prototype.setItem = function (k, v) { oSet.call(this, k, v); try { if (this === window.localStorage && isSync(k)) queue(String(k), String(v)); } catch (e) {} };
+  Storage.prototype.removeItem = function (k) { oRem.call(this, k); try { if (this === window.localStorage && isSync(k)) queue(String(k), null); } catch (e) {} };
+  var loadedUid = '';
+  function pull() {
+    var p = window._fb && window._fb.getProfile && window._fb.getProfile();
+    var uid = p && (p.uid || p.login);
+    if (!uid) { loadedUid = ''; ready = false; return; }
+    if (uid === loadedUid || !window._fb.adminApi) return;
+    loadedUid = uid; ready = false;
+    window._fb.adminApi('/ui/kv', {}).then(function (r) {
+      var srv = (r && r.items) || {}, changed = false;
+      applying = true;
+      try {
+        Object.keys(srv).forEach(function (k) {
+          if (!isSync(k)) return;
+          var cur = localStorage.getItem(k), v = srv[k];
+          if (v === null) { if (cur !== null) { localStorage.removeItem(k); changed = true; } }
+          else if (cur !== v) { localStorage.setItem(k, v); changed = true; }
+        });
+      } finally { applying = false; }
+      // Na primeira vez neste navegador, o que só existia aqui sobe para o servidor.
+      var mk = 'crm_srvkv_migrated';
+      if (localStorage.getItem(mk) !== '1') {
+        var me = 'crm_notice_off:' + (p.login || p.uid) + ':';
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i);
+          if (!isSync(k) || (k in srv)) continue;
+          if (/^crm_notice_off:/.test(k) && k.indexOf(me) !== 0) continue;
+          pending[k] = localStorage.getItem(k);
+        }
+        localStorage.setItem(mk, '1');
+      }
+      ready = true;
+      if (Object.keys(pending).length) flush();
+      if (changed) {
+        try {
+          var last = JSON.parse(localStorage.getItem('crm_last_view') || 'null');
+          var flowOpen = document.querySelector('.flow-body, .flow-palette');
+          if (last && last.view && typeof switchView === 'function' && !flowOpen && !document.querySelector('.huven-modal.open, .modal.open')) switchView(last.view);
+        } catch (e) {}
+      }
+    }).catch(function () { loadedUid = ''; ready = true; });
+  }
+  setInterval(pull, 2500);
+})();
+</script>
 <script type="module">
   import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, getDocs, getDoc, setDoc, updateDoc, deleteDoc, doc, query, where, onSnapshot, writeBatch, limit, orderBy, deleteField } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
