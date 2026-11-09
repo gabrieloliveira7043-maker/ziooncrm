@@ -20243,7 +20243,8 @@ function openCalEvent(id) {
     ${lead ? `<div style="margin-bottom:8px;">Lead: <a style="cursor:pointer;text-decoration:underline;" onclick="closeHuvenModal(); switchView('crm'); editLead('${escapeJsString(lead.id)}')">${escapeHtml(lead.name || 'Lead')}</a></div>` : ''}
     ${others.length ? `<div class="field-label" style="margin-top:6px;">Convidados</div>${others.map(a => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:3px 0;"><span>${escapeHtml(a.name || a.email)}${a.organizer ? ' <span class="integ-muted">(organizador)</span>' : ''}</span><span style="color:${(CAL_RSVP[a.status] || CAL_RSVP.needsAction)[1]};">${(CAL_RSVP[a.status] || CAL_RSVP.needsAction)[0]}</span></div>`).join('')}` : ''}
     ${e.description ? `<div class="field-label" style="margin-top:8px;">Descrição</div><div class="integ-muted" style="white-space:pre-wrap;font-size:13px;max-height:160px;overflow:auto;">${escapeHtml(e.description)}</div>` : ''}
-    ${e.allDay ? '' : `<details style="margin-top:12px;"><summary style="cursor:pointer;">Remarcar</summary>
+    ${e.calendar ? `<div class="integ-muted" style="margin-bottom:8px;">Agenda: ${escapeHtml(e.calendar)}</div>` : ''}
+    ${e.allDay || e.readOnly ? '' : `<details style="margin-top:12px;"><summary style="cursor:pointer;">Remarcar</summary>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:flex-end;">
         <label><span class="field-label">Dia</span><input type="date" class="field-input" id="cal-e-date" value="${calYmd(s)}"></label>
         <label><span class="field-label">Hora</span><input type="time" class="field-input" id="cal-e-time" step="300" value="${s.toTimeString().slice(0, 5)}"></label>
@@ -20251,7 +20252,7 @@ function openCalEvent(id) {
       </div></details>`}
     <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
       ${e.link ? `<a class="integ-btn" href="${escapeHtml(e.link)}" target="_blank" rel="noopener">Abrir no Google Agenda</a>` : ''}
-      ${e.mine || !e.organizer ? `<button class="integ-btn danger" onclick="calCancel('${escapeJsString(e.id)}')">Cancelar reunião</button>` : ''}
+      ${!e.readOnly && (e.mine || !e.organizer) ? `<button class="integ-btn danger" onclick="calCancel('${escapeJsString(e.id)}')">Cancelar reunião</button>` : ''}
     </div>
     <div id="cal-e-fb" style="font-size:13px;margin-top:8px;"></div>`, 500);
 }
