@@ -11280,14 +11280,35 @@ function huvInitials(name) {
 }
 
 function huvPinned() {
+  huvLoadPins();
   try { return JSON.parse(localStorage.getItem(HUV_PIN_KEY) || '[]'); } catch (e) { return []; }
 }
 
+// Os fixados ficam no servidor (por login) e com cópia no navegador.
+let _huvPinsLoaded = '';
+function huvLoadPins() {
+  const p = window._fb && window._fb.getProfile && window._fb.getProfile();
+  const uid = p && (p.uid || p.login);
+  if (!uid || _huvPinsLoaded === uid || !(window._fb && window._fb.adminApi)) return;
+  _huvPinsLoaded = uid;
+  window._fb.adminApi('/ui/prefs', { pinsOnly: true }).then(r => {
+    const local = huvPinned();
+    if (r && Array.isArray(r.pins)) {
+      if (JSON.stringify(r.pins) === JSON.stringify(local)) return;
+      try { localStorage.setItem(HUV_PIN_KEY, JSON.stringify(r.pins)); } catch (e) {}
+      renderClientSwitcherList();
+      if (document.getElementById('clientes-view') && document.getElementById('clientes-view').style.display !== 'none') renderClientesView();
+    } else if (local.length) {
+      window._fb.adminApi('/ui/prefs', { pins: local }).catch(() => {});
+    }
+  }).catch(() => { _huvPinsLoaded = ''; });
+}
 function huvTogglePin(act, ev) {
   if (ev) ev.stopPropagation();
   const pins = new Set(huvPinned());
   if (pins.has(act)) pins.delete(act); else pins.add(act);
   try { localStorage.setItem(HUV_PIN_KEY, JSON.stringify([...pins])); } catch (e) {}
+  if (window._fb && window._fb.adminApi) window._fb.adminApi('/ui/prefs', { pins: [...pins] }).catch(e => showToast('O fixado ficou só neste navegador: ' + e.message, 'warning'));
   renderClientSwitcherList();
   if (document.getElementById('clientes-view') && document.getElementById('clientes-view').style.display !== 'none') renderClientesView();
 }
