@@ -2311,7 +2311,7 @@ html.is-partner [onclick*="openConfig()"] { display: none !important; }
   }
 
   // Login de equipe limitado a alguns WhatsApps (perms.chatLines): o banco só libera as conversas desses números.
-  const CHAT_LINE_LOCK = false;
+  const CHAT_LINE_LOCK = true;
   function chatLineWhere() {
     if (!currentProfile || currentProfile.role !== 'client') return null;
     if (!CHAT_LINE_LOCK) return null; // liga depois que os índices do banco ficarem prontos
