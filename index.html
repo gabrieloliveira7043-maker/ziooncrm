@@ -4296,6 +4296,7 @@ html.is-partner [onclick*="openConfig()"] { display: none !important; }
         <div id="conta-team" style="display:none;margin-bottom:24px;"></div>
 
         <div id="partners-admin" style="display:none;"></div>
+        <div id="partner-logins" style="display:none;"></div>
         <div id="notices-admin" style="display:none;"></div>
 
         <div id="ui-aparencia"></div>
@@ -8351,6 +8352,7 @@ function switchView(view) {
     document.getElementById('pw-success').style.display = 'none';
     if (isAdmin && !isPartnerUser()) renderAdminLogins();
     renderPartnersAdmin();
+    renderPartnerLogins();
     renderNoticesAdmin();
   }
 }
@@ -11308,6 +11310,38 @@ document.addEventListener('visibilitychange', () => {
 
 // ----- Painel do admin (tela Conta) -----
 let _noticesAdmin = null;
+// ----- Parceiro: logins (principal e equipe) dos clientes da carteira, só para consulta -----
+async function renderPartnerLogins() {
+  const box = document.getElementById('partner-logins');
+  if (!box) return;
+  if (!isPartnerUser()) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  await loadExtraClients();
+  try { Object.assign(WHATSAPP_SETTINGS, await window._fb.getWhatsAppSettings()); } catch (e) {}
+  const acts = partnerActList() || [];
+  const mains = Object.entries(CREDENTIALS).filter(([login, c]) => login !== 'admin' && c && c.act && acts.includes(normalizeActValue(c.act)));
+  const areas = p => p && Array.isArray(p.views) ? p.views.length + ' de ' + SUB_LOGIN_VIEWS.length + ' áreas' : 'todas as áreas';
+  const lines = (act, p) => {
+    const l = p && Array.isArray(p.chatLines) ? p.chatLines : [];
+    return l.length ? ' · Chat: ' + l.map(id => waLineLabel(act, id)).join(', ') : '';
+  };
+  const cards = mains.sort((a, b) => getClientDisplayName(a[1].act).localeCompare(getClientDisplayName(b[1].act), 'pt-BR')).map(([login, c]) => {
+    const subs = SUB_LOGINS.filter(x => x.parentLogin === login).sort((a, b) => String(a.personName || a.name).localeCompare(String(b.personName || b.name), 'pt-BR'));
+    return `<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+      <div style="font-weight:600;color:var(--text);">${escapeHtml(getClientDisplayName(c.act) || c.act)}</div>
+      <div class="integ-muted" style="font-size:12.5px;margin-top:2px;">Login principal: <span class="mono">${escapeHtml(login)}</span></div>
+      ${subs.length ? `<div class="field-label" style="margin-top:8px;">Equipe (${subs.length})</div>` + subs.map(s => `<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px;padding:4px 0;border-top:1px solid var(--border);">
+        <span>${escapeHtml(s.personName || s.name || s.login)} <span class="integ-muted mono">${escapeHtml(s.login)}</span></span>
+        <span class="integ-muted" style="font-size:12px;">${escapeHtml(areas(s.perms) + lines(c.act, s.perms))}</span></div>`).join('') : '<div class="integ-muted" style="font-size:12.5px;margin-top:6px;">Sem logins de equipe.</div>'}
+    </div>`;
+  }).join('');
+  box.innerHTML = `<div class="integ-card" style="margin-bottom:24px;">
+    <div style="font-size:15px;font-weight:600;color:var(--text);">Logins dos seus clientes</div>
+    <div class="integ-muted" style="margin:4px 0 12px;">Para criar, apagar ou mudar o acesso de um login, fale com a Huven.</div>
+    ${cards || '<div class="integ-muted">Nenhum cliente na sua carteira.</div>'}
+  </div>`;
+}
+
 // ----- Parceiros (só o admin): login que administra uma carteira de clientes, sem criar logins -----
 let _partners = null;
 async function renderPartnersAdmin(reload) {
@@ -11330,6 +11364,7 @@ async function renderPartnersAdmin(reload) {
       ${checks('ptn-' + p.uid, (p.partnerActs || []).map(normalizeActValue))}
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="integ-btn primary" onclick="savePartnerActs('${escapeJsString(p.uid)}')">Salvar carteira</button>
+        <button class="integ-btn" onclick="viewAsLogin('${escapeJsString(p.login)}')" title="Abre em outra aba o CRM como este parceiro vê (sem senha)">${uiIco('user')} Ver como</button>
         <button class="integ-btn danger" onclick="deletePartner('${escapeJsString(p.uid)}','${escapeJsString(p.login)}')">Excluir parceiro</button>
       </div>
     </details>`).join('') || '<div class="integ-muted" style="margin-bottom:8px;">Nenhum parceiro ainda.</div>'}
