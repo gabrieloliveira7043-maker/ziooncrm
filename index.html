@@ -1843,6 +1843,12 @@ html:root .chat-pill.chat-sum-pill { display: none; }
 .ci-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-top: 6px; flex-shrink: 0; }
 #chat-info textarea { width: 100%; resize: vertical; font-size: 12.5px; }
 @media (max-width: 1200px) { .chat-info, .chat-info.open { display: none; } }
+.chat-info-btn { display: none !important; }
+#chat-info-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 1199; }
+@media (max-width: 1200px) {
+  .chat-info-btn { display: inline-flex !important; align-items: center; gap: 4px; }
+  .chat-info.open.drawer { display: block; position: fixed; top: 0; right: 0; bottom: 0; width: min(360px, 92vw); z-index: 1200; box-shadow: -12px 0 32px rgba(0,0,0,.28); padding-top: calc(16px + env(safe-area-inset-top)); }
+}
 
 /* Campanhas */
 .cp-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
@@ -2304,6 +2310,15 @@ html.is-partner [onclick*="openConfig()"] { display: none !important; }
     return raw.startsWith('act_') ? raw : ('act_' + raw.replace(/^act[_\s-]*/i, ''));
   }
 
+  // Login de equipe limitado a alguns WhatsApps (perms.chatLines): o banco só libera as conversas desses números.
+  const CHAT_LINE_LOCK = false;
+  function chatLineWhere() {
+    if (!currentProfile || currentProfile.role !== 'client') return null;
+    if (!CHAT_LINE_LOCK) return null; // liga depois que os índices do banco ficarem prontos
+    const l = currentProfile.perms && Array.isArray(currentProfile.perms.chatLines) ? currentProfile.perms.chatLines.map(String).filter(Boolean).slice(0, 30) : [];
+    return l.length ? where('line', 'in', l) : null;
+  }
+
   // Parceiro: só os clientes da carteira (as regras do banco exigem o filtro "act in [...]", até 30 clientes).
   function partnerIn() {
     if (!currentProfile || currentProfile.role !== 'partner') return null;
@@ -2717,7 +2732,8 @@ html.is-partner [onclick*="openConfig()"] { display: none !important; }
     },
     // Chat: conversas 1 a 1 gravadas pelo Worker (inbox/{act}/chats/{chave}/messages/{id}).
     listenInboxChats(act, max, callback) {
-      return onSnapshot(query(collection(db, 'inbox', normalizeAct(act), 'chats'), orderBy('lastAt', 'desc'), limit(max)), snap => {
+      const lf = chatLineWhere();
+      return onSnapshot(lf ? query(collection(db, 'inbox', normalizeAct(act), 'chats'), lf, orderBy('lastAt', 'desc'), limit(max)) : query(collection(db, 'inbox', normalizeAct(act), 'chats'), orderBy('lastAt', 'desc'), limit(max)), snap => {
         callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       }, error => { console.warn('Chat indisponível:', error); callback(null, error); });
     },
@@ -2735,7 +2751,8 @@ html.is-partner [onclick*="openConfig()"] { display: none !important; }
       let total = 0;
       const done = new Set();
       for (let round = 0; round < 20; round++) {
-        const snap = await getDocs(query(col, where('unread', '>', 0), limit(400)));
+        const lf = chatLineWhere();
+        const snap = await getDocs(lf ? query(col, lf, where('unread', '>', 0), limit(400)) : query(col, where('unread', '>', 0), limit(400)));
         const docs = snap.docs.filter(d => !done.has(d.id) && (!keep || keep({ id: d.id, ...d.data() })));
         if (!docs.length) break;
         const batch = writeBatch(db);
@@ -2756,7 +2773,9 @@ html.is-partner [onclick*="openConfig()"] { display: none !important; }
     },
     // Análise de atendimento: conversas com movimento desde uma data e as mensagens de cada uma.
     async listInboxChatsSince(act, sinceIso, max) {
-      const snap = await getDocs(query(collection(db, 'inbox', normalizeAct(act), 'chats'), where('lastAt', '>=', sinceIso), orderBy('lastAt', 'desc'), limit(max || 800)));
+      const lf = chatLineWhere();
+      const col = collection(db, 'inbox', normalizeAct(act), 'chats');
+      const snap = await getDocs(lf ? query(col, lf, where('lastAt', '>=', sinceIso), orderBy('lastAt', 'desc'), limit(max || 800)) : query(col, where('lastAt', '>=', sinceIso), orderBy('lastAt', 'desc'), limit(max || 800)));
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     },
     async listInboxMessagesSince(act, chatKey, sinceIso, max) {
@@ -16588,10 +16607,23 @@ function openChatSummaryModal() {
   openHuvenModal('Resumo do lead', `<div id="chat-sum-modal">${chatAiSideHtml(c)}</div>`, 420);
 }
 
+function toggleChatInfoDrawer(on) {
+  const box = document.getElementById('chat-info');
+  if (!box) return;
+  box.classList.toggle('drawer', !!on);
+  let bg = document.getElementById('chat-info-bg');
+  if (on && !bg) {
+    bg = document.createElement('div');
+    bg.id = 'chat-info-bg';
+    bg.onclick = () => toggleChatInfoDrawer(false);
+    document.body.appendChild(bg);
+  }
+  if (bg) bg.style.display = on ? 'block' : 'none';
+}
 function renderChatInfo() {
   const box = document.getElementById('chat-info');
   if (!box) return;
-  if (!_chatOpenKey || !_chatAct) { box.innerHTML = ''; box.classList.remove('open'); return; }
+  if (!_chatOpenKey || !_chatAct) { box.innerHTML = ''; box.classList.remove('open'); toggleChatInfoDrawer(false); return; }
   box.classList.add('open');
   const c = _chatItems.find(x => x.id === _chatOpenKey) || { id: _chatOpenKey };
   const lead = chatLeadFor(c, chatLeadIndex(_chatAct));
@@ -16692,6 +16724,7 @@ function renderChatHeader() {
     </div>
     ${!lead && c.phone && !chatContactFor(c, chatContactIndex(_chatAct)) ? `<button class="chat-pill" onclick="saveChatAsContact()" title="Guarda este número na base de contatos do CRM">＋ Salvar contato</button>` : ''}
     ${c.phone && !c.isGroup && c.channel !== 'instagram' ? `<button class="chat-pill" onclick="callWhatsApp({ phone: '${escapeJsString(c.phone)}', leadId: '${lead ? escapeJsString(lead.id) : ''}', act: '${escapeJsString(_chatAct || '')}', chatKey: '${escapeJsString(c.id)}', name: '${escapeJsString(chatName(c, lead))}' })" title="Abre a conversa no WhatsApp para ligar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg> Ligar</button>` : ''}
+    <button class="chat-pill chat-info-btn" onclick="toggleChatInfoDrawer(true)" title="Dados do contato">${uiIco('user', 13)} Dados</button>
     <button class="chat-pill" onclick="openChatTags()">${uiIco('tag')} Etiquetas</button>
     ${lead ? `<button class="chat-pill" onclick="openMoveModal('${escapeJsString(lead.id)}')">Mover no funil</button>` : ''}
     ${c.isGroup ? '' : lead && aiLeadState(lead) === 'active' ? aiLeadBtnHtml(lead, 'chat') : `<button class="chat-pill" onclick="chatAiTakeover()" title="A IA passa a atender esta conversa e responde a última mensagem do contato">${uiIco('bot')} IA assumir</button>`}
@@ -16731,9 +16764,21 @@ async function toggleChatAssign() {
 
 const CHAT_MEDIA_LABELS = { image: '📷 Foto', video: '🎥 Vídeo', audio: '🎤 Áudio', document: '📄 Documento', sticker: 'Figurinha', location: '📍 Localização', contact: '👤 Contato', poll: '📊 Enquete' };
 
+let _chatRenderPending = false;
 function renderChatMessages() {
   const box = document.getElementById('chat-msgs');
   if (!box) return;
+  // Redesenhar a conversa recriava o player e o áudio parava no meio. Com algo tocando, espera terminar.
+  const playing = [...box.querySelectorAll('audio, video')].find(a => !a.paused && !a.ended);
+  if (playing) {
+    _chatRenderPending = true;
+    if (!playing._waitRender) {
+      playing._waitRender = true;
+      playing.addEventListener('ended', () => { playing._waitRender = false; if (_chatRenderPending) { _chatRenderPending = false; renderChatMessages(); } }, { once: true });
+    }
+    return;
+  }
+  _chatRenderPending = false;
   const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120 || !box.dataset.loaded;
   const pendingSched = _chatSched.filter(s => ['pending', 'sending', 'failed'].includes(s.status)).sort((a, b) => String(a.sendAt).localeCompare(String(b.sendAt)));
   const outbox = chatOutboxVisible();
