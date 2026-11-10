@@ -2187,6 +2187,11 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
 .huv-search { display: flex; align-items: center; gap: 8px; width: 280px; background: var(--surface); border: 1px solid var(--border2); border-radius: 11px; padding: 9px 12px; }
 .huv-search input { border: none; outline: none; background: transparent; font-size: 13.5px; color: var(--text); flex: 1; }
 html.is-partner [onclick*="openConfig()"] { display: none !important; }
+/* Parceiro: no painel de logins não cria, apaga, renomeia nem muda nome/conta de anúncios do cliente. */
+html.is-partner #admin-logins-list [onclick^="toggleRenameLogin"], html.is-partner #admin-logins-list [onclick^="toggleSubLoginForm"],
+html.is-partner #admin-logins-list [onclick^="deleteSubLogin"], html.is-partner #admin-logins-list [onclick^="removeExtraClient"],
+html.is-partner #admin-logins-list [onclick^="viewAsLogin"], html.is-partner #admin-logins-list [onclick^="limparCrmCliente"],
+html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="saveClientInfo"]) { display: none !important; }
 .huv-star { background: none; border: none; cursor: pointer; font-size: 15px; color: var(--muted); padding: 0; }
 .huv-star.on { color: #C9A24A; }
 @media (max-width: 768px) {
@@ -2326,6 +2331,9 @@ html.is-partner [onclick*="openConfig()"] { display: none !important; }
     return l.length ? l : ['act_nenhum'];
   }
 
+  // Parceiro de verdade (não o admin no Ver como): os logins passam pelo servidor, que confere a carteira.
+  function partnerAsSelf() { return !!partnerIn() && !currentProfile.viewAs; }
+
   // Admin enxerga todos os leads; cliente só consulta os da própria conta (as regras do Firestore exigem esse filtro).
   function leadsQuery() {
     if (!currentProfile) throw new Error('Não autenticado');
@@ -2436,6 +2444,7 @@ html.is-partner [onclick*="openConfig()"] { display: none !important; }
     },
     // Só admin: senhas dos clientes guardadas no cofre (login -> senha).
     async getVault() {
+      if (partnerAsSelf()) return (await callAdminApi('/team/vault-list', {})).vault || {};
       const snap = await getDocs(collection(db, 'admin_vault'));
       const vault = {};
       snap.forEach(d => { vault[d.id] = d.data().password || ''; });
@@ -2932,6 +2941,7 @@ html.is-partner [onclick*="openConfig()"] { display: none !important; }
       return data.media;
     },
     async adminSetPassword(login, password) {
+      if (partnerAsSelf()) { await callAdminApi('/team/password', { login, password }); return; }
       await callAdminApi('/set-password', { login, password });
       await saveToVault(login, password);
     },
@@ -2974,9 +2984,10 @@ html.is-partner [onclick*="openConfig()"] { display: none !important; }
     },
     // Áreas do login principal de cada cliente (só admin). null = acesso a tudo.
     async getClientLoginPerms() {
-      const snap = await getDocs(query(collection(db, 'users'), where('role', '==', 'client')));
       const out = {};
-      snap.forEach(d => {
+      const rows = partnerAsSelf() ? ((await callAdminApi('/team/perms-list', {})).items || []).map(x => ({ data: () => ({ ...x, role: 'client' }) }))
+        : (await getDocs(query(collection(db, 'users'), where('role', '==', 'client')))).docs;
+      rows.forEach(d => {
         const x = d.data();
         if (x.login && !x.parentLogin) {
           out[x.login] = x.perms && Array.isArray(x.perms.views) ? x.perms.views : null;
@@ -2990,6 +3001,7 @@ html.is-partner [onclick*="openConfig()"] { display: none !important; }
     // chatLines: WhatsApps que o login enxerga no Chat (vazio = todos).
     // adsManage false = o admin tirou do login principal o pausar/ativar anúncios (sem o campo, ele pode).
     async setClientLoginPerms(login, views, chatLines, funnelScope, adsManage) {
+      if (partnerAsSelf()) { await callAdminApi('/team/main-perms', { login, views: views || null, chatLines: chatLines || [], funnelScope, adsManage }); return; }
       const uid = await findUidByLogin(login);
       if (!uid) throw new Error('Login não encontrado.');
       const lines = Array.isArray(chatLines) ? chatLines : [];
@@ -3041,7 +3053,7 @@ html.is-partner [onclick*="openConfig()"] { display: none !important; }
     },
     async teamCall(path, body) { return callAdminApi(path, body); },
     async updateSubLogin(login, personName, perms) {
-      if (currentProfile && currentProfile.role !== 'admin') { await callAdminApi('/team/update', { login, name: personName, views: perms.views, chatLines: perms.chatLines || [], funnelScope: perms.funnelScope || 'all', adsManage: !!perms.adsManage, mcp: !!perms.mcp }); return; }
+      if (currentProfile && currentProfile.role !== 'admin' && !currentProfile.viewAs) { await callAdminApi('/team/update', { login, name: personName, views: perms.views, chatLines: perms.chatLines || [], funnelScope: perms.funnelScope || 'all', adsManage: !!perms.adsManage, mcp: !!perms.mcp }); return; }
       const uid = await findUidByLogin(login);
       if (!uid) throw new Error('Login não encontrado.');
       await updateDoc(doc(db, 'users', uid), { personName, perms });
@@ -8350,9 +8362,8 @@ function switchView(view) {
     document.getElementById('pw-confirm').value = '';
     document.getElementById('pw-error').style.display = 'none';
     document.getElementById('pw-success').style.display = 'none';
-    if (isAdmin && !isPartnerUser()) renderAdminLogins();
+    if (isAdmin) renderAdminLogins();
     renderPartnersAdmin();
-    renderPartnerLogins();
     renderNoticesAdmin();
   }
 }
@@ -8398,8 +8409,9 @@ async function renderAdminLogins() {
   try { Object.assign(WHATSAPP_SETTINGS, await window._fb.getWhatsAppSettings()); } catch (e) {}
   try { _mainLoginPerms = await window._fb.getClientLoginPerms(); } catch (e) { _mainLoginPerms = null; console.warn('Áreas dos logins principais indisponíveis:', e); }
 
+  const onlyActs = partnerActList();
   const todos = Object.entries(CREDENTIALS)
-    .filter(([login, cred]) => login !== 'admin' && cred && cred.act)
+    .filter(([login, cred]) => login !== 'admin' && cred && cred.act && (!onlyActs || onlyActs.includes(normalizeActValue(cred.act))))
     .map(([login, cred]) => ({
       login,
       act: cred.act,
