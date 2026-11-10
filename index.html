@@ -1844,6 +1844,8 @@ html:root .chat-pill.chat-sum-pill { display: none; }
 #chat-info textarea { width: 100%; resize: vertical; font-size: 12.5px; }
 @media (max-width: 1200px) { .chat-info, .chat-info.open { display: none; } }
 .chat-info-btn { display: none !important; }
+.chat-dl { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--accent2); text-decoration: none; margin: 2px 0 4px; opacity: .85; }
+.chat-dl:hover { opacity: 1; text-decoration: underline; }
 #chat-info-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 1199; }
 @media (max-width: 1200px) {
   .chat-info-btn { display: inline-flex !important; align-items: center; gap: 4px; }
@@ -16812,6 +16814,38 @@ async function toggleChatAssign() {
 const CHAT_MEDIA_LABELS = { image: '📷 Foto', video: '🎥 Vídeo', audio: '🎤 Áudio', document: '📄 Documento', sticker: 'Figurinha', location: '📍 Localização', contact: '👤 Contato', poll: '📊 Enquete' };
 
 let _chatRenderPending = false;
+function chatMediaFileName(m) {
+  if (m.fileName) return String(m.fileName);
+  const d = new Date(m.at || Date.now());
+  const p = n => String(n).padStart(2, '0');
+  const base = { image: 'imagem', video: 'video', audio: 'audio', sticker: 'figurinha', document: 'arquivo' }[m.type] || 'arquivo';
+  return `${base}-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+}
+// Baixa o arquivo com nome; se o servidor da mídia não deixar (outro site), abre numa aba nova.
+async function chatDownload(url, name) {
+  const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'video/mp4': 'mp4', 'video/3gpp': '3gp', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'application/pdf': 'pdf' };
+  const save = (href, type) => {
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = /\.[a-z0-9]{2,5}$/i.test(name) ? name : name + '.' + (ext[String(type || '').split(';')[0]] || 'bin');
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+  try {
+    if (url.startsWith('blob:') || url.startsWith('data:')) {
+      const b = await fetch(url).then(r => r.blob());
+      save(url, b.type);
+      return;
+    }
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const b = await r.blob();
+    const href = URL.createObjectURL(b);
+    save(href, b.type);
+    setTimeout(() => URL.revokeObjectURL(href), 30000);
+  } catch (e) {
+    window.open(url, '_blank', 'noopener');
+  }
+}
 function renderChatMessages() {
   const box = document.getElementById('chat-msgs');
   if (!box) return;
@@ -16868,6 +16902,9 @@ function renderChatMessages() {
     } else if (m.type !== 'text' && CHAT_MEDIA_LABELS[m.type]) {
       media = `<span style="color:var(--muted2);">${CHAT_MEDIA_LABELS[m.type]}</span>${m.text ? '<br>' : ''}`;
     }
+    // Baixar imagem, vídeo, áudio e arquivo já aberto na conversa.
+    const dlUrl = ['image', 'video', 'audio', 'document', 'sticker'].includes(m.type) ? (m.mediaUrl || ((_chatMedia[m.id] || {}).url) || '') : '';
+    if (dlUrl) media += `<a href="#" class="chat-dl" onclick="chatDownload('${escapeJsString(dlUrl)}','${escapeJsString(chatMediaFileName(m))}');return false;">${uiIco('download', 12)} Baixar</a><br>`;
     const bodyText = m.type === 'contact' && Array.isArray(m.contacts) && m.contacts.length ? '' : (m.text || (m.type === 'audio' && m.transcript ? '🎤 "' + m.transcript + '"' : ''));
     const who = m.fromMe ? [m.source, m.sentBy].filter(Boolean).join(' · ') : '';
     const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
