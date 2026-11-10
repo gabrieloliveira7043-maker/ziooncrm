@@ -2180,6 +2180,7 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
 .huv-btn.primary { background: var(--btn-bg); color: var(--btn-text); border-color: var(--btn-bg); }
 .huv-search { display: flex; align-items: center; gap: 8px; width: 280px; background: var(--surface); border: 1px solid var(--border2); border-radius: 11px; padding: 9px 12px; }
 .huv-search input { border: none; outline: none; background: transparent; font-size: 13.5px; color: var(--text); flex: 1; }
+html.is-partner [onclick*="openConfig()"] { display: none !important; }
 .huv-star { background: none; border: none; cursor: pointer; font-size: 15px; color: var(--muted); padding: 0; }
 .huv-star.on { color: #C9A24A; }
 @media (max-width: 768px) {
@@ -2303,10 +2304,18 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
     return raw.startsWith('act_') ? raw : ('act_' + raw.replace(/^act[_\s-]*/i, ''));
   }
 
+  // Parceiro: só os clientes da carteira (as regras do banco exigem o filtro "act in [...]", até 30 clientes).
+  function partnerIn() {
+    if (!currentProfile || currentProfile.role !== 'partner') return null;
+    const l = (Array.isArray(currentProfile.partnerActs) ? currentProfile.partnerActs : []).map(normalizeAct).filter(Boolean).slice(0, 30);
+    return l.length ? l : ['act_nenhum'];
+  }
+
   // Admin enxerga todos os leads; cliente só consulta os da própria conta (as regras do Firestore exigem esse filtro).
   function leadsQuery() {
     if (!currentProfile) throw new Error('Não autenticado');
     if (currentProfile.role === 'admin') return collection(db, 'leads');
+    if (partnerIn()) return query(collection(db, 'leads'), where('act', 'in', partnerIn()));
     return query(collection(db, 'leads'), where('act', '==', currentProfile.act));
   }
 
@@ -2472,7 +2481,7 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
     // Integrações: chaves de landing page (inbound_keys) e páginas do Facebook (meta_pages).
     async listInboundKeys() {
       if (!currentProfile) return [];
-      const q = currentProfile.role === 'admin' ? collection(db, 'inbound_keys') : query(collection(db, 'inbound_keys'), where('act', '==', currentProfile.act || ''));
+      const q = currentProfile.role === 'admin' ? collection(db, 'inbound_keys') : partnerIn() ? query(collection(db, 'inbound_keys'), where('act', 'in', partnerIn())) : query(collection(db, 'inbound_keys'), where('act', '==', currentProfile.act || ''));
       const snap = await getDocs(q);
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     },
@@ -2484,7 +2493,7 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
     },
     async listMetaPages() {
       // O cliente só pode ler as páginas ligadas ao funil dele (regra do banco).
-      const q = currentProfile && currentProfile.role !== 'admin' ? query(collection(db, 'meta_pages'), where('act', '==', currentProfile.act || '')) : collection(db, 'meta_pages');
+      const q = partnerIn() ? query(collection(db, 'meta_pages'), where('act', 'in', partnerIn())) : currentProfile && currentProfile.role !== 'admin' ? query(collection(db, 'meta_pages'), where('act', '==', currentProfile.act || '')) : collection(db, 'meta_pages');
       const snap = await getDocs(q);
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     },
@@ -2534,6 +2543,7 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
       if (currentProfile.role === 'admin') {
         return onSnapshot(collection(db, 'whatsapp_status'), snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))), onError);
       }
+      if (partnerIn()) return onSnapshot(query(collection(db, 'whatsapp_status'), where('act', 'in', partnerIn())), snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))), onError);
       if (!currentProfile.act) return null;
       return onSnapshot(query(collection(db, 'whatsapp_status'), where('act', '==', normalizeAct(currentProfile.act))), snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))), onError);
     },
@@ -2552,6 +2562,7 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
       try {
         // Cliente só pode ler os logins da própria conta (regras do Firestore).
         const ref = currentProfile.role === 'admin' ? collection(db, 'extra_clients')
+          : partnerIn() ? query(collection(db, 'extra_clients'), where('act', 'in', partnerIn()))
           : query(collection(db, 'extra_clients'), where('act', '==', currentProfile.act || ''));
         const snap = await getDocs(ref);
         return snap.docs.map(d => ({ login: d.id, ...d.data() }));
@@ -2579,6 +2590,37 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
       await setDoc(doc(db, 'extra_clients', login), { name, act, adAccount, layout: layout || 'default', uid });
       if (pass) await saveToVault(login, pass);
     },
+    // Só admin. Parceiros: login com role 'partner' e a carteira em partnerActs.
+    async listPartners() {
+      const snap = await getDocs(query(collection(db, 'users'), where('role', '==', 'partner')));
+      return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+    },
+    async savePartner(login, name, pass, acts) {
+      let uid = await findUidByLogin(login);
+      if (uid) {
+        const cur = await getDoc(doc(db, 'users', uid));
+        if (cur.exists() && cur.data().role !== 'partner') throw new Error('Esse login já é de um cliente. Escolha outro.');
+      } else {
+        const secondary = initializeApp(firebaseConfig, 'huven-admin-' + Date.now());
+        try {
+          const secondaryAuth = getAuth(secondary);
+          const cred = await createUserWithEmailAndPassword(secondaryAuth, loginToEmail(login), pass);
+          uid = cred.user.uid;
+          await signOut(secondaryAuth);
+        } finally { await deleteApp(secondary); }
+      }
+      if (pass && uid) await callAdminApi('/set-password', { login, password: pass }).catch(() => null);
+      await setDoc(doc(db, 'users', uid), { login, name, role: 'partner', act: '', partnerActs: (acts || []).map(normalizeAct), layout: 'default', createdAt: new Date().toISOString() });
+      if (pass) await saveToVault(login, pass);
+      return uid;
+    },
+    async setPartnerActs(uid, acts) {
+      await updateDoc(doc(db, 'users', uid), { partnerActs: (acts || []).map(normalizeAct) });
+    },
+    async deletePartner(uid, login) {
+      try { await callAdminApi('/delete-user', { login }); } catch (e) { console.warn('Login do parceiro não apagado no Auth:', e); }
+      await deleteDoc(doc(db, 'users', uid));
+    },
     // Só admin. Muda nome e conta de anúncios; a chave "act" (que liga o cliente aos leads) não muda.
     async updateClientInfo(login, { act, name, adAccount, fixed }) {
       const uid = await findUidByLogin(login);
@@ -2599,6 +2641,8 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
       if (currentProfile.role === 'admin') {
         const snap = await getDocs(collection(db, 'whatsapp_settings'));
         snap.forEach(d => { out[d.id] = d.data(); });
+      } else if (partnerIn()) {
+        await Promise.all(partnerIn().map(a => getDoc(doc(db, 'whatsapp_settings', a)).then(s => { if (s.exists()) out[a] = s.data(); }).catch(() => null)));
       } else if (currentProfile.act) {
         const snap = await getDoc(doc(db, 'whatsapp_settings', currentProfile.act));
         if (snap.exists()) out[currentProfile.act] = snap.data();
@@ -2745,6 +2789,7 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
       if (!currentProfile) return null;
       const q = currentProfile.role === 'admin'
         ? query(collection(db, 'chat_notes'), where('done', '==', false))
+        : partnerIn() ? query(collection(db, 'chat_notes'), where('act', 'in', partnerIn()), where('done', '==', false))
         : query(collection(db, 'chat_notes'), where('act', '==', normalizeAct(currentProfile.act)), where('done', '==', false));
       return onSnapshot(q, snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(n => n.remindAt)), error => console.warn('Lembretes indisponíveis:', error));
     },
@@ -4231,6 +4276,7 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
 
         <div id="conta-team" style="display:none;margin-bottom:24px;"></div>
 
+        <div id="partners-admin" style="display:none;"></div>
         <div id="notices-admin" style="display:none;"></div>
 
         <div id="ui-aparencia"></div>
@@ -4509,7 +4555,10 @@ const WHATSAPP_SETTINGS = {};
 
 const NO_AD_ACCOUNT_MESSAGE ='Este cliente ainda não tem conta de anúncios configurada. O admin pode definir em Conta → Clientes.';
 let activeClient = null;
-let isAdmin = false;
+let isAdmin = false; // admin ou parceiro (o parceiro vê só a carteira; ver isPartnerUser)
+// Parceiro: login que administra só os clientes da carteira dele. Não cria clientes nem logins (isso é da Huven).
+function isPartnerUser() { const p = window._fb && window._fb.getProfile && window._fb.getProfile(); return !!p && p.role === 'partner'; }
+function partnerActList() { const p = window._fb && window._fb.getProfile && window._fb.getProfile(); return p && p.role === 'partner' ? (Array.isArray(p.partnerActs) ? p.partnerActs : []).map(normalizeActValue) : null; }
 
 function getClients() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; } }
 function setClients(list) { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); }
@@ -4625,8 +4674,9 @@ function getClientDisplayName(act) {
 }
 
 function getSidebarClientEntries() {
+  const only = partnerActList();
   return Object.entries({ ...getBaseClientNames(), ...(CLIENT_NAMES || {}) })
-    .filter(([act, name]) => act && name);
+    .filter(([act, name]) => act && name && (!only || only.includes(normalizeActValue(act))));
 }
 
 function renderSidebar() {
@@ -4726,7 +4776,11 @@ async function renderSavedList() {
 }
 
 function renderAll() { renderSidebar(); renderSavedList(); }
-function openConfig() { if (typeof isAdmin !== 'undefined' && !isAdmin) return; switchView('cfgclientes'); }
+function openConfig() {
+  if (typeof isAdmin !== 'undefined' && !isAdmin) return;
+  if (isPartnerUser()) { showToast('Para um cliente ou login novo, fale com a Huven.', 'info'); return; }
+  switchView('cfgclientes');
+}
 function closeConfig() { switchView('clientes'); }
 
 function fmt(n, dec=2) { return Number(n).toFixed(dec); }
@@ -6583,7 +6637,8 @@ async function doLogin() {
   }
 
   applyProfileLocally(profile);
-  isAdmin = profile.role === 'admin';
+  isAdmin = profile.role === 'admin' || profile.role === 'partner';
+  document.documentElement.classList.toggle('is-partner', profile.role === 'partner');
   await loadExtraClients();
 
   if (loginBtn) { loginBtn.textContent = 'Entrar'; loginBtn.disabled = false; }
@@ -8275,7 +8330,8 @@ function switchView(view) {
     document.getElementById('pw-confirm').value = '';
     document.getElementById('pw-error').style.display = 'none';
     document.getElementById('pw-success').style.display = 'none';
-    if (isAdmin) renderAdminLogins();
+    if (isAdmin && !isPartnerUser()) renderAdminLogins();
+    renderPartnersAdmin();
     renderNoticesAdmin();
   }
 }
@@ -11233,10 +11289,73 @@ document.addEventListener('visibilitychange', () => {
 
 // ----- Painel do admin (tela Conta) -----
 let _noticesAdmin = null;
+// ----- Parceiros (só o admin): login que administra uma carteira de clientes, sem criar logins -----
+let _partners = null;
+async function renderPartnersAdmin(reload) {
+  const box = document.getElementById('partners-admin');
+  if (!box) return;
+  if (!isAdmin || isPartnerUser()) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  if (!_partners || reload) {
+    box.innerHTML = '<div class="integ-muted">Carregando parceiros...</div>';
+    try { _partners = await window._fb.listPartners(); } catch (e) { box.innerHTML = '<div class="integ-muted">Não foi possível carregar os parceiros: ' + escapeHtml(e.message) + '</div>'; return; }
+  }
+  const clients = getSidebarClientEntries().sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+  const checks = (id, sel) => `<div class="ptn-acts" id="${id}" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:4px 12px;max-height:220px;overflow:auto;margin:8px 0;">${clients.map(([act, name]) => `<label style="display:flex;gap:6px;align-items:center;font-size:13px;"><input type="checkbox" value="${escapeHtml(act)}" ${sel.includes(act) ? 'checked' : ''}> ${escapeHtml(name)}</label>`).join('')}</div>`;
+  box.innerHTML = `<div class="integ-card" style="margin-bottom:24px;">
+    <div style="font-size:15px;font-weight:600;color:var(--text);">Parceiros</div>
+    <div class="integ-muted" style="margin:4px 0 12px;">O parceiro entra como admin, mas só vê e mexe nos clientes da carteira dele. Criar clientes e logins continua só com você.</div>
+    ${(_partners || []).map(p => `<details style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+      <summary style="cursor:pointer;"><b>${escapeHtml(p.name || p.login)}</b> <span class="integ-muted mono">${escapeHtml(p.login)}</span> · ${(p.partnerActs || []).length} cliente(s)</summary>
+      <div class="field-label" style="margin-top:8px;">Clientes da carteira</div>
+      ${checks('ptn-' + p.uid, (p.partnerActs || []).map(normalizeActValue))}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="integ-btn primary" onclick="savePartnerActs('${escapeJsString(p.uid)}')">Salvar carteira</button>
+        <button class="integ-btn danger" onclick="deletePartner('${escapeJsString(p.uid)}','${escapeJsString(p.login)}')">Excluir parceiro</button>
+      </div>
+    </details>`).join('') || '<div class="integ-muted" style="margin-bottom:8px;">Nenhum parceiro ainda.</div>'}
+    <details style="margin-top:10px;"><summary style="cursor:pointer;font-weight:600;">+ Novo parceiro</summary>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-top:8px;">
+        <label><span class="field-label">Nome</span><input class="field-input" id="ptn-new-name" maxlength="60"></label>
+        <label><span class="field-label">Login</span><input class="field-input mono" id="ptn-new-login" maxlength="40" autocomplete="off" placeholder="ex.: agencia.x"></label>
+        <label><span class="field-label">Senha</span><input class="field-input" id="ptn-new-pass" type="password" autocomplete="new-password" placeholder="mínimo 6 caracteres"></label>
+      </div>
+      <div class="field-label" style="margin-top:8px;">Clientes da carteira</div>
+      ${checks('ptn-new-acts', [])}
+      <button class="integ-btn primary" id="ptn-new-btn" onclick="createPartner()">Criar parceiro</button>
+      <div id="ptn-fb" style="font-size:13px;margin-top:6px;"></div>
+    </details>
+  </div>`;
+}
+function partnerChecked(id) { return [...document.querySelectorAll('#' + id + ' input:checked')].map(i => i.value); }
+async function savePartnerActs(uid) {
+  try { await window._fb.setPartnerActs(uid, partnerChecked('ptn-' + uid)); showToast('Carteira salva.', 'success'); renderPartnersAdmin(true); }
+  catch (e) { showToast('Erro ao salvar: ' + e.message, 'error'); }
+}
+async function createPartner() {
+  const name = (document.getElementById('ptn-new-name').value || '').trim();
+  const login = (document.getElementById('ptn-new-login').value || '').trim().toLowerCase().replace(/\s+/g, '');
+  const pass = document.getElementById('ptn-new-pass').value || '';
+  const fb = document.getElementById('ptn-fb'), btn = document.getElementById('ptn-new-btn');
+  if (!name || !/^[a-z0-9._-]{2,40}$/.test(login)) { fb.style.color = 'var(--red)'; fb.textContent = 'Preencha o nome e um login válido (letras, números, ponto, hífen).'; return; }
+  if (pass.length < 6) { fb.style.color = 'var(--red)'; fb.textContent = 'A senha precisa ter pelo menos 6 caracteres.'; return; }
+  btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'Criando...';
+  try {
+    await window._fb.savePartner(login, name, pass, partnerChecked('ptn-new-acts'));
+    showToast('Parceiro criado.', 'success');
+    renderPartnersAdmin(true);
+  } catch (e) { btn.disabled = false; fb.style.color = 'var(--red)'; fb.textContent = 'Erro: ' + e.message; }
+}
+async function deletePartner(uid, login) {
+  if (!await showConfirm('O login de parceiro "' + login + '" será apagado. Os clientes da carteira não mudam.', 'Excluir parceiro', 'Excluir')) return;
+  try { await window._fb.deletePartner(uid, login); showToast('Parceiro excluído.', 'success'); renderPartnersAdmin(true); }
+  catch (e) { showToast('Erro ao excluir: ' + e.message, 'error'); }
+}
+
 async function renderNoticesAdmin(reload) {
   const box = document.getElementById('notices-admin');
   if (!box) return;
-  if (!isAdmin) { box.style.display = 'none'; return; }
+  if (!isAdmin || isPartnerUser()) { box.style.display = 'none'; return; }
   box.style.display = 'block';
   if (!_noticesAdmin || reload) {
     box.innerHTML = '<div class="ui-ap"><h3>Avisos em pop-up</h3><div class="ui-ap-sub">Carregando...</div></div>';
@@ -11412,7 +11531,7 @@ function renderClientSwitch() {
   const un = document.getElementById('sidebar-user-name');
   if (un && user) {
     un.textContent = user.name || user.login || 'Usuário';
-    document.getElementById('sidebar-user-role').textContent = isAdmin ? 'Admin · Zioon' : (activeClient ? activeClient.name : 'Cliente');
+    document.getElementById('sidebar-user-role').textContent = isAdmin ? (isPartnerUser() ? 'Parceiro' : 'Admin · Zioon') : (activeClient ? activeClient.name : 'Cliente');
     document.getElementById('sidebar-user-avatar').textContent = huvInitials(user.name || user.login);
   }
 }
@@ -15512,7 +15631,7 @@ async function renderIntegMetaClient() {
 async function renderIntegMeta() {
   const body = document.getElementById('integ-body');
   if (!body) return;
-  if (!isAdmin) return renderIntegMetaClient();
+  if (!isAdmin || isPartnerUser()) return renderIntegMetaClient();
   body.innerHTML = '<div class="integ-muted">Carregando...</div>';
   try {
     const [status, saved] = await Promise.all([window._fb.adminApi('/meta/status').catch(() => ({ configured: false })), window._fb.listMetaPages()]);
@@ -18969,7 +19088,7 @@ async function sendNewChat() {
 // Linhas com id "api..." falam pela API oficial da Meta. A Zioon cola as credenciais (admin); o cliente vê os modelos.
 // Fora da janela de 24 h só sai modelo aprovado: o da campanha, ou o "modelo padrão" da linha.
 const waIsCloud = id => /^api/.test(String(id || ''));
-const isAdminUser = () => ((window._fb && window._fb.getProfile && window._fb.getProfile()) || {}).role === 'admin';
+const isAdminUser = () => ['admin', 'partner'].includes(((window._fb && window._fb.getProfile && window._fb.getProfile()) || {}).role);
 const CLOUD_STATUS = { APPROVED: ['Aprovado', 'var(--green, #34d399)'], PENDING: ['Em análise', '#fbbf24'], REJECTED: ['Recusado', '#f87171'], PAUSED: ['Pausado', '#fbbf24'], DISABLED: ['Desativado', '#f87171'], IN_APPEAL: ['Em recurso', '#fbbf24'] };
 const CLOUD_QUALITY = { GREEN: 'Qualidade alta', YELLOW: 'Qualidade média', RED: 'Qualidade baixa' };
 let _cloudTplCache = {};
@@ -25590,7 +25709,7 @@ let _r2Month = '';
 let _r2AlertHiddenLevel = 0;
 
 function startR2UsageWatch() {
-  if (!isAdmin || !window._fb || typeof window._fb.listenR2Usage !== 'function') return;
+  if (!isAdmin || isPartnerUser() || !window._fb || typeof window._fb.listenR2Usage !== 'function') return;
   const month = new Date().toISOString().slice(0, 7);
   if (_r2Unsub && _r2Month === month) return;
   if (_r2Unsub) _r2Unsub();
@@ -25717,7 +25836,8 @@ async function restoreSessionInner() {
     return false;
   }
   applyProfileLocally(profile);
-  isAdmin = profile.role === 'admin';
+  isAdmin = profile.role === 'admin' || profile.role === 'partner';
+  document.documentElement.classList.toggle('is-partner', profile.role === 'partner');
   await loadExtraClients();
 
   document.getElementById('login-overlay').style.display = 'none';
@@ -25839,6 +25959,7 @@ function userAllowedViews() {
   return p && p.perms && Array.isArray(p.perms.views) ? p.perms.views : null;
 }
 function userCanView(view) {
+  if (view === 'cfgclientes' && isPartnerUser()) return false;
   if (view === 'ajuda' || view === 'conta' || view === 'atividades') return true;
   const v = userAllowedViews();
   if (v && view === 'integracoes') {
