@@ -16944,7 +16944,7 @@ function renderChatMessages() {
     // Enviada por nós e ainda dentro do prazo do WhatsApp: botão para editar (texto, 15 min) ou apagar (2 dias).
     const age = Date.now() - d.getTime();
     const cloudChat = waIsCloud(waLineOfKey(_chatOpenKey)); // a API oficial não edita nem apaga
-    const canEdit = !cloudChat && m.fromMe && (m.type || 'text') === 'text' && age < 15 * 60000 && !/^(crm|sch)\d/.test(m.id);
+    const canEdit = !cloudChat && m.fromMe && ['text', 'image', 'video'].includes(m.type || 'text') && age < 15 * 60000 && !/^(crm|sch)\d/.test(m.id);
     const canDel = !cloudChat && m.fromMe && age < 2 * 86400000 && !/^(crm|sch)\d/.test(m.id);
     const menu = canEdit || canDel ? `<button class="chat-msg-more" title="Editar ou apagar" onclick="openChatMsgMenu(event, '${escapeJsString(m.id)}', ${canEdit}, ${canDel})">⋯</button>` : '';
     const sender = !m.fromMe && (m.senderName || m.senderPhone) ? `<div style="font-size:12px;font-weight:700;color:var(--accent2);margin-bottom:2px;">${escapeHtml(m.senderName || chatFormatPhone(m.senderPhone))}${m.senderName && m.senderPhone ? ` <span style="font-weight:400;color:var(--muted2);">${escapeHtml(chatFormatPhone(m.senderPhone))}</span>` : ''}</div>` : '';
@@ -17001,7 +17001,7 @@ function editChatMessage(id) {
   closeChatMsgMenu();
   const m = _chatMsgs.find(x => x.id === id);
   if (!m) return;
-  openHuvenModal('Editar mensagem', `
+  openHuvenModal((m.type || 'text') === 'text' ? 'Editar mensagem' : 'Editar legenda', `
     <div class="integ-muted" style="font-size:12.5px;margin-bottom:8px;">O contato vê a mensagem corrigida com a marca "editada". O WhatsApp só permite editar até 15 minutos depois do envio.</div>
     <textarea class="field-input" id="chat-edit-text" rows="4" maxlength="4000" style="width:100%;box-sizing:border-box;resize:vertical;margin-bottom:10px;">${escapeHtml(m.text || '')}</textarea>
     <button class="btn-save" style="width:auto;padding:9px 16px;" onclick="saveChatEdit('${escapeJsString(id)}')">Salvar correção</button> <span id="chat-edit-fb" class="integ-muted"></span>`, 480);
