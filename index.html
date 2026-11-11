@@ -11365,6 +11365,7 @@ async function renderPartnersAdmin(reload) {
   box.style.display = 'block';
   if (!_partners || reload) {
     box.innerHTML = '<div class="integ-muted">Carregando parceiros...</div>';
+    try { _partnerVault = await window._fb.getVault().catch(() => ({})); } catch (e) { _partnerVault = {}; }
     try { _partners = await window._fb.listPartners(); } catch (e) { box.innerHTML = '<div class="integ-muted">Não foi possível carregar os parceiros: ' + escapeHtml(e.message) + '</div>'; return; }
   }
   const clients = getSidebarClientEntries().sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
@@ -11374,6 +11375,18 @@ async function renderPartnersAdmin(reload) {
     <div class="integ-muted" style="margin:4px 0 12px;">O parceiro entra como admin, mas só vê e mexe nos clientes da carteira dele. Criar clientes e logins continua só com você.</div>
     ${(_partners || []).map(p => `<details style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;">
       <summary style="cursor:pointer;"><b>${escapeHtml(p.name || p.login)}</b> <span class="integ-muted mono">${escapeHtml(p.login)}</span> · ${(p.partnerActs || []).length} cliente(s)</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;font-size:13px;">
+        <div><span class="integ-muted">Login:</span> <span class="mono">${escapeHtml(p.login)}</span></div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="integ-muted">Senha atual:</span>
+          ${_partnerVault[p.login] ? `<input id="ptn-pass-${escapeHtml(p.uid)}" class="field-input mono" style="width:150px;padding:4px 8px;" type="password" value="${escapeHtml(_partnerVault[p.login])}" readonly>
+          <button class="integ-btn" onclick="ptnPassShow('${escapeJsString(p.uid)}', this)">Mostrar</button>
+          <button class="integ-btn" onclick="ptnPassCopy('${escapeJsString(p.uid)}', this)">Copiar</button>` : '<span class="integ-muted">não registrada, defina uma nova abaixo</span>'}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="integ-muted">Nova senha:</span>
+          <input id="ptn-newpass-${escapeHtml(p.uid)}" class="field-input mono" style="width:150px;padding:4px 8px;" type="text" autocomplete="off" placeholder="mín. 6 caracteres">
+          <button class="integ-btn" onclick="ptnPassChange('${escapeJsString(p.uid)}','${escapeJsString(p.login)}')">Trocar senha</button>
+        </div>
+      </div>
       <div class="field-label" style="margin-top:8px;">Clientes da carteira</div>
       ${checks('ptn-' + p.uid, (p.partnerActs || []).map(normalizeActValue))}
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -11394,6 +11407,22 @@ async function renderPartnersAdmin(reload) {
       <div id="ptn-fb" style="font-size:13px;margin-top:6px;"></div>
     </details>
   </div>`;
+}
+let _partnerVault = {};
+function ptnPassShow(uid, btn) {
+  const el = document.getElementById('ptn-pass-' + uid); if (!el) return;
+  const show = el.type === 'password'; el.type = show ? 'text' : 'password'; btn.textContent = show ? 'Ocultar' : 'Mostrar';
+}
+async function ptnPassCopy(uid, btn) {
+  const el = document.getElementById('ptn-pass-' + uid); if (!el) return;
+  try { await navigator.clipboard.writeText(el.value); btn.textContent = 'Copiada'; setTimeout(() => btn.textContent = 'Copiar', 1500); } catch (e) { showToast('Não foi possível copiar.', 'error'); }
+}
+async function ptnPassChange(uid, login) {
+  const el = document.getElementById('ptn-newpass-' + uid);
+  const pass = (el && el.value || '').trim();
+  if (pass.length < 6) { showToast('A senha precisa ter pelo menos 6 caracteres.', 'error'); return; }
+  try { await window._fb.adminSetPassword(login, pass); showToast('Senha do parceiro trocada.', 'success'); renderPartnersAdmin(true); }
+  catch (e) { showToast('Erro ao trocar a senha: ' + e.message, 'error'); }
 }
 function partnerChecked(id) { return [...document.querySelectorAll('#' + id + ' input:checked')].map(i => i.value); }
 async function savePartnerActs(uid) {
