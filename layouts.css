@@ -497,17 +497,17 @@ html.ui-vidro.marca-zioon:not([data-theme="light"]) .ui-avatar { color: #0B1430;
 .ct-table > .ct-row:not(.ct-head) { content-visibility: auto; contain-intrinsic-size: auto 56px; }
 .kanban-cards > .kanban-card { flex-shrink: 0; content-visibility: auto; contain-intrinsic-size: auto 120px; }
 
-/* Atendimento e Atividades: folha de vidro atrás do conteúdo para os números não ficarem soltos em cima da foto.
+/* Telas (menos Kanban e Chat, que já são de vidro): folha de vidro atrás do conteúdo para os números não ficarem soltos em cima da foto.
    O desfoque fica no ::before para não prender janelas com position:fixed dentro da tela. */
-html.ui-vidro :is(#analise-view, #atividades-view) { position: relative; isolation: isolate; padding: 22px 24px 26px; border-radius: 22px; }
-html.ui-vidro :is(#analise-view, #atividades-view)::before {
+html.ui-vidro :is(#analise-view, #atividades-view, #cadencia-view, #campanhas-view, #automacoes-view, #agenteia-view, #calendario-view, #prospeccao-view, #cfgclientes-view, #capi-view, #historico-view, #modelos-view, #instagram-view, #posts-view, #clientes-view, #integracoes-view, #conta-view, #ajuda-view, #contatos-view, #whatsapp-view) { position: relative; isolation: isolate; padding: 22px 24px 26px; border-radius: 22px; }
+html.ui-vidro :is(#analise-view, #atividades-view, #cadencia-view, #campanhas-view, #automacoes-view, #agenteia-view, #calendario-view, #prospeccao-view, #cfgclientes-view, #capi-view, #historico-view, #modelos-view, #instagram-view, #posts-view, #clientes-view, #integracoes-view, #conta-view, #ajuda-view, #contatos-view, #whatsapp-view)::before {
   content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
   background: var(--ui-sheen-soft, none), linear-gradient(var(--ui-glass), var(--ui-glass)), var(--ui-glass);
   border: 1px solid var(--ui-glass-line);
   -webkit-backdrop-filter: blur(26px) saturate(150%); backdrop-filter: blur(26px) saturate(150%);
 }
-html.ui-calm.ui-vidro :is(#analise-view, #atividades-view)::before { -webkit-backdrop-filter: none; backdrop-filter: none; background: linear-gradient(var(--ui-glass), var(--ui-glass)), linear-gradient(var(--ui-glass), var(--ui-glass)), var(--ui-glass); }
-@media (max-width: 760px) { html.ui-vidro :is(#analise-view, #atividades-view) { padding: 14px 12px 18px; border-radius: 16px; } }
+html.ui-calm.ui-vidro :is(#analise-view, #atividades-view, #cadencia-view, #campanhas-view, #automacoes-view, #agenteia-view, #calendario-view, #prospeccao-view, #cfgclientes-view, #capi-view, #historico-view, #modelos-view, #instagram-view, #posts-view, #clientes-view, #integracoes-view, #conta-view, #ajuda-view, #contatos-view, #whatsapp-view)::before { -webkit-backdrop-filter: none; backdrop-filter: none; background: linear-gradient(var(--ui-glass), var(--ui-glass)), linear-gradient(var(--ui-glass), var(--ui-glass)), var(--ui-glass); }
+@media (max-width: 760px) { html.ui-vidro :is(#analise-view, #atividades-view, #cadencia-view, #campanhas-view, #automacoes-view, #agenteia-view, #calendario-view, #prospeccao-view, #cfgclientes-view, #capi-view, #historico-view, #modelos-view, #instagram-view, #posts-view, #clientes-view, #integracoes-view, #conta-view, #ajuda-view, #contatos-view, #whatsapp-view) { padding: 14px 12px 18px; border-radius: 16px; } }
 
 /* Vidro: a tela entra sem fade. Com opacidade no pai, o navegador desliga o desfoque dos vidros dentro dele durante a animação,
    e eles apareciam transparentes e só depois viravam vidro de repente. */
