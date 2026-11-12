@@ -4497,7 +4497,7 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
             <div style="font-size:18px;font-weight:600;color:var(--text);flex:1;">Chat</div>
             <button class="chat-pill" onclick="openNewChat()" title="Começar conversa com um número">+ Nova</button>
-            <button class="chat-pill" onclick="openHistoryImport()" title="Puxar conversas antigas de um WhatsApp conectado">⟲ Histórico</button>
+            <button class="chat-pill" id="chat-hist-btn" onclick="openHistoryImport()" title="Puxar conversas antigas de um WhatsApp conectado">⟲ Histórico</button>
           </div>
           <select id="chat-client-select" class="field-input" style="display:none;margin-bottom:8px;padding:8px 10px;font-size:13px;" onchange="onChatClientChange()"></select>
           <input id="chat-search" class="field-input" placeholder="Buscar nome ou número..." oninput="renderChatList()" style="margin-bottom:8px;padding:8px 10px;font-size:13px;">
@@ -21027,10 +21027,11 @@ function openHistoryImport() {
   const lines = waLines(act).filter(l => !waIsCloud(l.id));
   if (!lines.length) return showToast('Este cliente não tem WhatsApp por QR Code conectado.', 'warning');
   openHuvenModal('Puxar conversas antigas', `
-    <div class="integ-muted" style="font-size:12.5px;line-height:1.55;margin-bottom:12px;">Traz para o Chat as mensagens que o WhatsApp já tinha antes de ser conectado (conversas individuais, sem grupos). Não marca como não lidas e não dispara automação nem IA.</div>
+    <div class="integ-muted" style="font-size:12.5px;line-height:1.55;margin-bottom:12px;">Traz para o Chat as mensagens que o WhatsApp já tinha. Ao ler o QR Code, o CRM já puxa os últimos 90 dias sozinho; aqui dá para puxar mais. Não marca como não lidas e não dispara automação nem IA. Mensagens que já estão no Chat não mudam.</div>
+    <div id="hi-jobs">${histJobsHtml(act)}</div>
     ${lines.length > 1 ? `<label class="field-label">De qual WhatsApp</label><select class="field-input" id="hi-line" style="margin-bottom:10px;">${lines.map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.label)}</option>`).join('')}</select>` : `<input type="hidden" id="hi-line" value="${escapeHtml(lines[0].id)}">`}
     <label class="field-label">Período</label>
-    <select class="field-input" id="hi-days" style="margin-bottom:12px;">${[[0, 'Hoje (desde 0h)'], [1, 'Último dia'], [2, 'Últimos 2 dias'], [3, 'Últimos 3 dias'], [7, 'Últimos 7 dias'], [15, 'Últimos 15 dias'], [30, 'Últimos 30 dias']].map(([v, l]) => `<option value="${v}" ${v === 2 ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <select class="field-input" id="hi-days" style="margin-bottom:12px;">${[[0, 'Hoje (desde 0h)'], [1, 'Último dia'], [2, 'Últimos 2 dias'], [3, 'Últimos 3 dias'], [7, 'Últimos 7 dias'], [15, 'Últimos 15 dias'], [30, 'Últimos 30 dias'], [90, 'Últimos 90 dias (segundo plano)'], [365, 'Último ano (segundo plano)'], [-1, 'Tudo que o WhatsApp tiver (segundo plano)']].map(([v, l]) => `<option value="${v}" ${v === 2 ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <div style="display:flex;gap:8px;align-items:center;"><button class="btn-save" id="hi-btn" style="width:auto;padding:9px 16px;" onclick="runHistoryImport()">Puxar conversas</button><span id="hi-fb" class="integ-muted" style="font-size:12.5px;"></span></div>`, 460);
 }
 
@@ -21042,6 +21043,15 @@ async function runHistoryImport() {
   const days = today ? 1 : (sel || 2);
   const btn = document.getElementById('hi-btn'), fb = document.getElementById('hi-fb');
   btn.disabled = true;
+  // Períodos grandes rodam no servidor: pode fechar o CRM que continua.
+  if (sel > 30 || sel < 0) {
+    try {
+      await window._fb.whatsapp('/whatsapp/history-import', act, { line, days: sel, background: true });
+      closeHuvenModal();
+      showToast('Importação começou em segundo plano. O andamento aparece no botão Histórico do Chat; pode fechar o CRM.', 'success', 9000);
+    } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = 'Erro: ' + e.message; btn.disabled = false; }
+    return;
+  }
   let page = 1, msgs = 0, chats = 0;
   try {
     for (let i = 0; i < 200 && page; i++) {
@@ -21055,6 +21065,30 @@ async function runHistoryImport() {
     showToast(`Histórico puxado: ${msgs} mensagem(ns) ${today ? 'de hoje' : `dos últimos ${days} dia(s)`}. Buscando nomes e fotos...`, 'success', 7000);
     syncChatContacts(act, line, false);
   } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = 'Erro: ' + e.message; btn.disabled = false; }
+}
+// Andamento das importações em segundo plano (vem do whatsapp_status, que o CRM já escuta).
+function histJobsOf(act) {
+  return (typeof _waStatusList !== 'undefined' ? _waStatusList : []).filter(s => s.history && (s.act || String(s.id).split('__')[0]) === act);
+}
+function histJobsHtml(act) {
+  const rows = histJobsOf(act).filter(s => ['queued', 'running'].includes(s.history.state) || (s.history.updatedAt && Date.now() - Date.parse(s.history.updatedAt) < 6 * 3600 * 1000));
+  if (!rows.length) return '';
+  return '<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:12.5px;line-height:1.6;">' + rows.map(s => {
+    const h = s.history, n = Number(h.imported || 0).toLocaleString('pt-BR');
+    const what = h.state === 'queued' ? 'na fila (começa em alguns minutos)' : h.state === 'running' ? `importando... ${n} mensagem(ns) novas` : h.state === 'failed' ? 'parou com erro: ' + escapeHtml(h.error || '') : `concluído: ${n} mensagem(ns) novas`;
+    const until = h.oldest ? ' · até ' + new Date(h.oldest).toLocaleDateString('pt-BR') : '';
+    return `<div><b>${escapeHtml(waLineLabel(s.act || String(s.id).split('__')[0], s.line || 'main'))}</b>: ${what}${h.state !== 'failed' ? escapeHtml(until) : ''}</div>`;
+  }).join('') + '</div>';
+}
+function updateHistoryBtn() {
+  const btn = document.getElementById('chat-hist-btn');
+  if (btn) {
+    const run = _chatAct ? histJobsOf(_chatAct).filter(s => ['queued', 'running'].includes(s.history.state)) : [];
+    const n = run.reduce((t, s) => t + Number(s.history.imported || 0), 0);
+    btn.textContent = run.length ? `⟲ Importando${n ? ' · ' + n.toLocaleString('pt-BR') : '...'}` : '⟲ Histórico';
+  }
+  const box = document.getElementById('hi-jobs');
+  if (box && _chatAct) box.innerHTML = histJobsHtml(_chatAct);
 }
 window.openHistoryImport = openHistoryImport;
 window.runHistoryImport = runHistoryImport;
@@ -25286,7 +25320,7 @@ let _waDownBefore = new Set();
 function startWhatsAppStatusWatch() {
   if (_waStatusUnsub || !window._fb || typeof window._fb.listenWhatsAppStatus !== 'function') return;
   try {
-    _waStatusUnsub = window._fb.listenWhatsAppStatus(list => { _waStatusList = list || []; renderWhatsAppAlert(); });
+    _waStatusUnsub = window._fb.listenWhatsAppStatus(list => { _waStatusList = list || []; renderWhatsAppAlert(); try { updateHistoryBtn(); } catch (e) {} });
   } catch (e) { console.warn('Aviso do WhatsApp indisponível:', e); }
 }
 
