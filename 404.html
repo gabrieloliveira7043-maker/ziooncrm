@@ -11611,6 +11611,8 @@ function huvWaState(act) {
     return (cfg.lines || []).some(l => l.id === line);
   });
   if (active.some(x => x.ok)) return 'ok';
+  // Conectado, mas o vigia viu a linha sem receber: não é "desconectado".
+  if (active.some(x => x.silent && !x.manual)) return 'silent';
   return active.some(x => (x.paired || x.lastOpenAt) && !x.manual) ? 'bad' : 'none';
 }
 
@@ -11789,7 +11791,7 @@ function renderClientSwitcherList() {
   const entries = getSidebarClientEntries()
     .filter(([, name]) => !term || name.toLowerCase().includes(term))
     .sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
-  const dot = { ok: ['#1FA855', 'WhatsApp conectado'], bad: ['#E0503F', 'WhatsApp desconectado'], none: ['#D6D2C8', 'Sem WhatsApp'] };
+  const dot = { ok: ['#1FA855', 'WhatsApp conectado'], bad: ['#E0503F', 'WhatsApp desconectado'], silent: ['#E8A33D', 'WhatsApp conectado, mas sem receber mensagens'], none: ['#D6D2C8', 'Sem WhatsApp'] };
   const row = ([act, name]) => {
     const t = huvTone(act);
     const w = dot[huvWaState(act)];
@@ -11872,7 +11874,7 @@ function renderClientesView() {
   const counts = {
     all: all.length,
     pinned: all.filter(([act]) => pins.has(act)).length,
-    bad: all.filter(([act]) => huvWaState(act) === 'bad').length,
+    bad: all.filter(([act]) => ['bad', 'silent'].includes(huvWaState(act))).length,
     none: all.filter(([act]) => huvWaState(act) === 'none').length
   };
   const pills = [['all', 'Todos'], ['pinned', 'Fixados'], ['bad', 'WhatsApp desconectado'], ['none', 'Sem WhatsApp']];
@@ -11881,11 +11883,11 @@ function renderClientesView() {
   const list = all.filter(([act, name]) => {
     if (term && !name.toLowerCase().includes(term)) return false;
     if (_huvFilter === 'pinned') return pins.has(act);
-    if (_huvFilter === 'bad') return huvWaState(act) === 'bad';
+    if (_huvFilter === 'bad') return ['bad', 'silent'].includes(huvWaState(act));
     if (_huvFilter === 'none') return huvWaState(act) === 'none';
     return true;
   }).sort((a, b) => (pins.has(b[0]) - pins.has(a[0])));
-  const wa = { ok: ['Conectado', 'ok'], bad: ['Desconectado', 'bad'], none: ['Sem WhatsApp', 'none'] };
+  const wa = { ok: ['Conectado', 'ok'], bad: ['Desconectado', 'bad'], silent: ['Conectado, sem receber', 'bad'], none: ['Sem WhatsApp', 'none'] };
   box.innerHTML = list.length ? list.map(([act, name]) => {
     const t = huvTone(act);
     const s = clientStats(act);
