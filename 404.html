@@ -16636,7 +16636,7 @@ function openChat(key) {
   document.getElementById('chat-wrap').classList.add('open');
   document.getElementById('chat-main').innerHTML = `
     <div class="chat-head" id="chat-head"></div>
-    <div class="chat-search" id="chat-search" style="display:none;"></div>
+    <div class="chat-search" id="chat-insearch" style="display:none;"></div>
     <div class="chat-msgs" id="chat-msgs"><div class="chat-empty">Carregando mensagens...</div></div>
     <div id="chat-media-chip" style="display:none;padding:6px 14px;font-size:12px;color:var(--text);border-top:1px solid var(--border);"></div>
     <div id="chat-cloud-hint" style="display:none;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:6px 14px;font-size:12px;color:var(--muted2);border-top:1px solid var(--border);background:var(--surface2);"></div>
@@ -17066,7 +17066,7 @@ function chatSearchMark(html) {
   }).join('');
 }
 function toggleChatSearch(force) {
-  const box = document.getElementById('chat-search');
+  const box = document.getElementById('chat-insearch');
   if (!box) return;
   const on = force !== undefined ? force : box.style.display === 'none';
   if (!on) { box.style.display = 'none'; box.innerHTML = ''; _chatSearch = null; renderChatMessages(); return; }
