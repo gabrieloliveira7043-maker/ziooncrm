@@ -21027,7 +21027,7 @@ function openHistoryImport() {
   const lines = waLines(act).filter(l => !waIsCloud(l.id));
   if (!lines.length) return showToast('Este cliente não tem WhatsApp por QR Code conectado.', 'warning');
   openHuvenModal('Puxar conversas antigas', `
-    <div class="integ-muted" style="font-size:12.5px;line-height:1.55;margin-bottom:12px;">Traz para o Chat as mensagens que o WhatsApp já tinha. Ao ler o QR Code, o CRM já puxa os últimos 90 dias sozinho; aqui dá para puxar mais. Não marca como não lidas e não dispara automação nem IA. Mensagens que já estão no Chat não mudam.</div>
+    <div class="integ-muted" style="font-size:12.5px;line-height:1.55;margin-bottom:12px;">Traz para o Chat as mensagens que o WhatsApp já tinha. Ao ler o QR Code, o CRM já puxa os últimos 30 dias sozinho; aqui dá para puxar mais. Não marca como não lidas e não dispara automação nem IA. Mensagens que já estão no Chat não mudam.</div>
     <div id="hi-jobs">${histJobsHtml(act)}</div>
     ${lines.length > 1 ? `<label class="field-label">De qual WhatsApp</label><select class="field-input" id="hi-line" style="margin-bottom:10px;">${lines.map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.label)}</option>`).join('')}</select>` : `<input type="hidden" id="hi-line" value="${escapeHtml(lines[0].id)}">`}
     <label class="field-label">Período</label>
@@ -21071,11 +21071,11 @@ function histJobsOf(act) {
   return (typeof _waStatusList !== 'undefined' ? _waStatusList : []).filter(s => s.history && (s.act || String(s.id).split('__')[0]) === act);
 }
 function histJobsHtml(act) {
-  const rows = histJobsOf(act).filter(s => ['queued', 'running'].includes(s.history.state) || (s.history.updatedAt && Date.now() - Date.parse(s.history.updatedAt) < 6 * 3600 * 1000));
+  const rows = histJobsOf(act).filter(s => ['queued', 'running', 'paused'].includes(s.history.state) || (s.history.updatedAt && Date.now() - Date.parse(s.history.updatedAt) < 6 * 3600 * 1000));
   if (!rows.length) return '';
   return '<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:12.5px;line-height:1.6;">' + rows.map(s => {
     const h = s.history, n = Number(h.imported || 0).toLocaleString('pt-BR');
-    const what = h.state === 'queued' ? 'na fila (começa em alguns minutos)' : h.state === 'running' ? `importando... ${n} mensagem(ns) novas` : h.state === 'failed' ? 'parou com erro: ' + escapeHtml(h.error || '') : `concluído: ${n} mensagem(ns) novas`;
+    const what = h.state === 'paused' ? `${n} mensagem(ns) novas até agora; pausado pelo limite diário do banco, continua sozinho ${h.resumeAt ? new Date(h.resumeAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'amanhã'}` : h.state === 'queued' ? 'na fila (começa em alguns segundos)' : h.state === 'running' ? `importando... ${n} mensagem(ns) novas` : h.state === 'failed' ? 'parou com erro: ' + escapeHtml(h.error || '') : `concluído: ${n} mensagem(ns) novas`;
     const until = h.oldest ? ' · até ' + new Date(h.oldest).toLocaleDateString('pt-BR') : '';
     return `<div><b>${escapeHtml(waLineLabel(s.act || String(s.id).split('__')[0], s.line || 'main'))}</b>: ${what}${h.state !== 'failed' ? escapeHtml(until) : ''}</div>`;
   }).join('') + '</div>';
