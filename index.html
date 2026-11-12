@@ -9922,7 +9922,7 @@ async function loadCampaignGroups(refresh) {
     const groups = (r.groups || []).sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
     if (!groups.length) { box.innerHTML = '<div style="font-size:12px;color:var(--muted);">Nenhum grupo encontrado.</div>'; return; }
     box.innerHTML = groupsCacheNote(r, 'loadCampaignGroups(true)') + `<label style="position:sticky;top:0;z-index:1;background:var(--surface);display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);padding:4px 0 8px;cursor:pointer;border-bottom:1px solid var(--border);margin-bottom:4px;">
-        <input type="checkbox" id="camp-groups-all" onchange="toggleAllCampaignGroups(this.checked)"> Selecionar todos os ${groups.length} grupos</label>` +
+        <input type="checkbox" id="camp-groups-all" onchange="toggleAllCampaignGroups(this.checked)"> <span id="camp-groups-all-label">Selecionar todos os ${groups.length} grupos</span></label>` +
       groups.map(g => `<label class="camp-group-row" style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);padding:4px 0;cursor:pointer;">
       <input type="checkbox" class="camp-group" value="${escapeHtml(g.id)}" data-subject="${escapeHtml(g.subject)}" onchange="scheduleGroupParticipants()">
       ${escapeHtml(g.subject)} ${g.size ? `<span style="color:var(--muted);font-size:11px;">(${g.size} participantes)</span>` : ''}</label>`).join('');
@@ -9941,6 +9941,16 @@ function filterCampaignGroups() {
     const cb = row.querySelector('.camp-group');
     row.style.display = !q || norm(cb && cb.getAttribute('data-subject')).includes(q) ? 'flex' : 'none';
   });
+  const shown = campVisibleGroups();
+  const label = document.getElementById('camp-groups-all-label');
+  if (label) label.textContent = q ? `Selecionar os ${shown.length} grupos encontrados na pesquisa` : `Selecionar todos os ${shown.length} grupos`;
+  const all = document.getElementById('camp-groups-all');
+  if (all) all.checked = shown.length > 0 && shown.every(cb => cb.checked);
+}
+
+// Grupos que aparecem na lista agora (a pesquisa esconde os outros).
+function campVisibleGroups() {
+  return [...document.querySelectorAll('.camp-group')].filter(cb => { const row = cb.closest('.camp-group-row'); return !row || row.style.display !== 'none'; });
 }
 
 function campGroupsMode() {
@@ -9957,8 +9967,9 @@ async function selectAllCampaignGroups() {
   toggleAllCampaignGroups(true);
 }
 
+// Com pesquisa ativa, marca/desmarca só os grupos que aparecem (os escondidos ficam como estão).
 function toggleAllCampaignGroups(checked) {
-  document.querySelectorAll('.camp-group').forEach(cb => { cb.checked = checked; });
+  campVisibleGroups().forEach(cb => { cb.checked = checked; });
   loadCampaignGroupParticipants();
 }
 
@@ -9966,7 +9977,7 @@ function toggleAllCampaignGroups(checked) {
 let _groupParticipantsTimer = null;
 function scheduleGroupParticipants() {
   const all = document.getElementById('camp-groups-all');
-  if (all) all.checked = [...document.querySelectorAll('.camp-group')].every(cb => cb.checked);
+  if (all) { const shown = campVisibleGroups(); all.checked = shown.length > 0 && shown.every(cb => cb.checked); }
   clearTimeout(_groupParticipantsTimer);
   _groupParticipantsTimer = setTimeout(loadCampaignGroupParticipants, 900);
 }
