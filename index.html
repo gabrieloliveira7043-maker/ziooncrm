@@ -3894,6 +3894,10 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
           <label class="modal-label">Observações</label>
           <textarea class="modal-input" id="lead-obs" rows="2" placeholder="Anotações sobre o lead..." style="resize:vertical;"></textarea>
         </div>
+        <div class="modal-field" id="field-call-notes">
+          <label class="modal-label">Anotações da call de vendas</label>
+          <textarea class="modal-input" id="lead-call-notes" rows="4" placeholder="O que o lead quer, dores, objeções, orçamento, próximos passos combinados na call..." style="resize:vertical;"></textarea>
+        </div>
         <div class="modal-field" id="field-motivo-perda" style="display:none;">
           <label class="modal-label">Motivo da perda</label>
           <input type="text" class="modal-input" id="lead-motivo" placeholder="Ex: Preço, sem resposta, escolheu concorrente...">
@@ -6098,6 +6102,7 @@ async function exportLeads() {
       'Rede social': lead.redeSocial || '',
       'Origem': lead.origem || '',
       'Observações': (lead.obs || '').toString().trim(),
+      'Anotações da call de vendas': (lead.callNotes || '').toString().trim(),
       'Plantão': lead.plantao || '',
       'Valor fechamento': lead.valor || '',
       'Próxima ação': lead.proximaAcao || lead.nextAction || '',
@@ -16764,9 +16769,21 @@ function renderChatInfo() {
     <div class="ci-block">${label('Anotação')}
       <textarea id="ci-obs" class="field-input" rows="4" placeholder="Anote algo sobre este lead" onblur="saveChatLeadObs('${lid}', this.value)">${escapeHtml(lead.obs || '')}</textarea>
     </div>
+    <div class="ci-block">${label('Anotações da call de vendas')}
+      <textarea id="ci-call-notes" class="field-input" rows="4" placeholder="O que o lead quer, dores, objeções, próximos passos da call..." onblur="saveChatLeadCallNotes('${lid}', this.value)">${escapeHtml(lead.callNotes || '')}</textarea>
+    </div>
     <div class="ci-block">${label('Histórico')}
       ${hist.length ? hist.map(h => `<div class="ci-hist"><span class="ci-dot"></span><div><b>${escapeHtml(h.stage || '')}</b><div class="ci-muted">${escapeHtml(h.at || '')}</div></div></div>`).join('') : '<div class="ci-muted">Sem histórico.</div>'}
     </div>`;
+}
+
+function saveChatLeadCallNotes(id, value) {
+  const lead = (_leadsCache || []).find(l => l.id === id);
+  if (!lead || (lead.callNotes || '') === value) return;
+  lead.callNotes = value;
+  lead.updatedAt = new Date().toISOString();
+  saveLeadToDb(lead);
+  showToast('Anotações da call salvas.', 'success', 1800);
 }
 
 function saveChatLeadObs(id, value) {
@@ -23960,6 +23977,7 @@ function openLeadModal() {
   document.getElementById('lead-valor').value = '';
   document.getElementById('lead-rede-social').value = '';
   document.getElementById('lead-stage').value = 'novo';
+  if (document.getElementById('lead-call-notes')) document.getElementById('lead-call-notes').value = '';
   document.getElementById('modal-title').textContent = 'Novo lead';
   // Reset todos os campos configuráveis para visível antes de aplicar config
   ['field-valor','field-origem','field-rede-social','field-obs','field-proxima-acao','field-proxima-data'].forEach(id => {
@@ -23999,6 +24017,7 @@ function editLead(id) {
   document.getElementById('lead-origem').value = lead.origem || '';
   document.getElementById('lead-rede-social').value = lead.redeSocial || '';
   document.getElementById('lead-obs').value = lead.obs || '';
+  document.getElementById('lead-call-notes').value = lead.callNotes || '';
   fillLeadResponsavel(normalizeActValue(lead.act), lead);
   renderLeadAiSummary(lead);
   // Reset campos configuráveis para visível antes de aplicar config
@@ -24024,6 +24043,7 @@ function editLead(id) {
   document.getElementById('lead-origem').value = lead.origem || '';
   document.getElementById('lead-rede-social').value = lead.redeSocial || '';
   document.getElementById('lead-obs').value = lead.obs || '';
+  document.getElementById('lead-call-notes').value = lead.callNotes || '';
   document.getElementById('lead-modal').classList.add('open');
 }
 
@@ -24117,6 +24137,7 @@ async function saveLead() {
     redeSocial: document.getElementById('lead-rede-social').value,
     origem: document.getElementById('lead-origem') ? document.getElementById('lead-origem').value.trim() : (existing ? existing.origem || '' : ''),
     obs: document.getElementById('lead-obs') ? document.getElementById('lead-obs').value.trim() : (existing ? existing.obs || '' : ''),
+    callNotes: document.getElementById('lead-call-notes') ? document.getElementById('lead-call-notes').value.trim() : (existing ? existing.callNotes || '' : ''),
     motivo: document.getElementById('lead-motivo') ? document.getElementById('lead-motivo').value.trim() : (existing ? existing.motivo || '' : ''),
     proximaAcao: document.getElementById('lead-proxima-acao') ? document.getElementById('lead-proxima-acao').value.trim() : (existing ? existing.proximaAcao || '' : ''),
     proximaData: document.getElementById('lead-proxima-data') ? document.getElementById('lead-proxima-data').value : (existing ? existing.proximaData || '' : ''),
