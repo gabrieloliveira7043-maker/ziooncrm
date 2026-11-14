@@ -9305,6 +9305,7 @@ function openCampaignEditor(copyFrom, opts = {}) {
           <label class="field-label">Coluna do CRM</label>
           <select class="field-input" id="camp-crm-stage" onchange="buildCampaignAudience()">
             <option value="">Todas as colunas de todos os pipelines</option>
+            <option value="__pick__">Escolher colunas (marcar várias)</option>
             ${campaignStageOptions(act)}
             <option value="__contacts__">Base de contatos importados do WhatsApp</option>
           </select>
@@ -9317,6 +9318,7 @@ function openCampaignEditor(copyFrom, opts = {}) {
           </select>
         </div>
       </div>
+      <div id="camp-crm-pick" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px 12px;max-height:260px;overflow:auto;"></div>
     </div>
     ${copyFrom ? `<div id="camp-src-previous-box" class="camp-src-box" style="display:none;">
       <div style="${hint}">Os contatos que estavam em "${escapeHtml(copyFrom.name || 'Campanha')}". Quem pediu para sair continua sendo pulado.</div>
@@ -9663,13 +9665,33 @@ function campaignStageOptions(act) {
     const sel = document.getElementById('camp-crm-stage');
     if (!sel) return;
     const cur = sel.value;
-    sel.innerHTML = `<option value="">Todas as colunas de todos os pipelines</option>${campaignStageOptions(act)}<option value="__contacts__">Base de contatos importados do WhatsApp</option>`;
+    sel.innerHTML = `<option value="">Todas as colunas de todos os pipelines</option><option value="__pick__">Escolher colunas (marcar várias)</option>${campaignStageOptions(act)}<option value="__contacts__">Base de contatos importados do WhatsApp</option>`;
     sel.value = cur;
+    if (cur === '__pick__') renderCampaignStagePick(act);
   });
   const pls = pipelineList(act);
   const opts = p => getStages(act, p.id).map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`).join('');
   if (pls.length === 1) return opts(pls[0]);
   return pls.map(p => `<optgroup label="${escapeHtml(p.name)}"><option value="pl:${escapeHtml(p.id)}">Todas as colunas de ${escapeHtml(p.name)}</option>${opts(p)}</optgroup>`).join('');
+}
+
+function renderCampaignStagePick(act) {
+  const box = document.getElementById('camp-crm-pick');
+  if (!box) return;
+  const before = new Set([...box.querySelectorAll('.camp-stage-cb')].filter(cb => !cb.checked).map(cb => cb.value));
+  const pls = pipelineList(act);
+  const row = s => `<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);padding:3px 0;cursor:pointer;">
+      <input type="checkbox" class="camp-stage-cb" value="${escapeHtml(s.id)}" ${before.has(s.id) ? '' : 'checked'} onchange="buildCampaignAudience()"> ${escapeHtml(s.label)}</label>`;
+  box.innerHTML = `<div style="display:flex;gap:12px;align-items:center;margin-bottom:6px;font-size:12px;">
+      <span style="color:var(--muted);flex:1;">Desmarque as colunas que não devem receber.</span>
+      <a href="#" onclick="event.preventDefault();toggleCampaignStagePick(true)" style="color:var(--accent2);">Marcar todas</a>
+      <a href="#" onclick="event.preventDefault();toggleCampaignStagePick(false)" style="color:var(--accent2);">Desmarcar todas</a></div>` +
+    pls.map(p => (pls.length > 1 ? `<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin:8px 0 2px;">${escapeHtml(p.name)}</div>` : '') + getStages(act, p.id).map(row).join('')).join('');
+}
+
+function toggleCampaignStagePick(on) {
+  document.querySelectorAll('.camp-stage-cb').forEach(cb => { cb.checked = on; });
+  buildCampaignAudience();
 }
 
 async function buildCampaignAudience() {
@@ -9679,6 +9701,25 @@ async function buildCampaignAudience() {
   const month = document.getElementById('camp-crm-month').value;
   const monthSel = document.getElementById('camp-crm-month');
   monthSel.disabled = stage === '__contacts__';
+  const pickBox = document.getElementById('camp-crm-pick');
+  if (pickBox) {
+    pickBox.style.display = stage === '__pick__' ? 'block' : 'none';
+    if (stage === '__pick__' && !pickBox.querySelector('.camp-stage-cb')) renderCampaignStagePick(act);
+  }
+  if (stage === '__pick__') {
+    const cbs = [...document.querySelectorAll('.camp-stage-cb')];
+    const on = new Set(cbs.filter(cb => cb.checked).map(cb => cb.value));
+    const off = cbs.filter(cb => !cb.checked).map(cb => cb.parentElement.textContent.trim());
+    const label = !on.size ? 'nenhuma coluna marcada'
+      : !off.length ? 'todas as colunas'
+        : off.length <= 3 && off.length < on.size ? 'todas as colunas menos ' + off.join(', ')
+          : [...cbs].filter(cb => cb.checked).map(cb => cb.parentElement.textContent.trim()).slice(0, 4).join(', ') + (on.size > 4 ? ` e mais ${on.size - 4}` : '');
+    const leads = on.size ? getLeads().filter(l => leadMatchesClient(l, act) && on.has(l.stage)
+      && (!month || leadMonthKey(l) === month) && !l.whatsappOptOut) : [];
+    setCampaignRecipients(leads.map(l => ({ name: l.name, phone: l.phone, jid: l.whatsappJid })),
+      `Leads do CRM (${label}${month ? ', ' + monthLabel(month) : ', geral'})`);
+    return;
+  }
   if (stage === '__contacts__') {
     document.getElementById('camp-summary').textContent = 'Carregando a base de contatos...';
     try {
@@ -19979,14 +20020,39 @@ async function renderCampCloudBox(preset) {
   box.innerHTML = `<div class="wa-line-picker" style="margin-top:8px;">
     <div class="wa-line-picker-title">Modelo da API oficial</div>
     <div class="wa-line-picker-hint" style="margin-bottom:6px;">Pela API oficial, a campanha envia um modelo aprovado pela Meta (as mensagens abaixo valem só para os números conectados por QR Code). A Meta cobra cada envio de modelo na conta do cliente.</div>
+    ${list.length > 1 ? `<input class="field-input" id="camp-cloud-search" placeholder="Pesquisar modelo pelo nome ou pelo texto..." oninput="filterCampCloudTpl(this.value)" style="margin-bottom:6px;">
+    <div id="camp-cloud-count" class="integ-muted" style="font-size:11px;margin:-2px 0 6px;"></div>` : ''}
     <select class="field-input" id="camp-cloud-tpl" onchange="renderCampCloudParams()">
       <option value="">Escolha o modelo</option>
-      ${list.map(t => `<option value="${escapeHtml(t.name + '|' + t.language)}" ${sel === t ? 'selected' : ''}>${escapeHtml(t.name)} (${escapeHtml(t.language)}) · ${t.category === 'MARKETING' ? 'Marketing' : 'Utilidade'}</option>`).join('')}
+      ${list.map(t => `<option value="${escapeHtml(t.name + '|' + t.language)}" data-search="${escapeHtml(campCloudTplSearchText(t))}" ${sel === t ? 'selected' : ''}>${escapeHtml(t.name)} (${escapeHtml(t.language)}) · ${t.category === 'MARKETING' ? 'Marketing' : 'Utilidade'}</option>`).join('')}
     </select>
     ${list.length ? '' : `<div class="integ-muted" style="font-size:12px;margin-top:6px;">Nenhum modelo aprovado ainda. Crie em Conexões → ${escapeHtml(waLineLabel(d.act, line))} → Modelos.</div>`}
     <div id="camp-cloud-params"></div>
   </div>`;
   renderCampCloudParams(sel && keep ? keep.params : null);
+}
+
+// Texto usado na pesquisa de modelos: nome, idioma e o texto do modelo (cabeçalho, corpo, rodapé e botões).
+function campCloudTplSearchText(t) {
+  const parts = [t.name, String(t.name || '').replace(/_/g, ' '), t.language];
+  (t.components || []).forEach(c => { if (c.text) parts.push(c.text); (c.buttons || []).forEach(b => parts.push(b.text || '')); });
+  return parts.join(' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function filterCampCloudTpl(q) {
+  const sel = document.getElementById('camp-cloud-tpl');
+  if (!sel) return;
+  const words = String(q || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/\s+/).filter(Boolean);
+  let shown = 0, total = 0;
+  [...sel.options].forEach(o => {
+    if (!o.value) return;
+    total++;
+    const ok = !words.length || words.every(w => (o.getAttribute('data-search') || '').includes(w)) || o.selected;
+    o.hidden = !ok; o.disabled = !ok && !o.selected;
+    if (ok) shown++;
+  });
+  const count = document.getElementById('camp-cloud-count');
+  if (count) count.textContent = words.length ? (shown ? `${shown} de ${total} modelos encontrados. Abra a lista abaixo para escolher.` : 'Nenhum modelo encontrado com esse texto.') : '';
 }
 
 function renderCampCloudParams(values) {
