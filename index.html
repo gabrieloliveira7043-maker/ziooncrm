@@ -1312,6 +1312,9 @@ html[data-theme="light"] .login-overlay { background: var(--paper); }
 .chat-search-item mark, .chat-bubble mark { background:#F5C84C; color:#1a1a1a; border-radius:3px; padding:0 1px; }
 .chat-bubble.chat-hit { outline:2px solid #F5C84C; outline-offset:2px; }
 .chat-bubble.deleted { font-style:italic; color:var(--muted2); }
+.chat-tpl-btns { margin:6px -11px -8px; border-top:1px solid var(--border); }
+.chat-tpl-btn { display:flex; align-items:center; justify-content:center; gap:6px; padding:7px 10px; font-size:13px; font-weight:600; color:#53BDEB; white-space:normal; text-align:center; }
+.chat-tpl-btn + .chat-tpl-btn { border-top:1px solid var(--border); }
 .chat-bubble img.chat-sticker { width:140px; height:140px; object-fit:contain; background:transparent; }
 .chat-stk-pop { padding:0; }
 .emoji-tabs { display:flex; gap:2px; padding:6px 8px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--surface); z-index:1; }
@@ -16818,6 +16821,16 @@ function renderChatInfo() {
     </div>`;
 }
 
+// Botões do modelo da API oficial (como aparecem no WhatsApp do contato).
+function chatTplButtonsHtml(m) {
+  const list = Array.isArray(m && m.buttons) ? m.buttons : [];
+  if (!list.length) return '';
+  const icon = b => b.type === 'URL' ? '↗' : b.type === 'PHONE_NUMBER' ? '☎' : '↩';
+  return `<div class="chat-tpl-btns">${list.map(b => b.url
+    ? `<a class="chat-tpl-btn" href="${escapeHtml(b.url)}" target="_blank" rel="noopener" style="text-decoration:none;">${icon(b)} ${escapeHtml(b.text || '')}</a>`
+    : `<div class="chat-tpl-btn">${icon(b)} ${escapeHtml(b.text || '')}</div>`).join('')}</div>`;
+}
+
 function saveChatLeadCallNotes(id, value) {
   const lead = (_leadsCache || []).find(l => l.id === id);
   if (!lead || (lead.callNotes || '') === value) return;
@@ -17035,7 +17048,7 @@ function renderChatMessages() {
     const menu = canEdit || canDel ? `<button class="chat-msg-more" title="Editar ou apagar" onclick="openChatMsgMenu(event, '${escapeJsString(m.id)}', ${canEdit}, ${canDel})">⋯</button>` : '';
     const sender = !m.fromMe && (m.senderName || m.senderPhone) ? `<div style="font-size:12px;font-weight:700;color:var(--accent2);margin-bottom:2px;">${escapeHtml(m.senderName || chatFormatPhone(m.senderPhone))}${m.senderName && m.senderPhone ? ` <span style="font-weight:400;color:var(--muted2);">${escapeHtml(chatFormatPhone(m.senderPhone))}</span>` : ''}</div>` : '';
     const autoTag = !m.fromMe && m.autoReply ? `<div style="font-size:11px;color:var(--muted2);margin-bottom:3px;">${uiIco('bot', 11)} resposta automática do WhatsApp do contato (não conta como resposta)</div>` : '';
-    parts.push(`<div class="chat-bubble ${m.fromMe ? 'out' : 'in'}" data-mid="${escapeHtml(m.id)}">${menu}${sender}${autoTag}${media}${chatSearchMark(chatMentionsHtml(chatLinkify(escapeHtml(bodyText))))}${m.failed ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">${uiIco('alert', 12)} Não entregue: ${escapeHtml(m.error || '')}</div>` : ''}<div class="chat-meta">${who ? escapeHtml(who) + ' · ' : ''}${m.edited ? 'editada · ' : ''}${time}</div></div>`);
+    parts.push(`<div class="chat-bubble ${m.fromMe ? 'out' : 'in'}" data-mid="${escapeHtml(m.id)}">${menu}${sender}${autoTag}${media}${chatSearchMark(chatMentionsHtml(chatLinkify(escapeHtml(bodyText))))}${chatTplButtonsHtml(m)}${m.failed ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">${uiIco('alert', 12)} Não entregue: ${escapeHtml(m.error || '')}</div>` : ''}<div class="chat-meta">${who ? escapeHtml(who) + ' · ' : ''}${m.edited ? 'editada · ' : ''}${time}</div></div>`);
   });
   pendingSched.forEach(s => {
     const when = new Date(s.sendAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
