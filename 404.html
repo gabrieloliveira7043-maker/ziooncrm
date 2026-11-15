@@ -19649,10 +19649,10 @@ async function openCloudSetup(act, line) {
     </div>
     <label class="field-label" style="margin-top:8px;">Token de acesso permanente</label>
     <input class="field-input" id="cloud-token" type="password" autocomplete="off" placeholder="${cfg ? 'Deixe vazio para manter o token salvo' : 'EAA...'}">
-    <label class="field-label" style="margin-top:8px;">Chave secreta do app (só se o número estiver em outro app da Meta, não no da Zioon)</label>
+    <label class="field-label" style="margin-top:8px;">Chave secreta do app (só se o número estiver em outro app da Meta, não no da Zioon). Com ela o CRM liga sozinho o recebimento das respostas.</label>
     <input class="field-input" id="cloud-secret" type="password" autocomplete="off" placeholder="${cfg && cfg.hasAppSecret ? 'Já salva. Deixe vazio para manter' : 'Opcional'}">
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:12px;font-size:12.5px;color:var(--text);line-height:1.6;">
-      <b>Webhook</b> (no app da Meta: WhatsApp → Configuração → Webhook, marque o campo <b>messages</b>)<br>
+      <b>Webhook</b>: ao salvar, o CRM configura sozinho no app da Meta. Se precisar fazer à mão: WhatsApp → Configuração → Webhook, marque o campo <b>messages</b>.<br>
       URL de retorno: <code style="word-break:break-all;">${escapeHtml(info.webhookUrl)}</code> ${copyBtn(info.webhookUrl)}<br>
       Token de verificação: <code>${escapeHtml(info.verifyToken)}</code> ${copyBtn(info.verifyToken)}
     </div>
@@ -19673,7 +19673,11 @@ async function saveCloudSetup(act, line) {
     try { Object.assign(WHATSAPP_SETTINGS, await window._fb.getWhatsAppSettings()); } catch (e) {}
     closeHuvenModal();
     refreshWaLinesFor(act);
-    showToast(`API oficial conectada: ${r.displayPhone} (${r.verifiedName}).${r.subscribed ? '' : ' Atenção: a Meta não ligou o aviso de mensagens (' + r.subscribeError + ').'}`, r.subscribed ? 'success' : 'warning', 9000);
+    const hk = r.hook || {};
+    const hookOk = hk.status === 'ok' || hk.status === 'configured';
+    const hookTxt = hk.status === 'configured' ? ' Recebimento das respostas ligado no app da Meta.' : hookOk ? ' Recebimento das respostas já estava ligado.' : hk.note ? ' Atenção: ' + hk.note : '';
+    const good = r.subscribed && hookOk;
+    showToast(`API oficial conectada: ${r.displayPhone} (${r.verifiedName}).${r.subscribed ? '' : ' Atenção: a Meta não ligou o aviso de mensagens (' + r.subscribeError + ').'}${hookTxt}`, good ? 'success' : 'warning', 12000);
     if (!line) openCloudTemplates(act, r.line);
   } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = e.message; btn.disabled = false; }
 }
@@ -20255,7 +20259,9 @@ function readWaLinePicker(name) {
 
 // Se a Meta nunca mandou aviso (resposta, entrega) para a linha, o webhook não está configurado no app dono do token.
 function cloudHookLine(st) {
-  if (!st.hookAt) return '<div class="wa-line-sub" style="color:#f87171;white-space:normal;">⚠ Ainda não recebeu nenhum aviso da Meta: as respostas, os cliques nos botões e as confirmações de entrega não chegam ao CRM. Configure o webhook no app da Meta (Credenciais mostra o endereço e o token).</div>';
+  if (!st.hookAt && st.hookNote && !['ok', 'configured'].includes(st.hookStatus)) return `<div class="wa-line-sub" style="color:#f87171;white-space:normal;">⚠ As respostas não chegam ao CRM: ${escapeHtml(st.hookNote)}</div>`;
+  if (!st.hookAt && ['ok', 'configured'].includes(st.hookStatus)) return '<div class="wa-line-sub" style="color:#fbbf24;white-space:normal;">Recebimento ligado na Meta. Aguardando a primeira mensagem ou confirmação de entrega para confirmar que está chegando.</div>';
+  if (!st.hookAt) return '<div class="wa-line-sub" style="color:#f87171;white-space:normal;">⚠ Ainda não recebeu nenhum aviso da Meta: as respostas, os cliques nos botões e as confirmações de entrega não chegam ao CRM. Abra Credenciais e clique em Salvar: o CRM tenta ligar o recebimento sozinho (precisa da chave secreta do app).</div>';
   const days = Math.floor((Date.now() - new Date(st.hookAt).getTime()) / 86400000);
   return days >= 3 ? `<div class="wa-line-sub" style="color:#fbbf24;white-space:normal;">Último aviso da Meta em ${new Date(st.hookAt).toLocaleDateString('pt-BR')}. Se a linha enviou mensagens depois disso, confira o webhook.</div>` : '';
 }
