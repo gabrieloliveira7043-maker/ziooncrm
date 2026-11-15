@@ -8960,7 +8960,10 @@ function renderCampaignList(campaigns) {
     const actions = [];
     if (c.status === 'draft') actions.push(btn('Iniciar disparo', 'startCampaign'));
     if (c.status === 'running') actions.push(btn('Pausar', 'pauseCampaign'));
-    if (c.status === 'paused') actions.push(btn('Retomar', 'startCampaign'));
+    if (c.status === 'paused' && c.pauseKind === 'payment') {
+      if (c.billingUrl) actions.push(`<button style="${wbtn}background:#dc2626;border-color:#dc2626;color:#fff;" onclick="openCloudBilling('${escapeJsString(c.billingUrl)}')">Atualizar pagamento</button>`);
+      actions.push(btn('Já paguei, retomar', 'resumeAfterPayment'));
+    } else if (c.status === 'paused') actions.push(btn('Retomar', 'startCampaign'));
     if (['draft', 'running', 'paused'].includes(c.status)) actions.push(btn('Editar', 'editCampaign', 'background:transparent;'));
     if (c.status === 'running' || c.status === 'paused') actions.push(btn('Cancelar', 'cancelCampaign', 'background:transparent;'));
     actions.push(btn('Detalhes', 'openCampaignDetail', 'background:transparent;'));
@@ -9018,8 +9021,26 @@ async function startCampaign(id) {
   const ok = await showConfirm(`Os envios saem ${describeDispatch(d)}. O WhatsApp do cliente precisa estar conectado.${guardTxt}${warn}`, 'Iniciar disparo', 'Iniciar');
   if (!ok) return;
   try {
-    await window._fb.updateCampaign(id, { status: 'running', startedAt: c.startedAt || new Date().toISOString(), ...(c.firstSentAt || c.pauseReason ? { firstSentAt: null, deliveryOk: false, pauseReason: null } : {}) });
+    await window._fb.updateCampaign(id, { status: 'running', startedAt: c.startedAt || new Date().toISOString(), ...(c.firstSentAt || c.pauseReason ? { firstSentAt: null, deliveryOk: false, pauseReason: null, pauseKind: null, billingUrl: null } : {}) });
     showToast('Campanha iniciada.', 'success');
+  } catch (e) { showToast('Erro: ' + e.message, 'warning'); }
+}
+
+// A Meta não deixa outro sistema cadastrar cartão nem pagar: o botão abre a tela de cobrança da conta certa na Meta.
+function openCloudBilling(url) {
+  if (!/^https:\/\/business\.facebook\.com\//.test(String(url || ''))) return;
+  window.open(url, '_blank', 'noopener');
+  showToast('Abrimos a cobrança da conta do WhatsApp na Meta. Pague o saldo (ou troque o cartão) e depois volte aqui e clique em "Já paguei, retomar".', 'success', 10000);
+}
+
+async function resumeAfterPayment(id) {
+  const c = _campaignsCache.find(x => x.id === id) || {};
+  const ok = await showConfirm('A campanha volta com um lote de teste. Se a Meta entregar, segue para o resto da lista; se ainda recusar o pagamento, pausa de novo e avisa. Às vezes a Meta leva alguns minutos para liberar depois do pagamento.', 'Já paguei, retomar', 'Retomar');
+  if (!ok) return;
+  try {
+    await window._fb.updateCampaign(id, { status: 'running', firstSentAt: null, deliveryOk: false, pauseReason: null, pauseKind: null, billingUrl: null });
+    showToast('Campanha retomada. Conferindo a entrega do lote de teste...', 'success');
+    if (c.act) auditLog(c.act, 'campanha', `Retomou a campanha "${c.name || ''}" depois do pagamento`);
   } catch (e) { showToast('Erro: ' + e.message, 'warning'); }
 }
 
@@ -20259,6 +20280,11 @@ function readWaLinePicker(name) {
 
 // Se a Meta nunca mandou aviso (resposta, entrega) para a linha, o webhook não está configurado no app dono do token.
 function cloudHookLine(st) {
+  const pay = st.paymentIssue ? `<div class="wa-line-sub" style="color:#f87171;white-space:normal;">⚠ A Meta está recusando os envios por falta de pagamento da conta do WhatsApp.${st.billingUrl ? ` <a href="#" onclick="openCloudBilling('${escapeJsString(st.billingUrl)}');return false;" style="color:#f87171;font-weight:700;text-decoration:underline;">Atualizar pagamento</a>` : ''}</div>` : '';
+  return pay + cloudHookLineBase(st);
+}
+
+function cloudHookLineBase(st) {
   if (!st.hookAt && st.hookNote && !['ok', 'configured'].includes(st.hookStatus)) return `<div class="wa-line-sub" style="color:#f87171;white-space:normal;">⚠ As respostas não chegam ao CRM: ${escapeHtml(st.hookNote)}</div>`;
   if (!st.hookAt && ['ok', 'configured'].includes(st.hookStatus)) return '<div class="wa-line-sub" style="color:#fbbf24;white-space:normal;">Recebimento ligado na Meta. Aguardando a primeira mensagem ou confirmação de entrega para confirmar que está chegando.</div>';
   if (!st.hookAt) return '<div class="wa-line-sub" style="color:#f87171;white-space:normal;">⚠ Ainda não recebeu nenhum aviso da Meta: as respostas, os cliques nos botões e as confirmações de entrega não chegam ao CRM. Abra Credenciais e clique em Salvar: o CRM tenta ligar o recebimento sozinho (precisa da chave secreta do app).</div>';
@@ -20292,6 +20318,7 @@ async function renderWaLinesBox(act, el) {
       return `<div class="wa-line-row">
       <div style="flex:1;min-width:0;"><div class="wa-line-name">${escapeHtml(l.label)} <span class="chat-tag" style="background:var(--blue-dim);color:var(--blue);">API oficial</span></div><div class="wa-line-sub"><span style="color:${ok ? '#34d399' : '#fbbf24'};font-weight:600;">● ${ok ? 'Conectado' : 'Falta configurar'}</span>${num ? ' · ' + escapeHtml(num) : ''}${st.profileName ? ' · ' + escapeHtml(st.profileName) : ''}${st.quality ? ' · ' + escapeHtml(CLOUD_QUALITY[st.quality] || st.quality) : ''}</div>${ok ? cloudHookLine(st) : ''}</div>
       ${ok ? `<button style="${wbtn}" onclick="openCloudTemplates('${a}','${id}')">Modelos</button>` : ''}
+      ${ok && st.billingUrl ? `<button class="chat-pill" title="Abre a cobrança desta conta do WhatsApp na Meta (cartão e saldo)" onclick="openCloudBilling('${escapeJsString(st.billingUrl)}')">Pagamento</button>` : ''}
       ${isAdminUser() ? `<button class="chat-pill" onclick="openCloudSetup('${a}','${id}')">Credenciais</button>` : ''}
       <button class="chat-pill" onclick="renameWaLine('${a}','${id}')">Renomear</button>
       <button class="chat-pill" title="Nome usado na variável {atendente} das mensagens enviadas por este número" onclick="setWaAttendant('${a}','${id}')">${l.attendant ? 'Atendente: ' + escapeHtml(l.attendant) : 'Definir atendente'}</button>
