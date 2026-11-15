@@ -8980,11 +8980,22 @@ function renderCampaignList(campaigns) {
       <div>
         <div class="cp-bar"><div style="width:${pct}%;background:${barColor};"></div></div>
         <div class="cp-sub">${Number(c.sent) || 0} enviadas de ${total} · ${Number(c.skipped) || 0} puladas · ${Number(c.failed) || 0} com erro</div>
+        ${campaignDeliveryLine(c)}
+        ${c.status === 'paused' && c.pauseReason ? `<div class="cp-sub" style="color:#f87171;white-space:normal;">⚠ Pausada automaticamente: ${escapeHtml(c.pauseReason)}</div>` : ''}
       </div>
       <span class="cp-sub">${escapeHtml(startTxt)}</span>
       <div class="cp-actions">${actions.join('')}</div>
     </div>`;
   }).join('') + '</div>';
+}
+
+// API oficial: o que a Meta confirmou (entregue/lida). "Enviada" só quer dizer que a Meta aceitou o pedido.
+function campaignDeliveryLine(c) {
+  const tracked = c.firstSentAt || c.delivered != null || c.read != null || c.undelivered != null;
+  if (!tracked) return '';
+  const sent = Number(c.sent) || 0, del = Math.min(Number(c.delivered) || 0, sent), read = Math.min(Number(c.read) || 0, sent), und = Number(c.undelivered) || 0;
+  const waiting = c.status === 'running' && c.firstSentAt && !c.deliveryOk && !del;
+  return `<div class="cp-sub">${waiting ? '<span style="color:#fbbf24;">Conferindo a entrega do 1º lote com a Meta...</span> · ' : ''}<span style="color:#34d399;">${del} entregues</span> · ${read} lidas${und ? ` · <span style="color:#f87171;">${und} não entregues</span>` : ''}</div>`;
 }
 
 function describeDispatch(d) {
@@ -8994,10 +9005,20 @@ function describeDispatch(d) {
 async function startCampaign(id) {
   const c = _campaignsCache.find(x => x.id === id) || {};
   const d = { ...WHATSAPP_DISPATCH_DEFAULTS, ...(c.dispatch || {}) };
-  const ok = await showConfirm(`Os envios saem ${describeDispatch(d)}. O WhatsApp do cliente precisa estar conectado.`, 'Iniciar disparo', 'Iniciar');
+  const cloudLines = (Array.isArray(c.lines) ? c.lines : []).filter(l => waIsCloud(l));
+  let warn = '';
+  if (cloudLines.length && c.act) {
+    try {
+      const st = (await window._fb.whatsapp('/whatsapp/lines-status', c.act)).lines || [];
+      const deaf = cloudLines.filter(l => { const x = st.find(y => y.line === l); return x && !x.hookAt; });
+      if (deaf.length) warn = ` ATENÇÃO: ${deaf.map(l => waLineLabel(c.act, l)).join(', ')} ainda não recebeu nenhum aviso da Meta. Sem isso, as respostas e as confirmações de entrega não chegam ao CRM. Confira o webhook em Conexões antes de disparar.`;
+    } catch (e) {}
+  }
+  const guardTxt = cloudLines.length ? ' Pela API oficial, sai primeiro um lote e a campanha só continua quando a Meta confirmar que entregou. Se não confirmar em 10 minutos, ela pausa sozinha e mostra o motivo.' : '';
+  const ok = await showConfirm(`Os envios saem ${describeDispatch(d)}. O WhatsApp do cliente precisa estar conectado.${guardTxt}${warn}`, 'Iniciar disparo', 'Iniciar');
   if (!ok) return;
   try {
-    await window._fb.updateCampaign(id, { status: 'running', startedAt: c.startedAt || new Date().toISOString() });
+    await window._fb.updateCampaign(id, { status: 'running', startedAt: c.startedAt || new Date().toISOString(), ...(c.firstSentAt || c.pauseReason ? { firstSentAt: null, deliveryOk: false, pauseReason: null } : {}) });
     showToast('Campanha iniciada.', 'success');
   } catch (e) { showToast('Erro: ' + e.message, 'warning'); }
 }
@@ -9035,7 +9056,7 @@ async function openCampaignDetail(id) {
         ${rows.map(r => `<tr style="border-top:1px solid var(--border);">
           <td style="padding:6px 4px;">${escapeHtml(r.name || '-')}</td>
           <td style="padding:6px 4px;" class="mono">${escapeHtml(r.phone || 'nº oculto')}</td>
-          <td style="padding:6px 4px;" title="${escapeHtml(r.error || '')}">${labels[r.status] || escapeHtml(r.status)}${r.error ? ' · ' + escapeHtml(r.error) : ''}</td>
+          <td style="padding:6px 4px;" title="${escapeHtml(r.error || r.deliveryError || '')}">${labels[r.status] || escapeHtml(r.status)}${r.error ? ' · ' + escapeHtml(r.error) : ''}${r.delivery === 'read' ? ' · <span style="color:#34d399;">lida</span>' : r.delivery === 'delivered' ? ' · <span style="color:#34d399;">entregue</span>' : r.delivery === 'failed' ? ` · <span style="color:#f87171;">não entregue${r.deliveryError ? ': ' + escapeHtml(r.deliveryError) : ''}</span>` : ''}</td>
         </tr>`).join('')}
       </table>`;
   } catch (e) {
@@ -20232,6 +20253,13 @@ function readWaLinePicker(name) {
   return v.length ? v : null;
 }
 
+// Se a Meta nunca mandou aviso (resposta, entrega) para a linha, o webhook não está configurado no app dono do token.
+function cloudHookLine(st) {
+  if (!st.hookAt) return '<div class="wa-line-sub" style="color:#f87171;white-space:normal;">⚠ Ainda não recebeu nenhum aviso da Meta: as respostas, os cliques nos botões e as confirmações de entrega não chegam ao CRM. Configure o webhook no app da Meta (Credenciais mostra o endereço e o token).</div>';
+  const days = Math.floor((Date.now() - new Date(st.hookAt).getTime()) / 86400000);
+  return days >= 3 ? `<div class="wa-line-sub" style="color:#fbbf24;white-space:normal;">Último aviso da Meta em ${new Date(st.hookAt).toLocaleDateString('pt-BR')}. Se a linha enviou mensagens depois disso, confira o webhook.</div>` : '';
+}
+
 async function fetchWhatsAppState(act, line) {
   try {
     const r = await window._fb.whatsapp('/whatsapp/status', act, { line: line || WA_MAIN });
@@ -20256,7 +20284,7 @@ async function renderWaLinesBox(act, el) {
     if (waIsCloud(l.id)) {
       const ok = st.state === 'open';
       return `<div class="wa-line-row">
-      <div style="flex:1;min-width:0;"><div class="wa-line-name">${escapeHtml(l.label)} <span class="chat-tag" style="background:var(--blue-dim);color:var(--blue);">API oficial</span></div><div class="wa-line-sub"><span style="color:${ok ? '#34d399' : '#fbbf24'};font-weight:600;">● ${ok ? 'Conectado' : 'Falta configurar'}</span>${num ? ' · ' + escapeHtml(num) : ''}${st.profileName ? ' · ' + escapeHtml(st.profileName) : ''}${st.quality ? ' · ' + escapeHtml(CLOUD_QUALITY[st.quality] || st.quality) : ''}</div></div>
+      <div style="flex:1;min-width:0;"><div class="wa-line-name">${escapeHtml(l.label)} <span class="chat-tag" style="background:var(--blue-dim);color:var(--blue);">API oficial</span></div><div class="wa-line-sub"><span style="color:${ok ? '#34d399' : '#fbbf24'};font-weight:600;">● ${ok ? 'Conectado' : 'Falta configurar'}</span>${num ? ' · ' + escapeHtml(num) : ''}${st.profileName ? ' · ' + escapeHtml(st.profileName) : ''}${st.quality ? ' · ' + escapeHtml(CLOUD_QUALITY[st.quality] || st.quality) : ''}</div>${ok ? cloudHookLine(st) : ''}</div>
       ${ok ? `<button style="${wbtn}" onclick="openCloudTemplates('${a}','${id}')">Modelos</button>` : ''}
       ${isAdminUser() ? `<button class="chat-pill" onclick="openCloudSetup('${a}','${id}')">Credenciais</button>` : ''}
       <button class="chat-pill" onclick="renameWaLine('${a}','${id}')">Renomear</button>
