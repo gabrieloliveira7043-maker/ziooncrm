@@ -6559,6 +6559,8 @@ async function confirmarImportacao() {
 
   let imported = 0; let errors = 0;
   const promises = [];
+  // Várias colunas em "Observações": junta todas, uma por linha, com o nome da coluna (antes ficava só a última).
+  const obsCols = mapping.filter(m => m.field === 'obs').length;
 
   for (const row of rows) {
     const importedAt = new Date().toISOString();
@@ -6581,6 +6583,9 @@ async function confirmarImportacao() {
         isFechado = v === 'sim' || (!isNaN(parseFloat(v.replace(',','.'))) && parseFloat(v.replace(',','.')) > 0);
       }
       else if (field === 'redeSocial') { lead.redeSocial = rmap[val.toLowerCase()] || val; }
+      else if (field === 'obs' && obsCols > 1) {
+        if (val) lead.obs = (lead.obs ? lead.obs + '\n' : '') + `${String(headers[colIdx] || '').trim() || 'Coluna ' + (colIdx + 1)}: ${val}`;
+      }
       else if (val) { lead[field] = val; }
     }
 
