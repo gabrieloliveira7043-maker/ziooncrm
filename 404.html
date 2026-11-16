@@ -1962,6 +1962,10 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
 /* Rolagem sem barra aparente (a rolagem continua funcionando) */
 .notifications-list, .csp-list, .chat-list, .chat-msgs, .chat-info, .kanban-cards, .modal-box, .modal-overlay, .config-panel, #huven-modal > div, .mnav-sheet, .integ-code, .client-switch-pop, .sidebar { scrollbar-width: none; -ms-overflow-style: none; }
 .notifications-list::-webkit-scrollbar, .csp-list::-webkit-scrollbar, .chat-list::-webkit-scrollbar, .chat-msgs::-webkit-scrollbar, .chat-info::-webkit-scrollbar, .kanban-cards::-webkit-scrollbar, .modal-box::-webkit-scrollbar, .modal-overlay::-webkit-scrollbar, .config-panel::-webkit-scrollbar, #huven-modal > div::-webkit-scrollbar, .mnav-sheet::-webkit-scrollbar, .integ-code::-webkit-scrollbar, .client-switch-pop::-webkit-scrollbar { display: none; width: 0; height: 0; }
+/* chat-list-scroll */ .chat-list { scrollbar-width: thin !important; scrollbar-color: var(--gold) transparent; -ms-overflow-style: auto !important; }
+.chat-list::-webkit-scrollbar { display: block !important; width: 8px !important; height: 0 !important; }
+.chat-list::-webkit-scrollbar-track { background: transparent; }
+.chat-list::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
 
 .ads-row { display: grid; grid-template-columns: 1.4fr 2fr auto; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
 .ads-row:last-child { border-bottom: none; }
