@@ -284,8 +284,10 @@ html.tema-novo .chat-wrap { border-radius: 14px; border-color: var(--border); }
 html.tema-novo .chat-side { padding: 16px 16px 0; }
 html.tema-novo .chat-side > div:first-child > div:first-child { font-family: var(--font-display); font-size: 20px !important; letter-spacing: -0.01em; }
 html.tema-novo #chat-search { height: 36px; border-radius: 8px; font-size: 13px; }
-html.tema-novo :is(#chat-filters, #chat-tag-filter) { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; gap: 6px !important; }
-html.tema-novo :is(#chat-filters, #chat-tag-filter)::-webkit-scrollbar { display: none; }
+html.tema-novo :is(#chat-filters, #chat-tag-filter) { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--gold) transparent; padding-bottom: 6px; margin-inline: -16px; padding-inline: 16px; gap: 6px !important; }
+html.tema-novo :is(#chat-filters, #chat-tag-filter)::-webkit-scrollbar { display: block; height: 6px; }
+html.tema-novo :is(#chat-filters, #chat-tag-filter)::-webkit-scrollbar-track { background: transparent; }
+html.tema-novo :is(#chat-filters, #chat-tag-filter)::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 999px; }
 html.tema-novo .chat-pill { border-radius: 99px; font-weight: 600; font-size: 12px; padding: 5px 11px; color: var(--muted2); flex: none; }
 html.tema-novo .chat-pill:hover { background: var(--n-hover); color: var(--text); }
 html.tema-novo .chat-pill.active { background: var(--accent-glow); border-color: transparent; color: var(--accent2); }
