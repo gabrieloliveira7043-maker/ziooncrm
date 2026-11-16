@@ -16681,7 +16681,9 @@ function chatCampSelectHtml() {
     const act = _chatAct;
     window._fb.getCampaignsOnce(act).then(list => {
       if (_chatCampList.act !== act) return;
-      _chatCampList.list = list.filter(c => (Number(c.sent) || 0) > 0).sort((a, b) => String(b.startedAt || b.createdAt || '').localeCompare(String(a.startedAt || a.createdAt || ''))).slice(0, 40);
+      // Data do disparo: a programada (startAt) quando houver; senão quando clicou em iniciar.
+      const when = c => String(c.startAt && Date.parse(c.startAt) > Date.parse(c.startedAt || 0) ? c.startAt : (c.startedAt || c.createdAt || ''));
+      _chatCampList.list = list.filter(c => (Number(c.sent) || 0) > 0).map(c => ({ ...c, _when: when(c) })).sort((a, b) => b._when.localeCompare(a._when)).slice(0, 40);
       _chatCampList.loading = false;
       renderChatFilters();
     }).catch(() => { _chatCampList.loading = false; _chatCampList.list = []; });
@@ -16690,7 +16692,7 @@ function chatCampSelectHtml() {
   const list = _chatCampList.list || [];
   if (!list.length) return '';
   const lineName = c => { const l = (Array.isArray(c.lines) ? c.lines : [])[0]; return l && chatLines(_chatAct).length > 1 ? ' · ' + waLineLabel(_chatAct, l) : ''; };
-  const day = c => { const t = Date.parse(c.startedAt || c.createdAt || ''); return t ? ' · ' + new Date(t).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : ''; };
+  const day = c => { const t = Date.parse(c._when || c.startedAt || c.createdAt || ''); return t ? ' · ' + new Date(t).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : ''; };
   return `<select class="field-input chat-line-select" onchange="setChatCampFilter(this.value)" title="Ver só quem recebeu esta campanha" style="max-width:240px;"><option value="all">Todas as campanhas</option>${list.map(c => `<option value="${escapeHtml(c.id)}" ${_chatCampFilter === c.id ? 'selected' : ''}>${escapeHtml((c.name || 'Campanha') + day(c) + lineName(c))}</option>`).join('')}</select>`;
 }
 
