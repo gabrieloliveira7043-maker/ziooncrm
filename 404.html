@@ -2716,6 +2716,11 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
     async updateCampaign(id, data) {
       await updateDoc(doc(db, 'campaigns', id), { ...data, updatedAt: new Date().toISOString() });
     },
+    listenCampaignRecipients(id, max, callback) {
+      return onSnapshot(query(collection(db, 'campaigns', id, 'recipients'), limit(max || 500)), snap => {
+        callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      }, error => callback(null, error));
+    },
     async getCampaignRecipients(id, max) {
       const snap = await getDocs(query(collection(db, 'campaigns', id, 'recipients'), limit(max || 500)));
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -9072,8 +9077,15 @@ async function openCampaignDetail(id) {
   modal.style.display = 'flex';
   modal.classList.add('open');
   body.innerHTML = 'Carregando...';
+  if (window._campDetailUnsub) { window._campDetailUnsub(); window._campDetailUnsub = null; }
+  window._campDetailUnsub = window._fb.listenCampaignRecipients(id, 500, (rows, err) => {
+    if (err || !rows) { body.innerHTML = `<div style="color:#f87171;">${escapeHtml((err && err.message) || 'Erro ao carregar')}</div>`; return; }
+    renderCampaignDetailRows(body, rows);
+  });
+}
+
+function renderCampaignDetailRows(body, rows) {
   try {
-    const rows = await window._fb.getCampaignRecipients(id, 500);
     rows.sort((a, b) => (a.order || 0) - (b.order || 0));
     const labels = { pending: 'Na fila', sending: 'Enviando', sent: 'Enviada', skipped: 'Pulada', failed: 'Erro' };
     body.innerHTML = `<div style="color:var(--muted);margin-bottom:8px;">Mostrando ${rows.length} contato(s)${rows.length === 500 ? ' (os primeiros 500)' : ''}.</div>
@@ -9091,6 +9103,7 @@ async function openCampaignDetail(id) {
 }
 
 function closeCampaignDetail() {
+  if (window._campDetailUnsub) { window._campDetailUnsub(); window._campDetailUnsub = null; }
   const modal = document.getElementById('campaign-detail-modal');
   modal.classList.remove('open');
   modal.style.display = 'none';
@@ -20307,9 +20320,9 @@ async function fetchWhatsAppState(act, line) {
 }
 
 // Lista de números do cliente com estado, número conectado e ações (tela Conexões).
-async function renderWaLinesBox(act, el) {
+async function renderWaLinesBox(act, el, quiet) {
   if (!el) return;
-  el.innerHTML = '<span style="color:var(--muted);font-size:12px;">verificando...</span>';
+  if (!quiet) el.innerHTML = '<span style="color:var(--muted);font-size:12px;">verificando...</span>';
   let states = [];
   try { states = (await window._fb.whatsapp('/whatsapp/lines-status', act)).lines || []; }
   catch (e) { el.innerHTML = `<span style="color:#f87171;font-size:12px;">Servidor do WhatsApp fora do ar</span>`; return; }
@@ -20351,6 +20364,19 @@ async function saveFirstMessageLines(act) {
   } catch (e) { showToast('Não salvou: ' + e.message, 'error'); }
 }
 window.saveFirstMessageLines = saveFirstMessageLines;
+
+// Mantém a tela Conexões em dia (aviso de pagamento, recebimento, conexão) sem precisar recarregar o CRM.
+function refreshVisibleWaLines() {
+  if (document.visibilityState !== 'visible') return;
+  document.querySelectorAll('[data-wa-lines]').forEach(el => {
+    if (!el.offsetParent || el.querySelector('button:focus, input:focus')) return;
+    renderWaLinesBox(el.getAttribute('data-wa-lines'), el, true);
+  });
+}
+if (!window._waLinesTimer) {
+  window._waLinesTimer = setInterval(refreshVisibleWaLines, 20000);
+  window.addEventListener('focus', () => setTimeout(refreshVisibleWaLines, 300));
+}
 
 function refreshWaLinesFor(act) {
   document.querySelectorAll('[data-wa-lines]').forEach(el => { if (el.getAttribute('data-wa-lines') === act) renderWaLinesBox(act, el); });
