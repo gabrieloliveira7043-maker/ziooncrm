@@ -2754,6 +2754,16 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     },
     // Chat filtrado por campanha: só quem a campanha já tentou enviar (status "sent").
+    // Conversas de uma lista de telefones (o Chat só carrega as mais recentes; o filtro por campanha busca as dela).
+    async getChatsByPhones(act, phones) {
+      const out = [];
+      const list = [...new Set(phones)].slice(0, 3000);
+      for (let i = 0; i < list.length; i += 30) {
+        const snap = await getDocs(query(collection(db, 'inbox', normalizeAct(act), 'chats'), where('phone', 'in', list.slice(i, i + 30))));
+        snap.docs.forEach(d => out.push({ id: d.id, ...d.data() }));
+      }
+      return out;
+    },
     async getCampaignSentPhones(id) {
       const snap = await getDocs(query(collection(db, 'campaigns', id, 'recipients'), where('status', '==', 'sent'), limit(5000)));
       return snap.docs.map(d => d.data().phone || '').filter(Boolean);
@@ -16710,6 +16720,15 @@ async function setChatCampFilter(id) {
     const phones = await window._fb.getCampaignSentPhones(id);
     if (_chatCampFilter !== id) return;
     _chatCampPhones = new Set(phones.map(chatPhoneKey).filter(Boolean));
+    const have = new Set(_chatItems.map(x => chatPhoneKey(x.phone)));
+    const missing = phones.filter(p => !have.has(chatPhoneKey(p)));
+    if (missing.length) {
+      const extra = await window._fb.getChatsByPhones(_chatAct, missing);
+      if (_chatCampFilter !== id) return;
+      // Entram como conversas extras do Chat (continuam lá ao abrir, responder e quando a lista atualiza).
+      extra.filter(chatVisibleFilter(_chatAct)).forEach(x => { _chatExtra[x.id] = x; if (!_chatItems.some(y => y.id === x.id)) _chatItems.push(x); });
+      _chatItems.sort((a, b) => String(b.lastAt || '').localeCompare(String(a.lastAt || '')));
+    }
   } catch (e) {
     showToast('Não deu para carregar a campanha: ' + e.message, 'warning');
     _chatCampFilter = 'all';
