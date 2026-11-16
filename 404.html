@@ -22691,6 +22691,22 @@ async function openWhatsAppConnect(act, name, line) {
   setWhatsAppQrBody('<div style="color:var(--muted);">Gerando QR Code...</div>');
   modal.style.display = 'flex';
   modal.classList.add('open');
+  // Linha "conectada, mas sem receber mensagens": a sessão está travada. Desconecta antes para o QR Code aparecer
+  // (senão o servidor responde "conectado" e o QR nunca é gerado). Só uma vez a cada 30 min por linha,
+  // para não derrubar uma conexão que acabou de ser refeita enquanto o aviso ainda não sumiu.
+  const stuck = (typeof _waStatusList !== 'undefined' ? _waStatusList : []).find(s => s.id !== '__server' && s.silent && (s.act || String(s.id).split('__')[0]) === act && (s.line || WA_MAIN) === line);
+  window._waForcedLogout = window._waForcedLogout || {};
+  const fk = act + '|' + line;
+  if (stuck && !(Date.now() - (window._waForcedLogout[fk] || 0) < 30 * 60 * 1000)) {
+    window._waForcedLogout[fk] = Date.now();
+    setWhatsAppQrBody('<div style="color:var(--muted);">Desconectando a sessão travada para gerar um QR Code novo...</div>');
+    try {
+      await window._fb.whatsapp('/whatsapp/logout', act, { line });
+      auditLog(act, 'whatsapp', `Reconectou o WhatsApp "${waLineLabel(act, line)}" (estava sem receber mensagens)`);
+    } catch (e) { console.warn('Logout da linha travada falhou:', e && e.message); }
+    await new Promise(r => setTimeout(r, 2500));
+    setWhatsAppQrBody('<div style="color:var(--muted);">Gerando QR Code...</div>');
+  }
   await loadWhatsAppQr(act, line);
 
   // Confere a conexão a cada 5 s e troca o QR Code a cada ~25 s (ele expira). Para depois de 5 min.
