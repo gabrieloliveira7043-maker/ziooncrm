@@ -2739,7 +2739,7 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
       await updateDoc(cref, {
         sent: Math.max(0, (Number(c.sent) || 0) - und.length), failed: Math.max(0, (Number(c.failed) || 0) - fail.length),
         undelivered: Math.max(0, (Number(c.undelivered) || 0) - und.length),
-        status: 'running', finishedAt: null, firstSentAt: null, deliveryOk: false, pauseReason: null, pauseKind: null, billingUrl: null,
+        status: 'running', finishedAt: null, firstSentAt: null, deliveryOk: false, pauseReason: null, pauseKind: null, billingUrl: null, paymentError: null,
         retriedAt: new Date().toISOString(), updatedAt: new Date().toISOString()
       });
       return { und: und.length, fail: fail.length };
@@ -8998,14 +8998,15 @@ function renderCampaignList(campaigns) {
     const actions = [];
     if (c.status === 'draft') actions.push(btn('Iniciar disparo', 'startCampaign'));
     if (c.status === 'running') actions.push(btn('Pausar', 'pauseCampaign'));
-    if (c.status === 'paused' && c.pauseKind === 'payment') {
+    const payIssue = (c.status === 'paused' && c.pauseKind === 'payment') || (c.paymentError && (Number(c.undelivered) || 0) > 0 && c.status !== 'running');
+    if (payIssue) {
       if (c.billingUrl) actions.push(`<button style="${wbtn}background:#dc2626;border-color:#dc2626;color:#fff;" onclick="openCloudBilling('${escapeJsString(c.billingUrl)}')">Atualizar pagamento</button>`);
-      actions.push(btn('Já paguei, retomar', 'resumeAfterPayment'));
+      actions.push(btn('Já paguei, tentar novamente', 'retryAfterPayment'));
     } else if (c.status === 'paused') actions.push(btn('Retomar', 'startCampaign'));
     if (['draft', 'running', 'paused'].includes(c.status)) actions.push(btn('Editar', 'editCampaign', 'background:transparent;'));
     if (c.status === 'running' || c.status === 'paused') actions.push(btn('Cancelar', 'cancelCampaign', 'background:transparent;'));
     const retryN = (Number(c.undelivered) || 0) + (Number(c.failed) || 0);
-    if (retryN && ['done', 'paused', 'cancelled'].includes(c.status)) actions.push(`<button style="${wbtn}" title="Reenvia só para quem não recebeu" onclick="retryCampaign('${id}')">Tentar novamente (${retryN})</button>`);
+    if (retryN && !payIssue && ['done', 'paused', 'cancelled'].includes(c.status)) actions.push(`<button style="${wbtn}" title="Reenvia só para quem não recebeu" onclick="retryCampaign('${id}')">Tentar novamente (${retryN})</button>`);
     actions.push(btn('Detalhes', 'openCampaignDetail', 'background:transparent;'));
     actions.push(btn('Reutilizar', 'reuseCampaign', 'background:transparent;'));
     if (c.status !== 'running') actions.push(btn('Excluir', 'deleteCampaignConfirm', 'background:transparent;color:#f87171;border-color:#f87171;'));
@@ -9024,7 +9025,7 @@ function renderCampaignList(campaigns) {
         <div class="cp-bar"><div style="width:${pct}%;background:${barColor};"></div></div>
         <div class="cp-sub">${Number(c.sent) || 0} enviadas de ${total} · ${Number(c.skipped) || 0} puladas · ${Number(c.failed) || 0} com erro</div>
         ${campaignDeliveryLine(c)}
-        ${c.status === 'paused' && c.pauseReason ? `<div class="cp-sub" style="color:#f87171;white-space:normal;">⚠ Pausada automaticamente: ${escapeHtml(c.pauseReason)}</div>` : ''}
+        ${c.status === 'paused' && c.pauseReason ? `<div class="cp-sub" style="color:#f87171;white-space:normal;">⚠ Pausada automaticamente: ${escapeHtml(c.pauseReason)}</div>` : c.paymentError && (Number(c.undelivered) || 0) > 0 && c.status !== 'running' ? '<div class="cp-sub" style="color:#f87171;white-space:normal;">⚠ A Meta não entregou por problema de pagamento da conta do WhatsApp. Pague (ou troque o cartão) e clique em "Já paguei, tentar novamente".</div>' : ''}
       </div>
       <span class="cp-sub">${escapeHtml(startTxt)}</span>
       <div class="cp-actions">${actions.join('')}</div>
@@ -9083,6 +9084,19 @@ async function retryCampaign(id) {
     if (!n) { showToast('Nenhum contato para tentar de novo (os que falharam não têm WhatsApp ou pararam de receber marketing).', 'warning', 8000); return; }
     showToast(`${n} contato(s) voltaram para a fila. A campanha já está enviando de novo.`, 'success', 8000);
     if (c.act) auditLog(c.act, 'campanha', `Tentou de novo a campanha "${c.name || ''}" (${n} contato(s))`);
+  } catch (e) { showToast('Erro: ' + e.message, 'warning'); }
+}
+
+async function retryAfterPayment(id) {
+  const c = _campaignsCache.find(x => x.id === id) || {};
+  const ok = await showConfirm('Quem não recebeu volta para a fila e a campanha envia de novo, começando por um lote de teste. Se a Meta ainda recusar o pagamento, ela pausa e avisa. Às vezes a Meta leva alguns minutos para liberar depois do pagamento.', 'Já paguei, tentar novamente', 'Tentar novamente');
+  if (!ok) return;
+  try {
+    const r = await window._fb.retryCampaignFailures(id);
+    const n = r.und + r.fail;
+    if (!n) await window._fb.updateCampaign(id, { status: 'running', firstSentAt: null, deliveryOk: false, pauseReason: null, pauseKind: null, billingUrl: null, paymentError: null });
+    showToast(n ? `${n} contato(s) voltaram para a fila. Enviando de novo...` : 'Campanha retomada. Enviando...', 'success', 8000);
+    if (c.act) auditLog(c.act, 'campanha', `Tentou de novo a campanha "${c.name || ''}" depois do pagamento`);
   } catch (e) { showToast('Erro: ' + e.message, 'warning'); }
 }
 
