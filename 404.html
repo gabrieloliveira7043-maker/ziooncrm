@@ -2749,6 +2749,15 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
         callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       }, error => callback(null, error));
     },
+    async getCampaignsOnce(act) {
+      const snap = await getDocs(query(collection(db, 'campaigns'), where('act', '==', normalizeAct(act))));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    },
+    // Chat filtrado por campanha: só quem a campanha já tentou enviar (status "sent").
+    async getCampaignSentPhones(id) {
+      const snap = await getDocs(query(collection(db, 'campaigns', id, 'recipients'), where('status', '==', 'sent'), limit(5000)));
+      return snap.docs.map(d => d.data().phone || '').filter(Boolean);
+    },
     async getCampaignRecipients(id, max) {
       const snap = await getDocs(query(collection(db, 'campaigns', id, 'recipients'), limit(max || 500)));
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -16229,6 +16238,9 @@ let _chatMedia = {};
 let _chatPendingMedia = null;
 let _chatSending = false;
 let _chatExtra = {}; // conversas abertas pelo card/contato que não estão entre as mais recentes
+let _chatCampFilter = 'all';  // Chat: 'all' ou o id da campanha (mostra só quem recebeu o disparo)
+let _chatCampPhones = null;   // Set com os telefones (chatPhoneKey) da campanha escolhida
+let _chatCampList = { act: '', list: null, loading: false };
 let _chatLineFilter = 'all';  // Chat: 'all' ou o id do WhatsApp (linha)
 let _chatNotes = [];          // notas internas da conversa aberta
 let _chatNotesUnsub = null;
@@ -16654,7 +16666,53 @@ function renderChatFilters() {
     ? `<button class="chat-pill" onclick="chatMarkAllRead()" title="Zera o contador de não lidas de todas as conversas${_chatLineFilter !== 'all' ? ' deste WhatsApp' : ''}">✓ Marcar todas como lidas</button>`
     : '') + (_chatAct && chatLines(_chatAct).length > 1
     ? `<select class="field-input chat-line-select" onchange="_chatLineFilter=this.value;renderChatList()" title="Qual WhatsApp"><option value="all">Todos os WhatsApps</option>${chatLines(_chatAct).map(l => `<option value="${escapeHtml(l.id)}" ${_chatLineFilter === l.id ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}</select>`
-    : '');
+    : '') + chatCampSelectHtml();
+}
+
+// Filtro por campanha: lista as campanhas do cliente que já enviaram (mais novas primeiro).
+function chatCampSelectHtml() {
+  if (!_chatAct) return '';
+  if (_chatCampList.act !== _chatAct) {
+    _chatCampList = { act: _chatAct, list: null, loading: false };
+    _chatCampFilter = 'all'; _chatCampPhones = null;
+  }
+  if (!_chatCampList.list && !_chatCampList.loading) {
+    _chatCampList.loading = true;
+    const act = _chatAct;
+    window._fb.getCampaignsOnce(act).then(list => {
+      if (_chatCampList.act !== act) return;
+      _chatCampList.list = list.filter(c => (Number(c.sent) || 0) > 0).sort((a, b) => String(b.startedAt || b.createdAt || '').localeCompare(String(a.startedAt || a.createdAt || ''))).slice(0, 40);
+      _chatCampList.loading = false;
+      renderChatFilters();
+    }).catch(() => { _chatCampList.loading = false; _chatCampList.list = []; });
+    return '';
+  }
+  const list = _chatCampList.list || [];
+  if (!list.length) return '';
+  const lineName = c => { const l = (Array.isArray(c.lines) ? c.lines : [])[0]; return l && chatLines(_chatAct).length > 1 ? ' · ' + waLineLabel(_chatAct, l) : ''; };
+  const day = c => { const t = Date.parse(c.startedAt || c.createdAt || ''); return t ? ' · ' + new Date(t).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : ''; };
+  return `<select class="field-input chat-line-select" onchange="setChatCampFilter(this.value)" title="Ver só quem recebeu esta campanha" style="max-width:240px;"><option value="all">Todas as campanhas</option>${list.map(c => `<option value="${escapeHtml(c.id)}" ${_chatCampFilter === c.id ? 'selected' : ''}>${escapeHtml((c.name || 'Campanha') + day(c) + lineName(c))}</option>`).join('')}</select>`;
+}
+
+async function setChatCampFilter(id) {
+  _chatCampFilter = id || 'all';
+  _chatCampPhones = null;
+  if (_chatCampFilter === 'all') { renderChatList(); return; }
+  const c = (_chatCampList.list || []).find(x => x.id === id) || {};
+  const camLine = (Array.isArray(c.lines) ? c.lines : [])[0];
+  // Campanha de uma linha só: já mostra as conversas desse WhatsApp.
+  if (camLine && chatLines(_chatAct).some(l => l.id === camLine) && (c.lines || []).length === 1) _chatLineFilter = camLine;
+  const list = document.getElementById('chat-list');
+  if (list) list.innerHTML = '<div class="integ-muted" style="padding:16px;">Buscando quem recebeu a campanha...</div>';
+  try {
+    const phones = await window._fb.getCampaignSentPhones(id);
+    if (_chatCampFilter !== id) return;
+    _chatCampPhones = new Set(phones.map(chatPhoneKey).filter(Boolean));
+  } catch (e) {
+    showToast('Não deu para carregar a campanha: ' + e.message, 'warning');
+    _chatCampFilter = 'all';
+  }
+  renderChatList();
 }
 
 function renderChatList() {
@@ -16673,6 +16731,7 @@ function renderChatList() {
   const rows = _chatItems.filter(c => {
     if (!chatMatchesFilter(c, _chatFilter, me)) return false;
     if (_chatLineFilter !== 'all' && (c.line || waLineOfKey(c.id)) !== _chatLineFilter) return false;
+    if (_chatCampFilter !== 'all' && _chatCampPhones && !_chatCampPhones.has(chatPhoneKey(c.phone))) return false;
     const lead = chatLeadFor(c, index);
     if (_chatTagFilter.size && !chatTagIds(c, lead, chatContactFor(c, contactIndex)).some(id => _chatTagFilter.has(id))) return false;
     if (!term) return true;
