@@ -2716,6 +2716,34 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
     async updateCampaign(id, data) {
       await updateDoc(doc(db, 'campaigns', id), { ...data, updatedAt: new Date().toISOString() });
     },
+    // Tentar novamente: quem não recebeu (a Meta não entregou ou recusou o envio) volta para a fila.
+    // Não volta quem não tem WhatsApp (131026) nem quem parou de receber marketing (131050).
+    async retryCampaignFailures(id) {
+      const cref = doc(db, 'campaigns', id);
+      const snap = await getDocs(collection(db, 'campaigns', id, 'recipients'));
+      const und = [], fail = [];
+      snap.docs.forEach(d => {
+        const x = d.data();
+        const code = Number(x.deliveryErrorCode) || 0;
+        if (x.delivery === 'failed' && code !== 131026 && code !== 131050) und.push(d.ref);
+        else if (x.status === 'failed') fail.push(d.ref);
+      });
+      const all = und.concat(fail);
+      for (let i = 0; i < all.length; i += 400) {
+        const batch = writeBatch(db);
+        all.slice(i, i + 400).forEach(ref => batch.update(ref, { status: 'pending', delivery: deleteField(), deliveryError: deleteField(), deliveryErrorCode: deleteField(), failedAt: deleteField(), error: deleteField(), wamid: deleteField(), sentAt: deleteField() }));
+        await batch.commit();
+      }
+      if (!all.length) return { und: 0, fail: 0 };
+      const c = (await getDoc(cref)).data() || {};
+      await updateDoc(cref, {
+        sent: Math.max(0, (Number(c.sent) || 0) - und.length), failed: Math.max(0, (Number(c.failed) || 0) - fail.length),
+        undelivered: Math.max(0, (Number(c.undelivered) || 0) - und.length),
+        status: 'running', finishedAt: null, firstSentAt: null, deliveryOk: false, pauseReason: null, pauseKind: null, billingUrl: null,
+        retriedAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+      });
+      return { und: und.length, fail: fail.length };
+    },
     listenCampaignRecipients(id, max, callback) {
       return onSnapshot(query(collection(db, 'campaigns', id, 'recipients'), limit(max || 500)), snap => {
         callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -8976,6 +9004,8 @@ function renderCampaignList(campaigns) {
     } else if (c.status === 'paused') actions.push(btn('Retomar', 'startCampaign'));
     if (['draft', 'running', 'paused'].includes(c.status)) actions.push(btn('Editar', 'editCampaign', 'background:transparent;'));
     if (c.status === 'running' || c.status === 'paused') actions.push(btn('Cancelar', 'cancelCampaign', 'background:transparent;'));
+    const retryN = (Number(c.undelivered) || 0) + (Number(c.failed) || 0);
+    if (retryN && ['done', 'paused', 'cancelled'].includes(c.status)) actions.push(`<button style="${wbtn}" title="Reenvia só para quem não recebeu" onclick="retryCampaign('${id}')">Tentar novamente (${retryN})</button>`);
     actions.push(btn('Detalhes', 'openCampaignDetail', 'background:transparent;'));
     actions.push(btn('Reutilizar', 'reuseCampaign', 'background:transparent;'));
     if (c.status !== 'running') actions.push(btn('Excluir', 'deleteCampaignConfirm', 'background:transparent;color:#f87171;border-color:#f87171;'));
@@ -9041,6 +9071,19 @@ function openCloudBilling(url) {
   if (!/^https:\/\/business\.facebook\.com\//.test(String(url || ''))) return;
   window.open(url, '_blank', 'noopener');
   showToast('Abrimos a cobrança da conta do WhatsApp na Meta. Pague o saldo (ou troque o cartão) e depois volte aqui e clique em "Já paguei, retomar".', 'success', 10000);
+}
+
+async function retryCampaign(id) {
+  const c = _campaignsCache.find(x => x.id === id) || {};
+  const ok = await showConfirm('Só os contatos que não receberam (a Meta não entregou ou recusou o envio) voltam para a fila. Quem já recebeu não recebe de novo. Números sem WhatsApp ou que pararam de receber marketing ficam de fora.', 'Tentar novamente', 'Tentar novamente');
+  if (!ok) return;
+  try {
+    const r = await window._fb.retryCampaignFailures(id);
+    const n = r.und + r.fail;
+    if (!n) { showToast('Nenhum contato para tentar de novo (os que falharam não têm WhatsApp ou pararam de receber marketing).', 'warning', 8000); return; }
+    showToast(`${n} contato(s) voltaram para a fila. A campanha já está enviando de novo.`, 'success', 8000);
+    if (c.act) auditLog(c.act, 'campanha', `Tentou de novo a campanha "${c.name || ''}" (${n} contato(s))`);
+  } catch (e) { showToast('Erro: ' + e.message, 'warning'); }
 }
 
 async function resumeAfterPayment(id) {
