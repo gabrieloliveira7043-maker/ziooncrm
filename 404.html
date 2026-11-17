@@ -7937,6 +7937,122 @@ function renderContatos() {
     ? `<div style="text-align:center;padding:12px;"><button class="chat-pill" onclick="_contatosShown += 300; renderContatos();">Mostrar mais (${_contatosFiltered.length - _contatosShown} restantes)</button></div>` : '');
 }
 
+// ---------- Adicionar pessoas a grupos do WhatsApp (linhas QR; o número da linha precisa ser admin do grupo) ----------
+let _gaState = null;
+const GA_STATUS = { ok: ['adicionado', '#34d399'], ja_no_grupo: ['já estava no grupo', 'var(--muted)'], privacidade: ['a privacidade dele não deixa adicionar', '#fbbf24'], saiu_recente: ['saiu do grupo há pouco e não pode voltar agora', '#fbbf24'], sem_whatsapp: ['não tem WhatsApp', '#f87171'] };
+function openGroupAdd(opts = {}) {
+  const act = normalizeActValue(opts.act || contatosAct());
+  if (!act) return;
+  const lines = waLines(act).filter(l => !waIsCloud(l.id));
+  if (!lines.length) { alert('Este cliente não tem WhatsApp conectado por QR Code. A API oficial não adiciona pessoas a grupos.'); return; }
+  const people = opts.people || _contatosEntries.filter(e => _contatosSelected.has(e.key) && e.phone).map(e => ({ name: e.name || '', phone: e.phone }));
+  _gaState = { act, people, groups: [], picked: new Set(opts.groupIds || []), line: opts.line && lines.some(l => l.id === opts.line) ? opts.line : lines[0].id, running: false };
+  openHuvenModal('Adicionar a grupos do WhatsApp', `
+    <label class="field-label">WhatsApp que adiciona (precisa ser admin do grupo)</label>
+    <select class="field-input" id="ga-line" style="margin-bottom:10px;" onchange="_gaState.line = this.value; _gaState.picked.clear(); gaLoadGroups()">${lines.map(l => `<option value="${escapeHtml(l.id)}" ${l.id === _gaState.line ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}</select>
+    <label class="field-label">Grupos <span id="ga-count" class="integ-muted" style="font-weight:400;"></span></label>
+    <input class="field-input" id="ga-search" placeholder="Buscar grupo..." oninput="gaRenderGroups()" style="margin-bottom:6px;padding:8px 10px;font-size:13px;">
+    <div id="ga-groups" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:6px;margin-bottom:10px;"></div>
+    <label class="field-label">Pessoas</label>
+    <div style="font-size:12px;color:var(--text);margin-bottom:6px;">${people.length ? `${people.length} contato(s) selecionado(s): ${escapeHtml(people.slice(0, 4).map(p => p.name || p.phone).join(', '))}${people.length > 4 ? '...' : ''}` : 'Cole abaixo os números que vão entrar no grupo.'}</div>
+    <textarea class="field-input" id="ga-extra" rows="3" placeholder="${people.length ? 'Outros números (opcional), ' : ''}um por linha, com DDD" style="margin-bottom:10px;font-size:13px;"></textarea>
+    <label style="display:flex;gap:6px;align-items:flex-start;font-size:12px;color:var(--text);margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="ga-invite" checked> Quem a privacidade do WhatsApp não deixar adicionar recebe o link do grupo no privado, com esta mensagem:</label>
+    <textarea class="field-input" id="ga-invite-text" rows="2" style="margin-bottom:10px;font-size:13px;">Oi! Tentei te adicionar no nosso grupo do WhatsApp, mas suas configurações não deixaram. Entra por este link:</textarea>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;line-height:1.5;">Para proteger o número, o CRM adiciona de 5 em 5 pessoas, com uma pausa de 10 a 20 segundos entre cada leva. Deixe esta janela aberta até terminar.</div>
+    <div style="display:flex;gap:8px;align-items:center;"><button class="btn-save" id="ga-btn" style="width:auto;padding:9px 16px;" onclick="gaRun()">Adicionar</button><span id="ga-fb" style="font-size:12px;color:var(--muted);"></span></div>
+    <div id="ga-log" style="margin-top:10px;font-size:12px;line-height:1.6;max-height:220px;overflow:auto;"></div>`, 560);
+  gaLoadGroups();
+}
+async function gaLoadGroups(refresh) {
+  const box = document.getElementById('ga-groups');
+  if (!box || !_gaState) return;
+  box.innerHTML = '<div class="integ-muted" style="padding:8px;">Carregando grupos... (a primeira vez pode levar até 1 minuto)</div>';
+  try {
+    const r = await window._fb.whatsapp('/whatsapp/groups', _gaState.act, { refresh: !!refresh, line: _gaState.line });
+    _gaState.groups = (r.groups || []).slice().sort((a, b) => String(a.subject || '').localeCompare(String(b.subject || ''), 'pt-BR'));
+    gaRenderGroups();
+  } catch (e) {
+    box.innerHTML = `<div style="padding:8px;color:#f87171;">${escapeHtml(e.message || 'Não deu para listar os grupos.')}</div><div style="padding:0 8px 6px;"><button class="chat-pill" onclick="gaLoadGroups(true)">Tentar de novo</button></div>`;
+  }
+}
+function gaRenderGroups() {
+  const box = document.getElementById('ga-groups');
+  if (!box || !_gaState) return;
+  const q = (document.getElementById('ga-search')?.value || '').toLowerCase().trim();
+  const list = _gaState.groups.filter(g => !q || String(g.subject || '').toLowerCase().includes(q));
+  box.innerHTML = (list.length ? list.map(g => `<label class="integ-toggle" style="display:flex;padding:4px 2px;gap:6px;"><input type="checkbox" ${_gaState.picked.has(g.id) ? 'checked' : ''} onchange="gaPick('${escapeHtml(g.id)}', this.checked)"> ${escapeHtml(g.subject || 'Grupo sem nome')} <span class="integ-muted" style="margin-left:auto;font-size:11.5px;">${g.size ? g.size + ' pessoas' : ''}</span></label>`).join('')
+    : '<div class="integ-muted" style="padding:8px;">Nenhum grupo encontrado.</div>')
+    + '<div style="padding:6px 2px;"><button class="chat-pill" onclick="gaLoadGroups(true)">Atualizar lista</button></div>';
+  gaCount();
+}
+function gaPick(id, on) { if (on) _gaState.picked.add(id); else _gaState.picked.delete(id); gaCount(); }
+function gaCount() { const el = document.getElementById('ga-count'); if (el && _gaState) el.textContent = _gaState.picked.size ? `· ${_gaState.picked.size} marcado(s)` : ''; }
+async function gaRun() {
+  const st = _gaState;
+  if (!st || st.running) return;
+  const groups = st.groups.filter(g => st.picked.has(g.id));
+  const extra = (document.getElementById('ga-extra').value || '').split(/[\n,;]+/).map(v => v.replace(/\D/g, '')).filter(d => d.length >= 10);
+  const seen = new Set();
+  const people = st.people.concat(extra.map(d => ({ name: '', phone: d }))).filter(p => {
+    const k = String(p.phone || '').replace(/\D/g, '').slice(-10);
+    if (k.length < 10 || seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+  if (!groups.length) { alert('Marque pelo menos um grupo.'); return; }
+  if (!people.length) { alert('Selecione contatos ou cole os números.'); return; }
+  if (!confirm(`Adicionar ${people.length} pessoa(s) em ${groups.length} grupo(s)?`)) return;
+  st.running = true;
+  const btn = document.getElementById('ga-btn');
+  const fb = document.getElementById('ga-fb');
+  btn.disabled = true;
+  const sendInvite = document.getElementById('ga-invite').checked;
+  const inviteText = document.getElementById('ga-invite-text').value;
+  const nameOf = ph => { const k = String(ph).replace(/\D/g, '').slice(-10); const p = people.find(x => String(x.phone).replace(/\D/g, '').slice(-10) === k); return (p && p.name) || chatFormatPhone(ph); };
+  const add = html => { const el = document.getElementById('ga-log'); if (el) { el.insertAdjacentHTML('beforeend', html); el.scrollTop = el.scrollHeight; } };
+  const tot = {};
+  const total = people.length * groups.length;
+  let done = 0, stopped = false;
+  outer: for (const g of groups) {
+    add(`<div style="font-weight:600;color:var(--text);margin-top:6px;">${escapeHtml(g.subject || 'Grupo')}</div>`);
+    for (let i = 0; i < people.length; i += 5) {
+      if (!document.getElementById('ga-log')) { stopped = true; break outer; }
+      const chunk = people.slice(i, i + 5);
+      if (fb) fb.textContent = `Adicionando... ${done} de ${total}`;
+      try {
+        const r = await window._fb.whatsapp('/whatsapp/group-add', st.act, { line: st.line, groupId: g.id, phones: chunk.map(p => p.phone), sendInvite, inviteText });
+        (r.results || []).forEach(x => {
+          const [label, color] = GA_STATUS[x.status] || ['não foi possível (' + x.status + ')', '#f87171'];
+          tot[x.status] = (tot[x.status] || 0) + 1;
+          add(`<div><span style="color:${color};">●</span> ${escapeHtml(nameOf(x.phone))}: ${label}${x.invited ? ' (link enviado no privado)' : ''}</div>`);
+        });
+      } catch (e) {
+        const msg = e.message || 'erro';
+        add(`<div style="color:#f87171;">${escapeHtml(msg)}</div>`);
+        if (/admin/i.test(msg)) { done += people.length - i; continue outer; }
+        tot.erro = (tot.erro || 0) + chunk.length;
+      }
+      done += chunk.length;
+      if (done < total) await new Promise(res => setTimeout(res, 10000 + Math.random() * 10000));
+    }
+  }
+  st.running = false;
+  if (stopped) return;
+  btn.disabled = false;
+  const parts = [];
+  if (tot.ok) parts.push(`${tot.ok} adicionado(s)`);
+  if (tot.ja_no_grupo) parts.push(`${tot.ja_no_grupo} já estava(m)`);
+  if (tot.privacidade || tot.saiu_recente) parts.push(`${(tot.privacidade || 0) + (tot.saiu_recente || 0)} não puderam entrar direto`);
+  if (tot.sem_whatsapp) parts.push(`${tot.sem_whatsapp} sem WhatsApp`);
+  if (fb) fb.textContent = 'Pronto. ' + (parts.join(' · ') || 'Nada foi adicionado.');
+}
+// No painel do grupo (Chat): adicionar pessoas a este grupo.
+function gaFromChat() {
+  const c = chatOpenGroup();
+  if (!c) return;
+  const jid = String(c.jid || '').endsWith('@g.us') ? String(c.jid) : String(c.id).replace(/^[a-z0-9]{1,12}__/, '').replace(/^g_/, '') + '@g.us';
+  openGroupAdd({ act: _chatAct, people: [], groupIds: [jid], line: c.line || waLineOfKey(c.id) });
+}
+
 function renderContatosBulkBar() {
   const bar = document.getElementById('contatos-bulk');
   if (!bar) return;
@@ -7947,6 +8063,7 @@ function renderContatosBulkBar() {
     <button class="chat-pill active" onclick="openBulkTag('add')">${uiIco('tag')} Etiquetar</button>
     <button class="chat-pill" onclick="openBulkTag('remove')">Tirar etiqueta</button>
     <button class="chat-pill active" onclick="openSendToFunnel()">➜ Enviar para o funil</button>
+    <button class="chat-pill active" onclick="openGroupAdd()">+ Adicionar a grupos</button>
     <button class="chat-pill" onclick="_contatosSelected.clear(); renderContatos();">Limpar seleção</button>`;
 }
 
@@ -17794,6 +17911,7 @@ function groupInfoPanelHtml(c) {
       <input class="field-input" placeholder="Buscar nome ou número" value="${escapeHtml(_groupMemberQuery || '')}" oninput="_groupMemberQuery = this.value; renderGroupMemberList()" style="margin-bottom:6px;padding:6px 8px;font-size:12.5px;">
       <div id="group-member-list">${groupMemberListHtml(shown)}</div>
       <button class="chat-pill" style="margin-top:8px;" onclick="refreshGroupInfo()">Atualizar</button>
+      <button class="chat-pill active" style="margin-top:8px;" onclick="gaFromChat()">+ Adicionar pessoas</button>
     </div>`;
 }
 let _groupMemberQuery = '';
