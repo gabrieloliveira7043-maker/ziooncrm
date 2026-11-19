@@ -9321,6 +9321,26 @@ function leadMonthKey(lead) {
   return isNaN(d.getTime()) ? '' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function leadDayKey(lead) {
+  const d = new Date(parseCrmDateToISO(lead.createdAt || lead.created_time || lead.data || '', ''));
+  return isNaN(d.getTime()) ? '' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+// Campanha: filtro de data de entrada do lead (um mês ou um período com datas).
+function campDateFilter() {
+  const month = (document.getElementById('camp-crm-month') || {}).value || '';
+  const box = document.getElementById('camp-crm-range');
+  const stage = (document.getElementById('camp-crm-stage') || {}).value || '';
+  if (box) box.style.display = month === '__range__' && stage !== '__contacts__' ? 'flex' : 'none';
+  if (month !== '__range__') return { ok: l => !month || leadMonthKey(l) === month, label: month ? monthLabel(month) : 'geral' };
+  const from = (document.getElementById('camp-crm-from') || {}).value || '';
+  const to = (document.getElementById('camp-crm-to') || {}).value || '';
+  const br = v => v.split('-').reverse().join('/');
+  return {
+    ok: l => { if (!from && !to) return true; const k = leadDayKey(l); return !!k && (!from || k >= from) && (!to || k <= to); },
+    label: from && to ? `entrou de ${br(from)} a ${br(to)}` : from ? `entrou a partir de ${br(from)}` : to ? `entrou até ${br(to)}` : 'geral'
+  };
+}
+
 function monthLabel(key) {
   const [y, m] = key.split('-').map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
@@ -9574,8 +9594,13 @@ function openCampaignEditor(copyFrom, opts = {}) {
           <label class="field-label">Mês de entrada</label>
           <select class="field-input" id="camp-crm-month" onchange="buildCampaignAudience()">
             <option value="">Geral (todos os meses)</option>
+            <option value="__range__">Período personalizado (datas)</option>
             ${months.map(m => `<option value="${m}">${escapeHtml(monthLabel(m))}</option>`).join('')}
           </select>
+          <div id="camp-crm-range" style="display:none;gap:8px;margin-top:8px;flex-wrap:wrap;">
+            <label style="flex:1;min-width:130px;font-size:12px;color:var(--muted);">Entrou de<input type="date" class="field-input" id="camp-crm-from" onchange="buildCampaignAudience()" style="margin-top:4px;"></label>
+            <label style="flex:1;min-width:130px;font-size:12px;color:var(--muted);">Até<input type="date" class="field-input" id="camp-crm-to" onchange="buildCampaignAudience()" style="margin-top:4px;"></label>
+          </div>
         </div>
       </div>
       <div id="camp-crm-pick" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px 12px;max-height:260px;overflow:auto;"></div>
@@ -9961,6 +9986,7 @@ async function buildCampaignAudience() {
   const month = document.getElementById('camp-crm-month').value;
   const monthSel = document.getElementById('camp-crm-month');
   monthSel.disabled = stage === '__contacts__';
+  const dateFlt = campDateFilter();
   const pickBox = document.getElementById('camp-crm-pick');
   if (pickBox) {
     pickBox.style.display = stage === '__pick__' ? 'block' : 'none';
@@ -9975,9 +10001,9 @@ async function buildCampaignAudience() {
         : off.length <= 3 && off.length < on.size ? 'todas as colunas menos ' + off.join(', ')
           : [...cbs].filter(cb => cb.checked).map(cb => cb.parentElement.textContent.trim()).slice(0, 4).join(', ') + (on.size > 4 ? ` e mais ${on.size - 4}` : '');
     const leads = on.size ? getLeads().filter(l => leadMatchesClient(l, act) && on.has(l.stage)
-      && (!month || leadMonthKey(l) === month) && !l.whatsappOptOut) : [];
+      && dateFlt.ok(l) && !l.whatsappOptOut) : [];
     setCampaignRecipients(leads.map(l => ({ name: l.name, phone: l.phone, jid: l.whatsappJid })),
-      `Leads do CRM (${label}${month ? ', ' + monthLabel(month) : ', geral'})`);
+      `Leads do CRM (${label}, ${dateFlt.label})`);
     return;
   }
   if (stage === '__contacts__') {
@@ -9997,9 +10023,9 @@ async function buildCampaignAudience() {
     : stage ? autoStageLabel(act, stage) : 'todas as colunas';
   const leads = getLeads().filter(l => leadMatchesClient(l, act)
     && (plOnly ? leadPipeline(l) === plOnly : (!stage || l.stage === stage))
-    && (!month || leadMonthKey(l) === month) && !l.whatsappOptOut);
+    && dateFlt.ok(l) && !l.whatsappOptOut);
   setCampaignRecipients(leads.map(l => ({ name: l.name, phone: l.phone, jid: l.whatsappJid })),
-    `Leads do CRM (${stageLabel}${month ? ', ' + monthLabel(month) : ', geral'})`);
+    `Leads do CRM (${stageLabel}, ${dateFlt.label})`);
 }
 
 async function loadCampaignSheet(input) {
