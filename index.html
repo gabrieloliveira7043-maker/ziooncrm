@@ -9142,7 +9142,12 @@ function renderCampaignList(campaigns) {
     if (payIssue) {
       if (c.billingUrl) actions.push(`<button style="${wbtn}background:#dc2626;border-color:#dc2626;color:#fff;" onclick="openCloudBilling('${escapeJsString(c.billingUrl)}')">Atualizar pagamento</button>`);
       actions.push(btn('Já paguei, tentar novamente', 'retryAfterPayment'));
-    } else if (c.status === 'paused') actions.push(btn('Retomar', 'startCampaign'));
+    } else if (c.status === 'paused') actions.push(btn('Continuar de onde parou', 'startCampaign'));
+    // Pausada (sem problema de pagamento): só o botão de continuar e os detalhes.
+    const pausedSimple = c.status === 'paused' && !payIssue;
+    if (pausedSimple) {
+      actions.push(btn('Detalhes', 'openCampaignDetail', 'background:transparent;'));
+    } else {
     if (['draft', 'running', 'paused'].includes(c.status)) actions.push(btn('Editar', 'editCampaign', 'background:transparent;'));
     if (c.status === 'running' || c.status === 'paused') actions.push(btn('Cancelar', 'cancelCampaign', 'background:transparent;'));
     const retryN = (Number(c.undelivered) || 0) + (Number(c.failed) || 0);
@@ -9150,6 +9155,7 @@ function renderCampaignList(campaigns) {
     actions.push(btn('Detalhes', 'openCampaignDetail', 'background:transparent;'));
     actions.push(btn('Reutilizar', 'reuseCampaign', 'background:transparent;'));
     if (c.status !== 'running') actions.push(btn('Excluir', 'deleteCampaignConfirm', 'background:transparent;color:#f87171;border-color:#f87171;'));
+    }
     const mediaLabel = c.media && c.media.type ? ' · ' + CAMPAIGN_MEDIA_LABELS[c.media.type] : '';
     const barColor = c.status === 'done' ? 'var(--muted)' : c.status === 'paused' ? 'var(--accent)' : c.status === 'cancelled' ? 'var(--red)' : '#1FA855';
     const startIso = c.startAt || c.startedAt || c.createdAt;
