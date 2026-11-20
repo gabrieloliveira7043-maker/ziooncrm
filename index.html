@@ -17072,6 +17072,7 @@ function openChat(key) {
   renderChatHeader();
   renderChatList();
   chatResumeRestore(key);
+  chatLoadSiblings(key);
   const act = _chatAct;
   stopChatExtras();
   _chatNotesUnsub = window._fb.listenChatNotes(act, key, notes => { if (_chatOpenKey !== key) return; _chatNotes = notes; renderChatMessages(); });
@@ -17221,6 +17222,35 @@ async function createLeadFromChat() {
   } catch (e) { showToast('Erro: ' + e.message, 'warning'); }
 }
 
+// Mesmo contato com conversa em mais de um número do cliente (ex.: API oficial e QR do vendedor).
+const chatStripLine = id => String(id || '').replace(/^[a-z0-9]{1,12}__/, '');
+function chatSiblings(c) {
+  if (!c || !c.id || c.isGroup || c.channel === 'instagram') return [];
+  const base = chatStripLine(c.id);
+  const order = chatLines(_chatAct).map(l => l.id);
+  const seen = new Set();
+  return _chatItems.filter(x => x && !x.isGroup && x.channel !== 'instagram' && chatStripLine(x.id) === base && chatLineVisible(x) && !seen.has(x.id) && seen.add(x.id))
+    .sort((a, b) => order.indexOf(a.line || waLineOfKey(a.id)) - order.indexOf(b.line || waLineOfKey(b.id)));
+}
+const _chatSibChecked = new Set();
+async function chatLoadSiblings(key) {
+  const act = _chatAct;
+  const base = chatStripLine(key);
+  if (!act || !base || /@g\.us$|^g_/.test(base) || !waHasMultiple(act)) return;
+  const tag = act + '|' + base;
+  if (_chatSibChecked.has(tag)) return;
+  _chatSibChecked.add(tag);
+  let added = false;
+  for (const l of chatLines(act)) {
+    const k = l.id === WA_MAIN ? base : l.id + '__' + base;
+    if (_chatItems.some(c => c.id === k)) continue;
+    let chat = null;
+    try { chat = await window._fb.getInboxChat(act, k); } catch (e) { chat = null; }
+    if (chat && _chatAct === act && !_chatItems.some(c => c.id === chat.id)) { _chatExtra[chat.id] = chat; _chatItems.push(chat); added = true; }
+  }
+  if (added && _chatAct === act && chatStripLine(_chatOpenKey) === base) renderChatHeader();
+}
+
 function renderChatHeader() {
   renderChatInfo();
   updateChatCloudHint();
@@ -17235,18 +17265,20 @@ function renderChatHeader() {
   const assignBtn = c.assignedTo === me.uid
     ? `<button class="chat-pill" onclick="toggleChatAssign()">Soltar conversa</button>`
     : `<button class="chat-pill active" onclick="toggleChatAssign()">${c.assignedTo ? 'Assumir' : 'Atribuir para mim'}</button>`;
+  const sibs = chatSiblings(c);
   head.innerHTML = `
     <button class="chat-pill chat-back" onclick="closeChat(true)">←</button>
     <div style="flex:1;min-width:160px;">
       <div style="font-size:15px;font-weight:600;color:var(--text);">${escapeHtml(chatName(c, lead))}</div>
       <div style="font-size:12px;color:var(--muted2);display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:2px;">
         <span>${escapeHtml(c.isGroup ? 'Grupo do WhatsApp' : c.channel === 'instagram' ? 'Instagram' + (c.igUsername ? ' · @' + c.igUsername : '') : (chatFormatPhone(c.phone) || 'Número oculto pelo WhatsApp'))}</span>
-        ${waHasMultiple(_chatAct) ? `<span class="chat-tag" style="background:var(--surface3);color:var(--text);">${uiIco('phone', 12)} via ${escapeHtml(waLineLabel(_chatAct, c.line || waLineOfKey(c.id)))}</span>` : ''}
+        ${waHasMultiple(_chatAct) && sibs.length < 2 ? `<span class="chat-tag" style="background:var(--surface3);color:var(--text);">${uiIco('phone', 12)} via ${escapeHtml(waLineLabel(_chatAct, c.line || waLineOfKey(c.id)))}</span>` : ''}
         ${stage ? `<span class="chat-tag" style="background:var(--accent-glow);color:var(--text);">Lead · ${escapeHtml(stage)}</span>` : ''}
         ${c.dispatchSource ? `<span class="chat-tag" style="background:var(--surface3);color:var(--muted2);">${escapeHtml(c.dispatchSource)}</span>` : ''}
         ${c.assignedName ? `<span class="chat-tag" style="background:var(--blue-dim);color:var(--blue);">Responsável: ${escapeHtml(c.assignedTo === me.uid ? 'você' : c.assignedName)}</span>` : '<span class="chat-tag" style="background:var(--surface3);color:var(--muted2);">Sem responsável</span>'}
         ${tagChips}
       </div>
+      ${sibs.length > 1 ? `<div class="chat-line-switch" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;font-size:12px;color:var(--muted2);">${uiIco('phone', 12)} Conversa pelo número:${sibs.map(x => `<button class="chat-pill${x.id === c.id ? ' active' : ''}" style="padding:3px 10px;font-size:12px;" ${x.id === c.id ? 'disabled' : `onclick="openChat('${escapeJsString(x.id)}')"`} title="${x.id === c.id ? 'Conversa aberta' : 'Abrir a conversa deste contato por este número'}">${escapeHtml(waLineLabel(_chatAct, x.line || waLineOfKey(x.id)))}</button>`).join('')}</div>` : ''}
     </div>
     ${!lead && c.phone && !chatContactFor(c, chatContactIndex(_chatAct)) ? `<button class="chat-pill" onclick="saveChatAsContact()" title="Guarda este número na base de contatos do CRM">＋ Salvar contato</button>` : ''}
     ${c.phone && !c.isGroup && c.channel !== 'instagram' ? `<button class="chat-pill" onclick="callWhatsApp({ phone: '${escapeJsString(c.phone)}', leadId: '${lead ? escapeJsString(lead.id) : ''}', act: '${escapeJsString(_chatAct || '')}', chatKey: '${escapeJsString(c.id)}', name: '${escapeJsString(chatName(c, lead))}' })" title="Abre a conversa no WhatsApp para ligar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg> Ligar</button>` : ''}
