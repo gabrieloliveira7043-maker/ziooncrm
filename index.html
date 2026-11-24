@@ -26022,7 +26022,13 @@ function renderWhatsAppAlert() {
   // Avisa quando alguém voltou.
   const nowDown = new Set(down.map(s => s.id));
   _waDownBefore.forEach(id => {
-    if (!nowDown.has(id)) showToast(isAdmin ? `WhatsApp de ${getClientDisplayName(id) || id} reconectado.` : 'Seu WhatsApp está conectado de novo.', 'success');
+    if (nowDown.has(id)) return;
+    // Só avisa quando o número voltou de verdade (saiu da lista por estar conectado, não por ter sido removido ou filtrado).
+    const st = _waStatusList.find(x => x.id === id);
+    if (!st || st.ok !== true) return;
+    const act = st.act || String(id).split('__')[0], line = st.line || 'main';
+    const nome = (getClientDisplayName(act) || act) + (line !== 'main' ? ' · ' + waLineLabel(act, line) : '');
+    showToast(isAdmin ? `WhatsApp ${nome} reconectado.` : 'Seu WhatsApp está conectado de novo.', 'success');
   });
   _waDownBefore = nowDown;
 
