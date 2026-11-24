@@ -133,7 +133,7 @@ html.ui-vidro .main, html.ui-quente .main { background: transparent !important; 
 
 /* ---------- 3. Vidro nas superfícies ---------- */
 html.ui-vidro :is(.metric-card, .table-card, .integ-card, .help-card, .cfgc-card, .kanban-col, .modal-box, .paleta-card, .topbar, .chart-card, .huv-card, .at-card, .camp-card, .auto-card, .client-card, .cal-grid, .cal-list-ev, .chat-list, .chat-main, .chat-panel, .stat-card, .analise-card),
-html.ui-vidro #huven-modal > div, html.ui-vidro .client-switch-pop, html.ui-vidro .config-panel, html.ui-vidro #campaign-editor {
+html.ui-vidro #funil-chart-container, html.ui-vidro #funil-evolucao-container, html.ui-vidro #huven-modal > div, html.ui-vidro .client-switch-pop, html.ui-vidro .config-panel, html.ui-vidro #campaign-editor {
   background: var(--ui-glass) !important;
   border-color: var(--ui-glass-line) !important;
   -webkit-backdrop-filter: blur(var(--ui-blur)) saturate(140%);

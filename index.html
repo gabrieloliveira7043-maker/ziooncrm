@@ -10,6 +10,24 @@ setTimeout(function () { document.documentElement.classList.remove('crm-booting'
 html.crm-booting body > *:not(#login-overlay):not(.ui-bg):not(#toast-container) { visibility: hidden !important; }
 html.crm-booting body::after { content: ""; position: fixed; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; border: 3px solid rgba(128,128,128,.25); border-top-color: rgba(128,128,128,.8); animation: crm-boot-spin .8s linear infinite; z-index: 99999; }
 @keyframes crm-boot-spin { to { transform: rotate(360deg); } }
+.fc-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:16px}
+.fc-title{font-size:13.5px;font-weight:600;color:var(--text)}
+.fc-sub{font-size:12px;color:var(--muted)}
+.fc-bars{height:190px;display:flex;align-items:flex-end;gap:10px;border-bottom:1px solid var(--border);padding:0 4px}
+.fc-col{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+.fc-val{font-size:12px;color:var(--muted2,var(--muted));margin-bottom:5px;font-variant-numeric:tabular-nums}
+.fc-val.top{color:#D4A53C;font-weight:600}
+.fc-bar{width:100%;max-width:48px;border-radius:5px 5px 0 0;transition:height .4s}
+.fc-labels{display:flex;gap:10px;padding:8px 4px 0}
+.fc-lbl{flex:1;min-width:0;text-align:center;font-size:11px;color:var(--muted);line-height:1.25;overflow-wrap:anywhere}
+.fe-row{display:grid;grid-template-columns:150px minmax(0,1fr) 92px;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--border)}
+.fe-row:first-child{border-top:none}
+.fe-name{font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fe-track{height:6px;background:var(--surface2);border-radius:99px;overflow:hidden}
+.fe-fill{height:100%;border-radius:99px;transition:width .4s}
+.fe-val{text-align:right;font-size:12.5px;color:var(--text);font-variant-numeric:tabular-nums}
+.fe-val span{color:var(--muted)}
+@media (max-width:640px){.fe-row{grid-template-columns:110px minmax(0,1fr) 78px}.fc-lbl{font-size:10px}}
 </style>
 <meta charset="UTF-8">
 <link rel="manifest" href="manifest.webmanifest">
@@ -3152,7 +3170,7 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
 })();
 </script>
 <link rel="stylesheet" href="tema-novo.css?v=5s">
-<link rel="stylesheet" href="layouts.css?v=9">
+<link rel="stylesheet" href="layouts.css?v=10">
 <script>
 // Layout escolhido em Conta → Aparência (vidro / escuro quente): aplicado já aqui para não piscar o layout antigo.
 (function () {
@@ -3840,15 +3858,14 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
 
       <!-- Gráfico de distribuição por etapa -->
       <div id="funil-chart-container" style="margin-top:20px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px;">
-        <div style="font-size:11px; font-weight:500; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:16px;">Distribuição por etapa</div>
-        <div style="position:relative;height:200px;">
-          <canvas id="funil-chart-canvas"></canvas>
-        </div>
+        <div class="fc-head"><div><div class="fc-title">Distribuição por etapa</div><div class="fc-sub" id="funil-chart-sub"></div></div><div class="fc-sub" id="funil-chart-pipe"></div></div>
+        <div id="funil-chart-bars" class="fc-bars"></div>
+        <div id="funil-chart-labels" class="fc-labels"></div>
       </div>
 
       <!-- Gráfico de taxa de evolução do funil -->
       <div id="funil-evolucao-container" style="margin-top:12px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px;">
-        <div style="font-size:11px; font-weight:500; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:16px;">Taxa de evolução do funil</div>
+        <div class="fc-head"><div><div class="fc-title">Taxa de evolução do funil</div><div class="fc-sub">Participação de cada etapa no total</div></div></div>
         <div id="funil-evolucao"></div>
       </div>
 
@@ -5964,9 +5981,18 @@ function abrirWhatsAppContatoPopup(numero) {
   if (popup) popup.focus();
 }
 
+// Gráficos do funil: uma cor só (dourado), a etapa com mais leads em destaque,
+// Fechado em verde e Perdido em vermelho. Número em cima de cada barra.
+function funilStageTone(stage, isTop) {
+  const lb = String(stage.label || '').toLowerCase();
+  if (stage.won || /fechad|ganh|vendid/.test(lb)) return '#4FB286';
+  if (stage.lost || /perdid/.test(lb)) return '#C9675B';
+  return isTop ? '#D4A53C' : 'rgba(212,165,60,.38)';
+}
+
 function renderFunilChart() {
-  const ctx = document.getElementById('funil-chart-canvas');
-  if (!ctx) return;
+  const barsEl = document.getElementById('funil-chart-bars');
+  if (!barsEl) return;
 
   // Idêntico ao renderKanban
   const selC = document.getElementById('crm-client-select');
@@ -5981,80 +6007,27 @@ function renderFunilChart() {
   const chartPipe = filterAct ? currentPipeline(filterAct) : 'principal';
   if (filterAct) leads = leads.filter(l => leadPipeline(l) === chartPipe);
   const stages = getStages(act, chartPipe);
-  const total = leads.length;
-
-  const labels = stages.map(s => s.label);
   const values = stages.map(s => leads.filter(l => l.stage === s.id).length);
-  const colors = ['#60a5fa','#fbbf24','#f87171','#a78bfa','#34d399','#fb923c','#e879f9','#4ade80','#f472b6'];
-  const bgColors = stages.map((_, i) => colors[i % colors.length] + '99');
-  const borderColors = stages.map((_, i) => colors[i % colors.length]);
+  const total = values.reduce((a, b) => a + b, 0);
+  const max = Math.max(1, ...values);
+  const top = values.indexOf(Math.max(...values, 0));
 
-  // Atualiza o gráfico existente, sem recriar: recriar a cada lead que muda era o trecho mais pesado do funil.
-  window._funilChartTotal = total;
-  const chartSig = JSON.stringify([labels, values]);
-  if (window._funilChart && window._funilChart.canvas === ctx) {
-    if (window._funilChartSig === chartSig) return;
-    const ds = window._funilChart.data.datasets[0];
-    window._funilChart.data.labels = labels;
-    ds.data = values; ds.backgroundColor = bgColors; ds.borderColor = borderColors;
-    window._funilChart.update('none');
-    window._funilChartSig = chartSig;
-    return;
-  }
-  if (window._funilChart) window._funilChart.destroy();
-  window._funilChartSig = chartSig;
+  const sig = JSON.stringify([stages.map(s => s.label), values, chartPipe]);
+  if (window._funilChartSig === sig && barsEl.childElementCount) return;
+  window._funilChartSig = sig;
 
-  window._funilChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Leads',
-        data: values,
-        backgroundColor: bgColors,
-        borderColor: borderColors,
-        borderWidth: 0,
-        borderRadius: 8,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#1e1e35',
-          borderColor: 'rgba(120,120,255,0.2)',
-          borderWidth: 1,
-          titleColor: '#8888aa',
-          bodyColor: '#e8e8f0',
-          titleFont: { family: 'Manrope', size: 11 },
-          bodyFont: { family: 'Manrope', size: 13 },
-          padding: 12,
-          callbacks: {
-            label: ctx => {
-              const all = window._funilChartTotal || 0;
-              const pct = all > 0 ? Math.round(ctx.parsed.y * 100 / all) : 0;
-              return '  ' + ctx.parsed.y + ' leads (' + pct + '%)';
-            }
-          }
-        }
-      },
-      scales: {
-        x: {
-          grid: { color: 'rgba(120,120,255,0.06)' },
-          ticks: { color: '#5a5a7a', font: { family: 'Manrope', size: 10 }, maxRotation: 30 },
-          border: { display: false }
-        },
-        y: {
-          grid: { color: 'rgba(120,120,255,0.06)' },
-          ticks: { color: '#5a5a7a', font: { family: 'Manrope', size: 11 }, stepSize: 1 },
-          border: { display: false },
-          beginAtZero: true,
-        }
-      }
-    }
-  });
+  let pipeName = '';
+  try { pipeName = 'Pipeline ' + pipelineName(act, chartPipe).toLowerCase(); } catch (e) {}
+  document.getElementById('funil-chart-sub').textContent = total + (total === 1 ? ' lead no funil' : ' leads no funil');
+  document.getElementById('funil-chart-pipe').textContent = pipeName;
+
+  barsEl.innerHTML = stages.map((s, i) => {
+    const v = values[i], pct = total ? Math.round(v * 100 / total) : 0;
+    const h = Math.max(2, Math.round(v / max * 150));
+    const isTop = i === top && v > 0;
+    return `<div class="fc-col" title="${escapeHtml(s.label)}: ${v} leads (${pct}%)"><span class="fc-val${isTop ? ' top' : ''}">${v}</span><div class="fc-bar" style="height:${h}px;background:${funilStageTone(s, isTop)}"></div></div>`;
+  }).join('');
+  document.getElementById('funil-chart-labels').innerHTML = stages.map(s => `<div class="fc-lbl">${escapeHtml(s.label)}</div>`).join('');
 }
 
 function renderFunilEvolucao() {
@@ -6081,24 +6054,18 @@ function renderFunilEvolucao() {
   leads.forEach(l => { if (counts[l.stage] !== undefined) counts[l.stage]++; });
 
   const total = leads.length;
-  const colors = ['#60a5fa','#fbbf24','#f87171','#a78bfa','#34d399','#fb923c','#e879f9','#4ade80','#f472b6'];
+  const vals = stages.map(s => counts[s.id] || 0);
+  const max = Math.max(1, ...vals);
+  const top = vals.indexOf(Math.max(...vals, 0));
 
   container.innerHTML = stages.map((stage, i) => {
-    const count = counts[stage.id] || 0;
+    const count = vals[i];
     const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-    const barWidth = Math.min(pct, 100);
-    const color = colors[i % colors.length];
-
-    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-      <div style="font-size:12px;color:var(--text);min-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:400;">${escapeHtml(stage.label)}</div>
-      <div style="flex:1;background:var(--surface2);border-radius:4px;height:20px;overflow:hidden;">
-        <div style="height:100%;width:${barWidth}%;background:${color};border-radius:4px;transition:width 0.4s;display:flex;align-items:center;padding-left:6px;box-sizing:border-box;">
-          ${pct > 5 ? `<span style="font-size:10px;color:#fff;font-weight:500;">${pct}%</span>` : ''}
-        </div>
-      </div>
-      <div style="font-size:12px;color:var(--text);min-width:80px;text-align:right;">
-        ${count} <span style="color:var(--muted);">(${pct}%)</span>
-      </div>
+    const w = count ? Math.max(1, count / max * 100) : 0;
+    return `<div class="fe-row">
+      <div class="fe-name">${escapeHtml(stage.label)}</div>
+      <div class="fe-track"><div class="fe-fill" style="width:${w}%;background:${funilStageTone(stage, i === top && count > 0)}"></div></div>
+      <div class="fe-val">${count} <span>· ${pct}%</span></div>
     </div>`;
   }).join('');
 }
@@ -16635,7 +16602,7 @@ function renderChatTagFilter() {
   if (!box) return;
   const tags = _chatAct ? (_contactTagsCache[_chatAct] || []) : [];
   [..._chatTagFilter].forEach(id => { if (!tags.some(t => t.id === id)) _chatTagFilter.delete(id); });
-  box.innerHTML = tags.length ? `<span style="font-size:11.5px;color:var(--muted2);align-self:center;">Etiquetas:</span>${tagFilterChipsHtml(tags, _chatTagFilter, 'toggleChatTagFilter')}` : '';
+  chatBarSet(box, tags.length ? `<span style="font-size:11.5px;color:var(--muted2);align-self:center;">Etiquetas:</span>${tagFilterChipsHtml(tags, _chatTagFilter, 'toggleChatTagFilter')}` : '');
 }
 
 async function openChatTags() {
@@ -16818,18 +16785,34 @@ async function chatRefreshSummary(btn) {
   if (m && c) m.innerHTML = chatAiSideHtml(c);
 }
 
+// Barras de filtro do Chat: só troca o HTML quando mudou e mantém a rolagem lateral.
+// Antes, cada mensagem nova redesenhava a barra: ela voltava pro começo e o clique se perdia.
+function chatBarSet(box, html) {
+  if (!box.dataset.wheel) {
+    box.dataset.wheel = '1';
+    box.addEventListener('wheel', e => {
+      if (box.scrollWidth <= box.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      box.scrollLeft += e.deltaY; e.preventDefault();
+    }, { passive: false });
+  }
+  if (box._html === html) return;
+  const ae = document.activeElement;
+  if (ae && ae.tagName === 'SELECT' && box.contains(ae)) { clearTimeout(box._later); box._later = setTimeout(() => chatBarSet(box, html), 1500); return; }
+  const x = box.scrollLeft;
+  box._html = html; box.innerHTML = html; box.scrollLeft = x;
+}
 function renderChatFilters() {
   const box = document.getElementById('chat-filters');
   if (!box) return;
   const me = chatMe();
-  box.innerHTML = CHAT_FILTERS.map(([k, label]) => {
+  chatBarSet(box, CHAT_FILTERS.map(([k, label]) => {
     const n = _chatItems.filter(c => chatMatchesFilter(c, k, me)).length;
     return `<button class="chat-pill ${_chatFilter === k ? 'active' : ''}" onclick="setChatFilter('${k}')">${label}${k !== 'all' && n ? ` · ${n}` : ''}</button>`;
   }).join('') + (_chatItems.some(c => c.unread > 0 && (_chatLineFilter === 'all' || (c.line || waLineOfKey(c.id)) === _chatLineFilter))
     ? `<button class="chat-pill" onclick="chatMarkAllRead()" title="Zera o contador de não lidas de todas as conversas${_chatLineFilter !== 'all' ? ' deste WhatsApp' : ''}">✓ Marcar todas como lidas</button>`
     : '') + (_chatAct && chatLines(_chatAct).length > 1
     ? `<select class="field-input chat-line-select" onchange="_chatLineFilter=this.value;renderChatList()" title="Qual WhatsApp"><option value="all">Todos os WhatsApps</option>${chatLines(_chatAct).map(l => `<option value="${escapeHtml(l.id)}" ${_chatLineFilter === l.id ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}</select>`
-    : '') + chatCampSelectHtml();
+    : '') + chatCampSelectHtml());
 }
 
 // Filtro por campanha: lista as campanhas do cliente que já enviaram (mais novas primeiro).
