@@ -4,6 +4,10 @@
 <script>
 // Enquanto o CRM ainda não sabe quem está logado, a tela fica escondida (sem piscar o menu completo e "Todos os clientes").
 document.documentElement.classList.add('crm-booting');
+// Manda para o servidor os erros de tela (ajuda a achar problemas que só acontecem num aparelho).
+(function(){ var n = 0; function rep(m){ try { if (n++ > 15) return; navigator.sendBeacon('https://huven-crm-admin.gabrieloliveira7043.workers.dev/client-error', String(m).slice(0, 1200) + ' | ' + navigator.userAgent + ' | ' + location.pathname); } catch(e){} }
+  window.addEventListener('error', function(e){ rep('ERR ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno + ':' + e.colno); });
+  window.addEventListener('unhandledrejection', function(e){ var r = e.reason; rep('REJ ' + (r && (r.stack || r.message) || r)); }); })();
 setTimeout(function () { document.documentElement.classList.remove('crm-booting'); }, 8000);
 </script>
 <style>
@@ -2004,7 +2008,11 @@ html.ui-vidro .ntc-box { background: var(--ui-glass); -webkit-backdrop-filter: b
 
 /* Vários WhatsApps */
 .wa-lines { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 10px; }
-.wa-line-row { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; flex-wrap: wrap; }
+.wa-line-row { display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; flex-wrap: wrap; background: var(--surface2); margin-bottom: 8px; }
+/* Nome e situação ocupam a linha inteira; os botões vêm embaixo, lado a lado. */
+.wa-line-row > div:first-child { flex: 1 1 100% !important; min-width: 0; margin-bottom: 4px; }
+.wa-line-row > div:first-child .wa-line-sub { line-height: 1.5; }
+.wa-line-row > button { font-size: 12px; padding: 5px 11px; }
 .wa-line-name { font-size: 13px; font-weight: 700; color: var(--text); }
 .wa-line-sub { font-size: 12px; color: var(--muted2); margin-top: 1px; }
 .wa-line-picker { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin: 8px 0 12px; display: flex; flex-wrap: wrap; gap: 8px 14px; background: var(--surface2); }
@@ -2777,12 +2785,29 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
     },
     // Chat filtrado por campanha: só quem a campanha já tentou enviar (status "sent").
     // Conversas de uma lista de telefones (o Chat só carrega as mais recentes; o filtro por campanha busca as dela).
-    async getChatsByPhones(act, phones) {
-      const out = [];
+    // Conversas de um WhatsApp só (filtro de número do Chat): a lista geral traz só as mais recentes de todos os números.
+    async getChatsByLine(act, line, max) {
+      const snap = await getDocs(query(collection(db, 'inbox', normalizeAct(act), 'chats'), where('line', '==', String(line)), orderBy('lastAt', 'desc'), limit(max || 1000)));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    },
+    // Login restrito a alguns WhatsApps: o banco só aceita a busca dentro dos números dele (um por vez).
+    // onlyLines: limita aos números de uma campanha, por exemplo.
+    async getChatsByPhones(act, phones, onlyLines) {
+      const out = [], seen = new Set();
       const list = [...new Set(phones)].slice(0, 3000);
+      const mine = currentProfile && currentProfile.role === 'client' && CHAT_LINE_LOCK && currentProfile.perms && Array.isArray(currentProfile.perms.chatLines) ? currentProfile.perms.chatLines.map(String).filter(Boolean) : [];
+      let lines = mine.length ? mine : null;
+      if (lines && Array.isArray(onlyLines) && onlyLines.length) lines = lines.filter(l => onlyLines.includes(l));
+      const base = collection(db, 'inbox', normalizeAct(act), 'chats');
       for (let i = 0; i < list.length; i += 30) {
-        const snap = await getDocs(query(collection(db, 'inbox', normalizeAct(act), 'chats'), where('phone', 'in', list.slice(i, i + 30))));
-        snap.docs.forEach(d => out.push({ id: d.id, ...d.data() }));
+        const chunk = list.slice(i, i + 30);
+        const qs = lines ? lines.map(l => query(base, where('line', '==', l), where('phone', 'in', chunk))) : [query(base, where('phone', 'in', chunk))];
+        for (const q of qs) {
+          try {
+            const snap = await getDocs(q);
+            snap.docs.forEach(d => { if (!seen.has(d.id)) { seen.add(d.id); out.push({ id: d.id, ...d.data() }); } });
+          } catch (e) { console.warn('Chat por telefone:', e && e.message); }
+        }
       }
       return out;
     },
@@ -2791,8 +2816,10 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
       return snap.docs.map(d => d.data().phone || '').filter(Boolean);
     },
     async getCampaignRecipients(id, max) {
-      const snap = await getDocs(query(collection(db, 'campaigns', id, 'recipients'), limit(max || 500)));
-      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // O Firestore não aceita limite acima de 10 mil: acima disso lê tudo e corta aqui.
+      const col = collection(db, 'campaigns', id, 'recipients'), n = max || 500;
+      const snap = await getDocs(n > 10000 ? col : query(col, limit(n)));
+      return snap.docs.slice(0, n).map(d => ({ id: d.id, ...d.data() }));
     },
     // Editar campanha: mode 'replace' tira quem ainda não recebeu e entra a lista nova; 'add' só acrescenta.
     // Quem já recebeu (ou já está na campanha, no 'add') não entra de novo.
@@ -2827,6 +2854,22 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
       await deleteDoc(doc(db, 'campaigns', id));
     },
     // Chat: conversas 1 a 1 gravadas pelo Worker (inbox/{act}/chats/{chave}/messages/{id}).
+    // Conversas pela última mensagem RECEBIDA: um disparo grande atualiza centenas de conversas e empurra
+    // quem respondeu para fora das mais recentes. Login restrito a alguns números precisa do índice (line, lastInAt);
+    // sem ele, usa as conversas com mensagem não lida (índice que já existe).
+    listenInboxChatsByIn(act, max, callback) {
+      const lf = chatLineWhere();
+      const base = collection(db, 'inbox', normalizeAct(act), 'chats');
+      const map = snap => snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      let unsub2 = null;
+      const unsub1 = onSnapshot(lf ? query(base, lf, orderBy('lastInAt', 'desc'), limit(max)) : query(base, orderBy('lastInAt', 'desc'), limit(max)), snap => callback(map(snap)), error => {
+        console.warn('Chat (últimas recebidas):', error && error.message);
+        window._chatInIndexError = error && error.message || '';
+        if (lf) unsub2 = onSnapshot(query(base, lf, where('unread', '>', 0), limit(max)), snap => callback(map(snap)), () => callback([]));
+        else callback([]);
+      });
+      return () => { unsub1(); if (unsub2) unsub2(); };
+    },
     listenInboxChats(act, max, callback) {
       const lf = chatLineWhere();
       return onSnapshot(lf ? query(collection(db, 'inbox', normalizeAct(act), 'chats'), lf, orderBy('lastAt', 'desc'), limit(max)) : query(collection(db, 'inbox', normalizeAct(act), 'chats'), orderBy('lastAt', 'desc'), limit(max)), snap => {
@@ -3969,6 +4012,10 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
         <div class="modal-field" id="field-obs">
           <label class="modal-label">Observações</label>
           <textarea class="modal-input" id="lead-obs" rows="2" placeholder="Anotações sobre o lead..." style="resize:vertical;"></textarea>
+        </div>
+        <div class="modal-field" id="field-sdr-notes">
+          <label class="modal-label">Anotações SDR</label>
+          <textarea class="modal-input" id="lead-sdr-notes" rows="4" placeholder="Qualificação do SDR: perfil, interesse, dor principal, se tem orçamento e decisor, melhor horário, o que ficou combinado..." style="resize:vertical;"></textarea>
         </div>
         <div class="modal-field" id="field-call-notes">
           <label class="modal-label">Anotações da call de vendas</label>
@@ -6128,6 +6175,7 @@ async function exportLeads() {
       'Rede social': lead.redeSocial || '',
       'Origem': lead.origem || '',
       'Observações': (lead.obs || '').toString().trim(),
+      'Anotações SDR': (lead.sdrNotes || '').toString().trim(),
       'Anotações da call de vendas': (lead.callNotes || '').toString().trim(),
       'Plantão': lead.plantao || '',
       'Valor fechamento': lead.valor || '',
@@ -9583,7 +9631,7 @@ function openCampaignEditor(copyFrom, opts = {}) {
       <select class="field-input" id="camp-prev-filter" onchange="loadPreviousCampaignRecipients()" style="width:auto;">
         <option value="all">Todos os contatos da campanha</option>
         <option value="sent">Só quem recebeu a mensagem</option>
-        <option value="notsent">Só quem não recebeu (pulados, com erro ou na fila)</option>
+        <option value="notsent">Só quem não recebeu (não entregues, pulados, com erro ou na fila)</option>
       </select>
     </div>` : ''}
     <div id="camp-src-pick-box" class="camp-src-box" style="display:none;">
@@ -9686,7 +9734,10 @@ async function loadPreviousCampaignRecipients() {
   try {
     if (!_campaignDraft.prevRows) _campaignDraft.prevRows = await window._fb.getCampaignRecipients(c.id, 20000);
     if (!_campaignDraft || _campaignDraft.source !== 'previous') return;
-    const rows = _campaignDraft.prevRows.filter(r => filter === 'all' || (filter === 'sent' ? r.status === 'sent' : r.status !== 'sent'));
+    // Recebeu = enviada e a Meta não recusou a entrega. Quem não tem WhatsApp (131026) ou parou de receber marketing (131050) não volta.
+    const got = r => r.status === 'sent' && r.delivery !== 'failed';
+    const dead = r => [131026, 131050].includes(Number(r.deliveryErrorCode) || 0);
+    const rows = _campaignDraft.prevRows.filter(r => filter === 'all' || (filter === 'sent' ? got(r) : !got(r) && !dead(r)));
     const labels = { all: '', sent: ', só quem recebeu', notsent: ', só quem não recebeu' };
     setCampaignRecipients(rows.map(r => ({ name: r.name, phone: r.phone, jid: r.jid, fields: r.fields })), `Contatos de "${c.name || 'Campanha'}"${labels[filter]}`);
   } catch (e) {
@@ -10352,7 +10403,10 @@ function renderCampaignSummary() {
   const source = _campaignDraft.source;
   const warnings = [];
   if (cloudMode) {
-    risk.innerHTML = '⚠️ ' + escapeHtml('A Meta limita quantas pessoas diferentes cada número oficial pode chamar por dia (começa em 250 e sobe conforme a qualidade das conversas). Passando disso, os envios do dia falham e aparecem como erro na campanha.');
+    const qAct = _campaignDraft.act;
+    if (qAct && !window._waQuality['loaded|' + qAct]) { window._waQuality['loaded|' + qAct] = 1; window._fb.whatsapp('/whatsapp/lines-status', qAct).then(r => { (r.lines || []).forEach(x => { if (x.provider === 'cloud') window._waQuality[qAct + '|' + x.line] = x.quality || ''; }); renderCampaignSummary(); }).catch(() => {}); }
+    const redNames = campChosenLines().filter(l => window._waQuality[_campaignDraft.act + '|' + l] === 'RED').map(l => (waLines(_campaignDraft.act).find(x => x.id === l) || {}).label || l);
+    risk.innerHTML = (redNames.length ? '🔴 ' + escapeHtml(`${redNames.join(', ')}: ${CLOUD_RED_NOTE}`) + '<br><br>' : '') + '⚠️ ' + escapeHtml('A Meta limita quantas pessoas diferentes cada número oficial pode chamar por dia (começa em 250 e sobe conforme a qualidade das conversas). Passando disso, os envios do dia falham e aparecem como erro na campanha.');
     risk.style.display = 'block';
     return;
   }
@@ -16368,6 +16422,13 @@ let _chatMedia = {};
 let _chatPendingMedia = null;
 let _chatSending = false;
 let _chatExtra = {}; // conversas abertas pelo card/contato que não estão entre as mais recentes
+let _chatMainItems = null, _chatInItems = [], _chatInUnsub = null; // mais recentes por qualquer mensagem / por mensagem recebida
+// Junta as conversas mais recentes, as que receberam mensagem por último e as abertas pelo card (sem repetir).
+function chatMergeItems(act) {
+  const seen = new Set(), out = [];
+  for (const c of (_chatMainItems || []).concat(_chatInItems || [], Object.values(_chatExtra))) { if (c && !seen.has(c.id)) { seen.add(c.id); out.push(c); } }
+  return out.filter(chatVisibleFilter(act));
+}
 let _chatCampFilter = 'all';  // Chat: 'all' ou o id da campanha (mostra só quem recebeu o disparo)
 let _chatCampPhones = null;   // Set com os telefones (chatPhoneKey) da campanha escolhida
 let _chatCampList = { act: '', list: null, loading: false };
@@ -16509,6 +16570,7 @@ let _chatRenderTimer = null;
 function onChatClientChange() {
   const act = chatAct();
   if (_chatUnsub && _chatAct !== act) { _chatUnsub(); _chatUnsub = null; _chatExtra = {}; closeChat(); }
+  if (_chatInUnsub && _chatAct !== act) { _chatInUnsub(); _chatInUnsub = null; _chatInItems = []; _chatMainItems = null; }
   const list = document.getElementById('chat-list');
   if (!act) {
     _chatAct = null; _chatItems = [];
@@ -16520,11 +16582,21 @@ function onChatClientChange() {
   ensureWaSettings(act).then(() => { autoSyncChatContacts(act); if (_chatAct === act) renderChatList(); }).catch(() => {});
   if (!_contactTagsCache[act]) loadContactTags(act).then(() => { renderChatList(); renderChatHeader(); });
   ensureImportedContacts(act, () => { renderChatList(); renderChatHeader(); });
+  if (!_chatInUnsub && window._fb.listenInboxChatsByIn) {
+    _chatInUnsub = window._fb.listenInboxChatsByIn(act, 300, items => {
+      if (_chatAct !== act) return;
+      _chatInItems = items || [];
+      if (!_chatMainItems) return;
+      _chatItems = chatMergeItems(act);
+      if (!_chatRenderTimer) _chatRenderTimer = setTimeout(() => { _chatRenderTimer = null; if (_chatAct === act) { renderChatList(); renderChatHeader(); } }, 100);
+    });
+  }
   if (!_chatUnsub) {
     list.innerHTML = '<div class="chat-empty">Carregando conversas...</div>';
     _chatUnsub = window._fb.listenInboxChats(act, _chatLimit, (items, error) => {
       if (!items) { list.innerHTML = `<div class="chat-empty" style="color:var(--red);">Não foi possível carregar: ${escapeHtml(error && error.message || '')}</div>`; return; }
-      _chatItems = items.concat(Object.values(_chatExtra).filter(x => !items.some(i => i.id === x.id))).filter(chatVisibleFilter(act));
+      _chatMainItems = items;
+      _chatItems = chatMergeItems(act);
       // Várias conversas mudando ao mesmo tempo viram um redesenho só.
       if (!_chatRenderTimer) _chatRenderTimer = setTimeout(() => {
         _chatRenderTimer = null;
@@ -16787,6 +16859,12 @@ async function chatRefreshSummary(btn) {
 
 // Barras de filtro do Chat: só troca o HTML quando mudou e mantém a rolagem lateral.
 // Antes, cada mensagem nova redesenhava a barra: ela voltava pro começo e o clique se perdia.
+// Conversas dentro do WhatsApp e da campanha escolhidos (os números dos filtros contam só essas).
+function chatInScope(c) {
+  if (_chatLineFilter !== 'all' && (c.line || waLineOfKey(c.id)) !== _chatLineFilter) return false;
+  if (_chatCampFilter !== 'all' && _chatCampPhones && !_chatCampPhones.has(chatPhoneKey(c.phone))) return false;
+  return true;
+}
 function chatBarSet(box, html) {
   if (!box.dataset.wheel) {
     box.dataset.wheel = '1';
@@ -16806,12 +16884,12 @@ function renderChatFilters() {
   if (!box) return;
   const me = chatMe();
   chatBarSet(box, CHAT_FILTERS.map(([k, label]) => {
-    const n = _chatItems.filter(c => chatMatchesFilter(c, k, me)).length;
+    const n = _chatItems.filter(c => chatInScope(c) && chatMatchesFilter(c, k, me)).length;
     return `<button class="chat-pill ${_chatFilter === k ? 'active' : ''}" onclick="setChatFilter('${k}')">${label}${k !== 'all' && n ? ` · ${n}` : ''}</button>`;
   }).join('') + (_chatItems.some(c => c.unread > 0 && (_chatLineFilter === 'all' || (c.line || waLineOfKey(c.id)) === _chatLineFilter))
     ? `<button class="chat-pill" onclick="chatMarkAllRead()" title="Zera o contador de não lidas de todas as conversas${_chatLineFilter !== 'all' ? ' deste WhatsApp' : ''}">✓ Marcar todas como lidas</button>`
     : '') + (_chatAct && chatLines(_chatAct).length > 1
-    ? `<select class="field-input chat-line-select" onchange="_chatLineFilter=this.value;renderChatList()" title="Qual WhatsApp"><option value="all">Todos os WhatsApps</option>${chatLines(_chatAct).map(l => `<option value="${escapeHtml(l.id)}" ${_chatLineFilter === l.id ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}</select>`
+    ? `<select class="field-input chat-line-select" onchange="setChatLineFilter(this.value)" title="Qual WhatsApp"><option value="all">Todos os WhatsApps</option>${chatLines(_chatAct).map(l => `<option value="${escapeHtml(l.id)}" ${_chatLineFilter === l.id ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}</select>`
     : '') + chatCampSelectHtml());
 }
 
@@ -16859,7 +16937,7 @@ async function setChatCampFilter(id) {
     const have = new Set(_chatItems.map(x => chatPhoneKey(x.phone)));
     const missing = phones.filter(p => !have.has(chatPhoneKey(p)));
     if (missing.length) {
-      const extra = await window._fb.getChatsByPhones(_chatAct, missing);
+      const extra = await window._fb.getChatsByPhones(_chatAct, missing, Array.isArray(c.lines) ? c.lines : null);
       if (_chatCampFilter !== id) return;
       // Entram como conversas extras do Chat (continuam lá ao abrir, responder e quando a lista atualiza).
       extra.filter(chatVisibleFilter(_chatAct)).forEach(x => { _chatExtra[x.id] = x; if (!_chatItems.some(y => y.id === x.id)) _chatItems.push(x); });
@@ -16887,8 +16965,7 @@ function renderChatList() {
   if (chatLines(_chatAct).length < 2) _chatLineFilter = 'all';
   const rows = _chatItems.filter(c => {
     if (!chatMatchesFilter(c, _chatFilter, me)) return false;
-    if (_chatLineFilter !== 'all' && (c.line || waLineOfKey(c.id)) !== _chatLineFilter) return false;
-    if (_chatCampFilter !== 'all' && _chatCampPhones && !_chatCampPhones.has(chatPhoneKey(c.phone))) return false;
+    if (!chatInScope(c)) return false;
     const lead = chatLeadFor(c, index);
     if (_chatTagFilter.size && !chatTagIds(c, lead, chatContactFor(c, contactIndex)).some(id => _chatTagFilter.has(id))) return false;
     if (!term) return true;
@@ -16955,6 +17032,22 @@ async function setChatGroups(on) {
     renderChatList();
   } catch (e) { showToast('Não salvou: ' + e.message, 'error', 6000); }
 }
+
+// Escolher um WhatsApp no filtro: traz todas as conversas dele (não só as que estão entre as 300 mais recentes de todos).
+async function setChatLineFilter(v) {
+  _chatLineFilter = v || 'all';
+  renderChatList();
+  if (_chatLineFilter === 'all' || !_chatAct) return;
+  const act = _chatAct, line = _chatLineFilter;
+  try {
+    const extra = await window._fb.getChatsByLine(act, line, 1000);
+    if (_chatAct !== act || _chatLineFilter !== line) return;
+    extra.filter(chatVisibleFilter(act)).forEach(x => { if (!_chatItems.some(y => y.id === x.id)) { _chatExtra[x.id] = x; _chatItems.push(x); } });
+    _chatItems.sort((a, b) => String(b.lastAt || '').localeCompare(String(a.lastAt || '')));
+    renderChatList();
+  } catch (e) { console.warn('Conversas do número não carregaram:', e && e.message); }
+}
+window.setChatLineFilter = setChatLineFilter;
 
 function loadMoreChats() {
   _chatLimit += 300;
@@ -17147,6 +17240,9 @@ function renderChatInfo() {
     <div class="ci-block">${label('Anotação')}
       <textarea id="ci-obs" class="field-input" rows="4" placeholder="Anote algo sobre este lead" onblur="saveChatLeadObs('${lid}', this.value)">${escapeHtml(lead.obs || '')}</textarea>
     </div>
+    <div class="ci-block">${label('Anotações SDR')}
+      <textarea id="ci-sdr-notes" class="field-input" rows="4" placeholder="Qualificação do SDR: perfil, interesse, dor, orçamento, decisor, melhor horário..." onblur="saveChatLeadSdrNotes('${lid}', this.value)">${escapeHtml(lead.sdrNotes || '')}</textarea>
+    </div>
     <div class="ci-block">${label('Anotações da call de vendas')}
       <textarea id="ci-call-notes" class="field-input" rows="4" placeholder="O que o lead quer, dores, objeções, próximos passos da call..." onblur="saveChatLeadCallNotes('${lid}', this.value)">${escapeHtml(lead.callNotes || '')}</textarea>
     </div>
@@ -17164,6 +17260,16 @@ function chatTplButtonsHtml(m) {
     ? `<a class="chat-tpl-btn" href="${escapeHtml(b.url)}" target="_blank" rel="noopener" style="text-decoration:none;">${icon(b)} ${escapeHtml(b.text || '')}</a>`
     : `<div class="chat-tpl-btn">${icon(b)} ${escapeHtml(b.text || '')}</div>`).join('')}</div>`;
 }
+
+function saveChatLeadSdrNotes(id, value) {
+  const lead = (_leadsCache || []).find(l => l.id === id);
+  if (!lead || (lead.sdrNotes || '') === value) return;
+  lead.sdrNotes = value;
+  lead.updatedAt = new Date().toISOString();
+  saveLeadToDb(lead);
+  showToast('Anotações SDR salvas.', 'success', 1800);
+}
+window.saveChatLeadSdrNotes = saveChatLeadSdrNotes;
 
 function saveChatLeadCallNotes(id, value) {
   const lead = (_leadsCache || []).find(l => l.id === id);
@@ -19818,6 +19924,8 @@ const waIsCloud = id => /^api/.test(String(id || ''));
 const isAdminUser = () => ['admin', 'partner'].includes(((window._fb && window._fb.getProfile && window._fb.getProfile()) || {}).role);
 const CLOUD_STATUS = { APPROVED: ['Aprovado', 'var(--green, #34d399)'], PENDING: ['Em análise', '#fbbf24'], REJECTED: ['Recusado', '#f87171'], PAUSED: ['Pausado', '#fbbf24'], DISABLED: ['Desativado', '#f87171'], IN_APPEAL: ['Em recurso', '#fbbf24'] };
 const CLOUD_QUALITY = { GREEN: 'Qualidade alta', YELLOW: 'Qualidade média', RED: 'Qualidade baixa' };
+window._waQuality = window._waQuality || {};
+const CLOUD_RED_NOTE = 'Qualidade baixa na Meta: se a qualidade não melhorar, a Meta pode limitar ou bloquear este número. Para a qualidade voltar: mande só para quem pediu contato, com modelo útil e opção de sair, e prefira outro número oficial para disparos grandes.';
 let _cloudTplCache = {};
 let _cloudCtx = null;
 
@@ -20630,7 +20738,7 @@ async function renderWaLinesBox(act, el, quiet) {
   if (!el) return;
   if (!quiet) el.innerHTML = '<span style="color:var(--muted);font-size:12px;">verificando...</span>';
   let states = [];
-  try { states = (await window._fb.whatsapp('/whatsapp/lines-status', act)).lines || []; }
+  try { states = (await window._fb.whatsapp('/whatsapp/lines-status', act)).lines || []; states.forEach(x => { if (x.provider === 'cloud') window._waQuality[act + '|' + x.line] = x.quality || ''; }); }
   catch (e) { el.innerHTML = `<span style="color:#f87171;font-size:12px;">Servidor do WhatsApp fora do ar</span>`; return; }
   const a = escapeJsString(act);
   el.innerHTML = waLines(act).map(l => {
@@ -20640,7 +20748,7 @@ async function renderWaLinesBox(act, el, quiet) {
     if (waIsCloud(l.id)) {
       const ok = st.state === 'open';
       return `<div class="wa-line-row">
-      <div style="flex:1;min-width:0;"><div class="wa-line-name">${escapeHtml(l.label)} <span class="chat-tag" style="background:var(--blue-dim);color:var(--blue);">API oficial</span></div><div class="wa-line-sub"><span style="color:${ok ? '#34d399' : '#fbbf24'};font-weight:600;">● ${ok ? 'Conectado' : 'Falta configurar'}</span>${num ? ' · ' + escapeHtml(num) : ''}${st.profileName ? ' · ' + escapeHtml(st.profileName) : ''}${st.quality ? ' · ' + escapeHtml(CLOUD_QUALITY[st.quality] || st.quality) : ''}</div>${ok ? cloudHookLine(st) : ''}</div>
+      <div style="flex:1;min-width:0;"><div class="wa-line-name">${escapeHtml(l.label)} <span class="chat-tag" style="background:var(--blue-dim);color:var(--blue);">API oficial</span></div><div class="wa-line-sub"><span style="color:${ok ? '#34d399' : '#fbbf24'};font-weight:600;">● ${ok ? 'Conectado' : 'Falta configurar'}</span>${num ? ' · ' + escapeHtml(num) : ''}${st.profileName ? ' · ' + escapeHtml(st.profileName) : ''}${st.quality ? ' · ' + escapeHtml(CLOUD_QUALITY[st.quality] || st.quality) : ''}</div>${ok ? cloudHookLine(st) : ''}${ok && st.quality === 'RED' ? `<div class="wa-line-sub" style="color:#f87171;white-space:normal;">⚠ ${escapeHtml(CLOUD_RED_NOTE)}</div>` : ''}</div>
       ${ok ? `<button style="${wbtn}" onclick="openCloudTemplates('${a}','${id}')">Modelos</button>` : ''}
       ${ok && st.billingUrl ? `<button class="chat-pill" title="Abre a cobrança desta conta do WhatsApp na Meta (cartão e saldo)" onclick="openCloudBilling('${escapeJsString(st.billingUrl)}')">Pagamento</button>` : ''}
       ${isAdminUser() ? `<button class="chat-pill" onclick="openCloudSetup('${a}','${id}')">Credenciais</button>` : ''}
@@ -20767,8 +20875,10 @@ async function renderWhatsAppView() {
   const clientPanel = document.getElementById('whatsapp-client-panel');
   const adminPanel = document.getElementById('whatsapp-admin-panel');
   const subtitle = document.getElementById('whatsapp-view-subtitle');
-  if (!profile || !clientPanel || !adminPanel) return;
-  try { Object.assign(WHATSAPP_SETTINGS, await window._fb.getWhatsAppSettings()); } catch(e) { console.warn('Configuração de WhatsApp indisponível:', e); }
+  if (!profile || !clientPanel || !adminPanel) { if ((renderWhatsAppView._tries = (renderWhatsAppView._tries || 0) + 1) < 20) setTimeout(() => { const v = document.getElementById('whatsapp-view'); if (v && v.style.display !== 'none') renderWhatsAppView(); }, 700); return; }
+  renderWhatsAppView._tries = 0;
+  // Não deixa a tela vazia se a configuração demorar (aconteceu no Safari do iPad).
+  try { Object.assign(WHATSAPP_SETTINGS, await Promise.race([window._fb.getWhatsAppSettings(), new Promise((_, rej) => setTimeout(() => rej(new Error('demorou')), 6000))])); } catch(e) { console.warn('Configuração de WhatsApp indisponível:', e); }
 
   const sub = document.getElementById('whatsapp-view-subtitle');
   const old = document.getElementById('wa-alert-unmute');
@@ -21532,7 +21642,7 @@ function openHistoryImport() {
   const lines = waLines(act).filter(l => !waIsCloud(l.id));
   if (!lines.length) return showToast('Este cliente não tem WhatsApp por QR Code conectado.', 'warning');
   openHuvenModal('Puxar conversas antigas', `
-    <div class="integ-muted" style="font-size:12.5px;line-height:1.55;margin-bottom:12px;">Traz para o Chat as mensagens que o WhatsApp já tinha. Ao ler o QR Code, o CRM já puxa os últimos 30 dias sozinho; aqui dá para puxar mais. Não marca como não lidas e não dispara automação nem IA. Mensagens que já estão no Chat não mudam.</div>
+    <div class="integ-muted" style="font-size:12.5px;line-height:1.55;margin-bottom:12px;">Traz para o Chat as mensagens que o WhatsApp já tinha. Ao ler o QR Code, o CRM já puxa os últimos 7 dias sozinho; aqui dá para puxar mais. Não marca como não lidas e não dispara automação nem IA. Mensagens que já estão no Chat não mudam.</div>
     <div id="hi-jobs">${histJobsHtml(act)}</div>
     ${lines.length > 1 ? `<label class="field-label">De qual WhatsApp</label><select class="field-input" id="hi-line" style="margin-bottom:10px;">${lines.map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.label)}</option>`).join('')}</select>` : `<input type="hidden" id="hi-line" value="${escapeHtml(lines[0].id)}">`}
     <label class="field-label">Período</label>
@@ -22909,15 +23019,27 @@ function setWhatsAppQrBody(html) {
   if (body) body.innerHTML = html;
 }
 
-async function loadWhatsAppQr(act, line) {
+async function loadWhatsAppQr(act, line, refresh) {
   try {
-    const r = await window._fb.whatsapp('/whatsapp/connect', act, { line: line || WA_MAIN });
+    const r = await window._fb.whatsapp('/whatsapp/connect', act, { line: line || WA_MAIN, ...(refresh ? { refresh: true } : {}) });
+    window._waQrFails = 0;
     if (r.state === 'open') { onWhatsAppConnected(); return; }
     const qr = String(r.qr || '');
+    // Na troca periódica sem QR novo (a pessoa pode estar lendo agora): mantém o que está na tela.
+    if (refresh && !qr.startsWith('data:image/')) return;
     if (!qr.startsWith('data:image/')) { setWhatsAppQrBody('<div style="color:var(--muted);">Gerando QR Code...</div>'); return; }
     setWhatsAppQrBody(`<img src="${escapeHtml(qr)}" alt="QR Code do WhatsApp" style="width:260px;height:260px;background:#fff;border-radius:10px;padding:8px;">`);
   } catch (e) {
-    setWhatsAppQrBody(`<div style="color:#f87171;">${escapeHtml(e.message)}</div>`);
+    if (refresh) return; // troca periódica falhou: segue com o QR da tela, a próxima tenta de novo
+    // Falha passageira (o servidor do WhatsApp demora a responder): tenta de novo sozinho antes de mostrar erro.
+    window._waQrFails = (window._waQrFails || 0) + 1;
+    if (window._waQrFails <= 3) {
+      setWhatsAppQrBody('<div style="color:var(--muted);">Gerando QR Code...</div>');
+      setTimeout(() => { if (document.getElementById('whatsapp-qr-body')) loadWhatsAppQr(act, line); }, 4000);
+      return;
+    }
+    window._waQrFails = 0;
+    setWhatsAppQrBody(`<div style="color:#f87171;">${escapeHtml(e.message)}</div><div style="margin-top:10px;"><button class="chat-pill" onclick="loadWhatsAppQr('${escapeJsString(act)}','${escapeJsString(line)}')">Tentar de novo</button></div>`);
   }
 }
 
@@ -22971,7 +23093,7 @@ async function openWhatsAppConnect(act, name, line) {
       setWhatsAppQrBody(`<div style="color:var(--muted);">O QR Code expirou.</div><button style="${wbtn}" onclick="openWhatsAppConnect('${escapeJsString(act)}','','${escapeJsString(line)}')">Gerar outro</button>`);
       return;
     }
-    if (ticks % 5 === 0) loadWhatsAppQr(act, line);
+    if (ticks % 5 === 0) loadWhatsAppQr(act, line, true);
   }, 5000);
 }
 
@@ -24471,6 +24593,7 @@ function openLeadModal() {
   document.getElementById('lead-rede-social').value = '';
   document.getElementById('lead-stage').value = 'novo';
   if (document.getElementById('lead-call-notes')) document.getElementById('lead-call-notes').value = '';
+  if (document.getElementById('lead-sdr-notes')) document.getElementById('lead-sdr-notes').value = '';
   document.getElementById('modal-title').textContent = 'Novo lead';
   // Reset todos os campos configuráveis para visível antes de aplicar config
   ['field-valor','field-origem','field-rede-social','field-obs','field-proxima-acao','field-proxima-data'].forEach(id => {
@@ -24511,6 +24634,7 @@ function editLead(id) {
   document.getElementById('lead-rede-social').value = lead.redeSocial || '';
   document.getElementById('lead-obs').value = lead.obs || '';
   document.getElementById('lead-call-notes').value = lead.callNotes || '';
+  if (document.getElementById('lead-sdr-notes')) document.getElementById('lead-sdr-notes').value = lead.sdrNotes || '';
   fillLeadResponsavel(normalizeActValue(lead.act), lead);
   renderLeadAiSummary(lead);
   // Reset campos configuráveis para visível antes de aplicar config
@@ -24537,6 +24661,7 @@ function editLead(id) {
   document.getElementById('lead-rede-social').value = lead.redeSocial || '';
   document.getElementById('lead-obs').value = lead.obs || '';
   document.getElementById('lead-call-notes').value = lead.callNotes || '';
+  if (document.getElementById('lead-sdr-notes')) document.getElementById('lead-sdr-notes').value = lead.sdrNotes || '';
   document.getElementById('lead-modal').classList.add('open');
 }
 
@@ -24630,6 +24755,7 @@ async function saveLead() {
     redeSocial: document.getElementById('lead-rede-social').value,
     origem: document.getElementById('lead-origem') ? document.getElementById('lead-origem').value.trim() : (existing ? existing.origem || '' : ''),
     obs: document.getElementById('lead-obs') ? document.getElementById('lead-obs').value.trim() : (existing ? existing.obs || '' : ''),
+    sdrNotes: document.getElementById('lead-sdr-notes') ? document.getElementById('lead-sdr-notes').value.trim() : (existing ? existing.sdrNotes || '' : ''),
     callNotes: document.getElementById('lead-call-notes') ? document.getElementById('lead-call-notes').value.trim() : (existing ? existing.callNotes || '' : ''),
     motivo: document.getElementById('lead-motivo') ? document.getElementById('lead-motivo').value.trim() : (existing ? existing.motivo || '' : ''),
     proximaAcao: document.getElementById('lead-proxima-acao') ? document.getElementById('lead-proxima-acao').value.trim() : (existing ? existing.proximaAcao || '' : ''),
