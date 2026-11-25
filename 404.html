@@ -11589,7 +11589,7 @@ function openRelEditor(index) {
       <label><input type="radio" name="rel-dest" value="group" ${d.dest.type === 'group' ? 'checked' : ''} onchange="relDestMode()"> Grupo</label>
       <label><input type="radio" name="rel-dest" value="numbers" ${d.dest.type !== 'group' ? 'checked' : ''} onchange="relDestMode()"> Números</label>
     </div>
-    <div id="rel-dest-group"><select id="rel-group" class="field-input"><option value="">Carregando grupos...</option></select>
+    <div id="rel-dest-group"><input id="rel-group-q" class="field-input" placeholder="Buscar grupo pelo nome" autocomplete="off" oninput="relFilterGroups()" style="margin-bottom:6px;"><select id="rel-group" class="field-input"><option value="">Carregando grupos...</option></select>
       <button type="button" class="btn-cfg" style="width:auto;margin-top:6px;padding:4px 10px;font-size:12px;" onclick="relLoadGroups(true)">Atualizar lista de grupos</button></div>
     <div id="rel-dest-numbers"><textarea id="rel-numbers" class="field-input" rows="2" placeholder="Um número por linha, com DDD. Ex.: 11999998888">${escapeHtml((d.dest.numbers || []).join('\n'))}</textarea></div>
     ${lab('Quando enviar')}
@@ -11657,11 +11657,25 @@ async function relLoadGroups(refresh) {
   sel.innerHTML = `<option value="">${refresh ? 'Atualizando... pode levar até 1 minuto' : 'Carregando grupos...'}</option>`;
   try {
     const r = await window._fb.whatsapp('/whatsapp/groups', relAct(), { refresh: !!refresh, line });
-    const groups = (r.groups || []).sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
-    const cur = _rel.draft.dest && _rel.draft.dest.groupId;
-    sel.innerHTML = '<option value="">Escolha o grupo</option>' + groups.map(g => `<option value="${escapeHtml(g.id)}" ${g.id === cur ? 'selected' : ''}>${escapeHtml(g.subject)}</option>`).join('');
-    if (cur && !groups.some(g => g.id === cur)) sel.innerHTML += `<option value="${escapeHtml(cur)}" selected>${escapeHtml(_rel.draft.dest.groupName || cur)}</option>`;
+    _rel.groups = (r.groups || []).sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
+    relFilterGroups();
   } catch (e) { sel.innerHTML = `<option value="">${escapeHtml(e.message)}</option>`; }
+}
+
+// Busca pelo nome do grupo (sem diferença de acento e maiúscula). Com um só resultado, ele já fica escolhido.
+function relFilterGroups() {
+  const sel = document.getElementById('rel-group');
+  if (!sel || !_rel.draft) return;
+  const n = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const q = n((document.getElementById('rel-group-q') || {}).value).trim();
+  const all = _rel.groups || [];
+  const cur = sel.value || (_rel.draft.dest && _rel.draft.dest.groupId) || '';
+  let list = q ? all.filter(g => n(g.subject).includes(q)) : all;
+  if (q && list.length === 1) sel.dataset.pick = list[0].id;
+  const keep = cur && !list.some(g => g.id === cur) ? (all.find(g => g.id === cur) || { id: cur, subject: _rel.draft.dest.groupName || cur }) : null;
+  const pick = q && list.length === 1 ? list[0].id : cur;
+  sel.innerHTML = `<option value="">${q && !list.length ? 'Nenhum grupo com esse nome' : `Escolha o grupo (${list.length})`}</option>`
+    + (keep ? [keep] : []).concat(list).map(g => `<option value="${escapeHtml(g.id)}" ${g.id === pick ? 'selected' : ''}>${escapeHtml(g.subject)}${g.size ? ' (' + g.size + ')' : ''}</option>`).join('');
 }
 
 function relCollect() {
