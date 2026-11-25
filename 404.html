@@ -3380,6 +3380,7 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
     <button type="button" class="mnav-sheet-item" onclick="closeMobileMore(); switchView('instagram'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/></svg><span>Instagram</span></button>
     <button type="button" class="mnav-sheet-item" onclick="closeMobileMore(); switchView('posts'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span>Postagens</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('cadencia'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM16 2v4M8 2v4M3 10h18"/></svg><span>Cadência</span></button>
+    <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('relatorios'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg><span>Relatórios</span></button>
     <button type="button" class="mnav-sheet-item"  onclick="closeMobileMore(); switchView('whatsapp'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/></svg><span>Conexões</span></button>
     <button type="button" class="mnav-sheet-item" onclick="closeMobileMore(); switchView('modelos'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Modelos API oficial</button>
     <button type="button" class="mnav-sheet-item" onclick="closeMobileMore(); switchView('integracoes'); setMobileNav('mais')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>Integrações</span></button>
@@ -3488,6 +3489,10 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
         <div class="nav-item" id="nav-cadencia" onclick="switchView('cadencia')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M12 14v3l2 1"/></svg>
           Cadência
+        </div>
+        <div class="nav-item" id="nav-relatorios" onclick="switchView('relatorios')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>
+          Relatórios
         </div>
         <div class="nav-item" id="nav-whatsapp" onclick="switchView('whatsapp')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/></svg>
@@ -4640,6 +4645,21 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
     </div>
 
     <!-- Cadência View -->
+    <div id="relatorios-view" style="display:none; padding:28px 32px;">
+      <div style="max-width:900px;">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
+          <div>
+            <div class="huv-page-title" style="color:var(--text);margin-bottom:4px;">Relatórios</div>
+            <div style="font-size:13px; color:var(--muted);">Métricas do tráfego da Meta e do funil enviadas pelo WhatsApp, num grupo ou para números, no dia e hora que você escolher.</div>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <select id="rel-client-select" class="field-input" style="display:none; width:auto; padding:8px 10px; font-size:13px;" onchange="loadRelatorios()"></select>
+            <button class="btn-save" style="width:auto; padding:10px 18px;" onclick="openRelEditor()">+ Novo relatório</button>
+          </div>
+        </div>
+        <div id="rel-list"></div>
+      </div>
+    </div>
     <div id="cadencia-view" style="display:none; padding:28px 32px;">
       <div style="max-width:900px;">
         <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
@@ -8491,7 +8511,7 @@ function switchView(view) {
     view = firstAllowedView();
   }
   try { localStorage.setItem('crm_last_view', JSON.stringify({ view, at: Date.now() })); } catch (e) {}
-  ['report','analise','clientes','automacoes','agenteia','calendario','atividades','capi','historico','instagram','posts','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes','modelos'].forEach(v => {
+  ['report','analise','clientes','automacoes','agenteia','calendario','atividades','capi','historico','instagram','posts','prospeccao','crm','ajuda','conta','whatsapp','campanhas','chat','cadencia','contatos','integracoes','modelos','relatorios'].forEach(v => {
     const el = document.getElementById('nav-' + v);
     if (el) el.classList.toggle('active', v === view);
   });
@@ -8561,6 +8581,9 @@ function switchView(view) {
   const cadenciaView = document.getElementById('cadencia-view');
   if (cadenciaView) cadenciaView.style.display = view === 'cadencia' ? 'block' : 'none';
   if (view === 'cadencia') renderCadenceView();
+  const relatoriosView = document.getElementById('relatorios-view');
+  if (relatoriosView) relatoriosView.style.display = view === 'relatorios' ? 'block' : 'none';
+  if (view === 'relatorios') renderRelatoriosView();
   const contView = document.getElementById('contatos-view');
   if (contView) contView.style.display = view === 'contatos' ? 'block' : 'none';
   if (view === 'crm') {
@@ -11407,6 +11430,334 @@ async function createCadenceItems(items, setFb, asDraft) {
   } catch (e) {
     setFb('#f87171', 'Erro: ' + e.message);
   }
+}
+
+// ===== RELATÓRIOS AUTOMÁTICOS: tráfego da Meta + comercial do funil, enviados pelo WhatsApp no dia e hora marcados =====
+// O servidor guarda (reports/{id}), monta os números e envia. Aqui: lista, editor, prévia e envio de teste.
+const REL_PERIODS = [
+  ['yesterday', 'Ontem (o dia anterior ao envio)'], ['today', 'Hoje (até a hora do envio)'], ['last_n', 'Últimos N dias'],
+  ['this_week', 'Semana atual (segunda até o envio)'], ['last_week', 'Semana passada (segunda a domingo)'],
+  ['this_month', 'Mês atual (até o envio)'], ['last_month', 'Mês passado'], ['custom', 'Período fixo (de uma data até outra)']
+];
+const REL_FREQS = [['daily', 'Todo dia'], ['weekly', 'Dias da semana'], ['monthly', 'Uma vez por mês'], ['once', 'Uma vez só']];
+const REL_WEEK = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const REL_VARS = [
+  ['Geral', [['cliente', 'Cliente'], ['periodo', 'Período'], ['data_inicio', 'Data início'], ['data_fim', 'Data fim']]],
+  ['Tráfego', [['investimento', 'Investimento'], ['leads', 'Leads'], ['cpl', 'Custo por lead'], ['conversas', 'Conversas'], ['custo_conversa', 'Custo por conversa'],
+    ['impressoes', 'Impressões'], ['alcance', 'Alcance'], ['cliques', 'Cliques'], ['ctr', 'CTR'], ['cpm', 'CPM'], ['cpc', 'CPC'], ['frequencia', 'Frequência'],
+    ['compras', 'Compras'], ['faturamento', 'Faturamento'], ['roas', 'ROAS'], ['melhor_campanha', 'Melhor campanha']]],
+  ['Comercial', [['novos_leads', 'Novos leads'], ['negociacoes', 'Em negociação'], ['fechamentos', 'Fechamentos'], ['valor_vendido', 'Valor vendido'],
+    ['ticket_medio', 'Ticket médio'], ['taxa_conversao', 'Taxa de conversão'], ['perdidos', 'Perdidos'], ['leads_por_origem', 'Leads por origem']]]
+];
+let _rel = { act: '', items: [], defaultText: '', draft: null, loading: false };
+
+function relAct() {
+  if (!isAdmin) return window._fb && window._fb.getProfile() ? window._fb.getProfile().act : '';
+  const sel = document.getElementById('rel-client-select');
+  return sel && sel.value ? sel.value : '';
+}
+
+function renderRelatoriosView() {
+  const sel = document.getElementById('rel-client-select');
+  if (isAdmin && sel) {
+    const current = sel.value || (activeClient && activeClient.account) || '';
+    const entries = Object.entries(CREDENTIALS).filter(([login, c]) => login !== 'admin' && c && c.act)
+      .map(([, c]) => [c.act, getClientDisplayName(c.act)]).filter((x, i, a) => a.findIndex(y => y[0] === x[0]) === i)
+      .sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+    sel.innerHTML = '<option value="">Escolha o cliente</option>' + entries.map(([act, name]) => `<option value="${escapeHtml(act)}">${escapeHtml(name)}</option>`).join('');
+    sel.value = entries.some(([act]) => act === current) ? current : '';
+    sel.style.display = 'block';
+  } else if (sel) sel.style.display = 'none';
+  loadRelatorios();
+}
+
+async function loadRelatorios() {
+  const act = relAct();
+  const box = document.getElementById('rel-list');
+  if (!box) return;
+  _rel.act = act;
+  if (!act) { box.innerHTML = '<div class="integ-empty">Escolha o cliente para ver e programar os relatórios.</div>'; return; }
+  box.innerHTML = '<div style="font-size:13px;color:var(--muted);">Carregando...</div>';
+  try {
+    const r = await window._fb.whatsapp('/reports/list', act, {});
+    if (_rel.act !== act) return;
+    _rel.items = (r.items || []).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
+    _rel.defaultText = r.defaultText || '';
+    renderRelList();
+  } catch (e) { box.innerHTML = `<div style="font-size:13px;color:#f87171;">${escapeHtml(e.message)}</div>`; }
+}
+
+function relWhen(s) {
+  s = s || {};
+  const t = s.time || '09:00';
+  if (s.freq === 'daily') return `Todo dia às ${t}`;
+  if (s.freq === 'monthly') return `Todo dia ${s.monthDay || 1} do mês às ${t}`;
+  if (s.freq === 'once') return `Uma vez, em ${s.date ? s.date.split('-').reverse().join('/') : '?'} às ${t}`;
+  const days = (s.days || []).slice().sort().map(d => REL_WEEK[d]).join(', ');
+  return `${days || 'Nenhum dia'} às ${t}`;
+}
+function relPeriodLabel(p) {
+  p = p || {};
+  if (p.type === 'last_n') return `Últimos ${p.n || 7} dias`;
+  if (p.type === 'custom') return `De ${(p.from || '?').split('-').reverse().join('/')} a ${(p.to || '?').split('-').reverse().join('/')}`;
+  return ((REL_PERIODS.find(x => x[0] === p.type) || [, 'Ontem'])[1]).replace(/ \(.*\)$/, '');
+}
+function relDestLabel(d) {
+  d = d || {};
+  if (d.type === 'group') return 'Grupo: ' + (d.groupName || d.groupId || '?');
+  const n = (d.numbers || []).length;
+  return n === 1 ? 'Número: ' + d.numbers[0] : `${n} números`;
+}
+const relDateTime = iso => { const t = Date.parse(iso || ''); return t ? new Date(t).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''; };
+
+function renderRelList() {
+  const box = document.getElementById('rel-list');
+  if (!box) return;
+  if (!_rel.items.length) {
+    box.innerHTML = '<div class="integ-empty">Nenhum relatório ainda. Clique em <b>+ Novo relatório</b> para programar o envio das métricas de tráfego e do funil pelo WhatsApp.</div>';
+    return;
+  }
+  box.innerHTML = _rel.items.map((r, i) => {
+    const status = !r.active ? '<span style="color:var(--muted);">Pausado</span>'
+      : r.nextAt ? `<span style="color:var(--green,#34d399);">Ativo</span> · próximo envio ${escapeHtml(relDateTime(r.nextAt))}` : '<span style="color:var(--muted);">Sem próximo envio</span>';
+    const last = r.lastStatus === 'failed' ? `<div style="font-size:12px;color:#f87171;margin-top:4px;">Último envio falhou: ${escapeHtml(r.lastError || '')}</div>`
+      : r.lastSentAt ? `<div style="font-size:12px;color:var(--muted);margin-top:4px;">Último envio: ${escapeHtml(relDateTime(r.lastSentAt))}${r.lastError ? ' · ' + escapeHtml(r.lastError) : ''}</div>` : '';
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:16px 18px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
+        <div style="min-width:0;flex:1;">
+          <div style="font-size:15px;font-weight:600;color:var(--text);">${escapeHtml(r.name || 'Relatório')}</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px;">${escapeHtml(relDestLabel(r.dest))} · ${escapeHtml(relWhen(r.schedule))} · ${escapeHtml(relPeriodLabel(r.period))}</div>
+          <div style="font-size:12px;margin-top:4px;">${status}</div>${last}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn-cfg" style="width:auto;margin:0;padding:6px 12px;" onclick="openRelEditor(${i})">Editar</button>
+          <button class="btn-cfg" style="width:auto;margin:0;padding:6px 12px;" onclick="relSendNow(${i})">Enviar agora</button>
+          <button class="btn-cfg" style="width:auto;margin:0;padding:6px 12px;" onclick="relToggle(${i})">${r.active ? 'Pausar' : 'Ativar'}</button>
+          <button class="btn-cfg" style="width:auto;margin:0;padding:6px 12px;color:var(--red);" onclick="relDelete(${i})">Excluir</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Colunas de todos os funis do cliente, com a chave "funil|coluna" usada pelo servidor.
+function relStageOptions(act) {
+  const out = [];
+  pipelineList(act).forEach(p => (getStages(act, p.id) || []).forEach(s => out.push({ key: `${p.id}|${s.id}`, label: (pipelineList(act).length > 1 ? p.name + ' › ' : '') + (s.label || s.id) })));
+  return out;
+}
+function relDefaultStages(act) {
+  const opts = relStageOptions(act);
+  const n = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const saleCfg = (typeof saleNotifyCfg === 'function' ? saleNotifyCfg(act).stages : null) || [];
+  const sale = saleCfg.length ? saleCfg : opts.filter(o => /fech|vend|ganh|compr|matricul/.test(n(o.label)) && !/perd|nao /.test(n(o.label))).map(o => o.key);
+  return {
+    saleStages: sale,
+    negStages: opts.filter(o => /negoci|propost|orcament/.test(n(o.label))).map(o => o.key),
+    lostStages: opts.filter(o => /perd/.test(n(o.label))).map(o => o.key)
+  };
+}
+
+function openRelEditor(index) {
+  const act = relAct();
+  if (!act) return showToast('Escolha o cliente primeiro.', 'error');
+  const base = index != null ? _rel.items[index] : null;
+  const def = relDefaultStages(act);
+  const lines = waLines(act).filter(l => !/^api/.test(l.id));
+  _rel.draft = base ? JSON.parse(JSON.stringify(base)) : {
+    name: 'Relatório semanal', active: true, line: (lines[0] || {}).id || WA_MAIN,
+    dest: { type: 'group', groupId: '', groupName: '', numbers: [] },
+    schedule: { freq: 'weekly', days: [5], monthDay: 1, time: '18:00', date: '' },
+    period: { type: 'last_n', n: 7, from: '', to: '' }, compare: true, adAccount: '',
+    saleStages: def.saleStages, negStages: def.negStages, lostStages: def.lostStages, text: _rel.defaultText
+  };
+  const d = _rel.draft;
+  d.id = base ? base.id : '';
+  ensurePipelines(act, () => {});
+  const opt = (list, val) => list.map(([v, l]) => `<option value="${v}" ${v === val ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('');
+  const stageBox = (field, title) => `<div style="margin-top:8px;"><div style="font-size:12px;color:var(--muted);margin-bottom:4px;">${title}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">${relStageOptions(act).map(o => `<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;border:1px solid var(--border);border-radius:999px;padding:3px 9px;cursor:pointer;">
+      <input type="checkbox" class="rel-st-${field}" value="${escapeHtml(o.key)}" ${(d[field] || []).includes(o.key) ? 'checked' : ''}>${escapeHtml(o.label)}</label>`).join('')}</div></div>`;
+  const chips = REL_VARS.map(([g, vs]) => `<div style="margin-top:6px;"><span style="font-size:11px;color:var(--muted);margin-right:4px;">${g}:</span>${vs.map(([k, l]) =>
+    `<button type="button" class="btn-cfg" style="width:auto;margin:2px;padding:2px 8px;font-size:11px;" onclick="relInsertVar('${k}')" title="{${k}}">${escapeHtml(l)}</button>`).join('')}</div>`).join('');
+  const lab = t => `<div style="font-size:12px;font-weight:600;color:var(--text);margin:14px 0 6px;">${t}</div>`;
+  openHuvenModal(base ? 'Editar relatório' : 'Novo relatório', `
+    ${lab('Nome do relatório')}<input id="rel-name" class="field-input" value="${escapeHtml(d.name || '')}" maxlength="80">
+    ${lab('Quem envia e para onde')}
+    <select id="rel-line" class="field-input" onchange="relLoadGroups()">${lines.map(l => `<option value="${escapeHtml(l.id)}" ${l.id === d.line ? 'selected' : ''}>WhatsApp ${escapeHtml(l.label)}</option>`).join('') || '<option value="">Nenhum número QR Code conectado</option>'}</select>
+    <div style="display:flex;gap:14px;margin:8px 0;font-size:13px;">
+      <label><input type="radio" name="rel-dest" value="group" ${d.dest.type === 'group' ? 'checked' : ''} onchange="relDestMode()"> Grupo</label>
+      <label><input type="radio" name="rel-dest" value="numbers" ${d.dest.type !== 'group' ? 'checked' : ''} onchange="relDestMode()"> Números</label>
+    </div>
+    <div id="rel-dest-group"><select id="rel-group" class="field-input"><option value="">Carregando grupos...</option></select>
+      <button type="button" class="btn-cfg" style="width:auto;margin-top:6px;padding:4px 10px;font-size:12px;" onclick="relLoadGroups(true)">Atualizar lista de grupos</button></div>
+    <div id="rel-dest-numbers"><textarea id="rel-numbers" class="field-input" rows="2" placeholder="Um número por linha, com DDD. Ex.: 11999998888">${escapeHtml((d.dest.numbers || []).join('\n'))}</textarea></div>
+    ${lab('Quando enviar')}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <select id="rel-freq" class="field-input" style="flex:1;min-width:160px;" onchange="relFreqMode()">${opt(REL_FREQS, d.schedule.freq)}</select>
+      <input id="rel-time" type="time" class="field-input" style="width:130px;" value="${escapeHtml(d.schedule.time || '09:00')}">
+    </div>
+    <div id="rel-days" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${REL_WEEK.map((w, i) => `<label style="font-size:12px;border:1px solid var(--border);border-radius:999px;padding:3px 9px;"><input type="checkbox" class="rel-day" value="${i}" ${(d.schedule.days || []).includes(i) ? 'checked' : ''}> ${w}</label>`).join('')}</div>
+    <div id="rel-monthday" style="margin-top:8px;font-size:13px;">Dia do mês: <input id="rel-md" type="number" min="1" max="31" class="field-input" style="width:80px;display:inline-block;" value="${d.schedule.monthDay || 1}"></div>
+    <div id="rel-once" style="margin-top:8px;"><input id="rel-date" type="date" class="field-input" style="width:180px;" value="${escapeHtml(d.schedule.date || '')}"></div>
+    ${lab('Período dos números')}
+    <select id="rel-period" class="field-input" onchange="relPeriodMode()">${opt(REL_PERIODS, d.period.type)}</select>
+    <div id="rel-n" style="margin-top:8px;font-size:13px;">Quantos dias: <input id="rel-nv" type="number" min="1" max="365" class="field-input" style="width:90px;display:inline-block;" value="${d.period.n || 7}"> <span style="color:var(--muted);">(até ontem)</span></div>
+    <div id="rel-range" style="display:flex;gap:8px;margin-top:8px;align-items:center;font-size:13px;">De <input id="rel-from" type="date" class="field-input" style="width:170px;" value="${escapeHtml(d.period.from || '')}"> até <input id="rel-to" type="date" class="field-input" style="width:170px;" value="${escapeHtml(d.period.to || '')}"></div>
+    <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-top:8px;"><input type="checkbox" id="rel-compare" ${d.compare ? 'checked' : ''}> Comparar com o período anterior (▲ ▼ %) nas variáveis terminadas em _var</label>
+    ${isAdmin ? `${lab('Conta de anúncios (opcional)')}<input id="rel-adacc" class="field-input mono" placeholder="Em branco: a conta ligada ao cliente. Ou act_123..." value="${escapeHtml(d.adAccount || '')}">` : ''}
+    ${lab('Colunas do funil')}
+    ${stageBox('saleStages', 'Fechamento (contam como venda, com o valor do card)')}
+    ${stageBox('negStages', 'Negociação (quantos estão nessas colunas na hora do envio)')}
+    ${stageBox('lostStages', 'Perdidos')}
+    ${lab('Mensagem')}
+    <textarea id="rel-text" class="field-input" rows="12" style="font-family:inherit;" oninput="relPreviewSoon()">${escapeHtml(d.text || _rel.defaultText)}</textarea>
+    <div style="font-size:12px;color:var(--muted);margin-top:4px;">Clique para inserir. Use *texto* para negrito. Para mostrar a variação, acrescente _var: {leads_var}.</div>
+    ${chips}
+    ${lab('Prévia com os números de agora')}
+    <div id="rel-preview" style="white-space:pre-wrap;background:var(--surface2,rgba(127,127,127,.08));border:1px solid var(--border);border-radius:10px;padding:12px;font-size:13px;min-height:60px;">Carregando prévia...</div>
+    <div id="rel-warn" style="font-size:12px;color:#f59e0b;margin-top:6px;"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;justify-content:flex-end;">
+      <button class="btn-cfg" style="width:auto;margin:0;padding:10px 14px;" onclick="relPreview()">Atualizar prévia</button>
+      <button class="btn-cfg" style="width:auto;margin:0;padding:10px 14px;" onclick="relSendDraft()">Enviar teste agora</button>
+      <button class="btn-save" style="width:auto;padding:10px 18px;" onclick="relSave()">Salvar</button>
+    </div>`, 720);
+  relDestMode(); relFreqMode(); relPeriodMode(); relLoadGroups(); relPreview();
+}
+
+function relDestMode() {
+  const g = (document.querySelector('input[name="rel-dest"]:checked') || {}).value === 'group';
+  document.getElementById('rel-dest-group').style.display = g ? 'block' : 'none';
+  document.getElementById('rel-dest-numbers').style.display = g ? 'none' : 'block';
+}
+function relFreqMode() {
+  const f = document.getElementById('rel-freq').value;
+  document.getElementById('rel-days').style.display = f === 'weekly' ? 'flex' : 'none';
+  document.getElementById('rel-monthday').style.display = f === 'monthly' ? 'block' : 'none';
+  document.getElementById('rel-once').style.display = f === 'once' ? 'block' : 'none';
+}
+function relPeriodMode() {
+  const p = document.getElementById('rel-period').value;
+  document.getElementById('rel-n').style.display = p === 'last_n' ? 'block' : 'none';
+  document.getElementById('rel-range').style.display = p === 'custom' ? 'flex' : 'none';
+}
+function relInsertVar(k) {
+  const ta = document.getElementById('rel-text');
+  if (!ta) return;
+  const a = ta.selectionStart ?? ta.value.length, b = ta.selectionEnd ?? a;
+  ta.value = ta.value.slice(0, a) + '{' + k + '}' + ta.value.slice(b);
+  ta.focus(); ta.selectionStart = ta.selectionEnd = a + k.length + 2;
+  relPreviewSoon();
+}
+
+async function relLoadGroups(refresh) {
+  const sel = document.getElementById('rel-group');
+  if (!sel || !_rel.draft) return;
+  const line = (document.getElementById('rel-line') || {}).value || WA_MAIN;
+  sel.innerHTML = `<option value="">${refresh ? 'Atualizando... pode levar até 1 minuto' : 'Carregando grupos...'}</option>`;
+  try {
+    const r = await window._fb.whatsapp('/whatsapp/groups', relAct(), { refresh: !!refresh, line });
+    const groups = (r.groups || []).sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
+    const cur = _rel.draft.dest && _rel.draft.dest.groupId;
+    sel.innerHTML = '<option value="">Escolha o grupo</option>' + groups.map(g => `<option value="${escapeHtml(g.id)}" ${g.id === cur ? 'selected' : ''}>${escapeHtml(g.subject)}</option>`).join('');
+    if (cur && !groups.some(g => g.id === cur)) sel.innerHTML += `<option value="${escapeHtml(cur)}" selected>${escapeHtml(_rel.draft.dest.groupName || cur)}</option>`;
+  } catch (e) { sel.innerHTML = `<option value="">${escapeHtml(e.message)}</option>`; }
+}
+
+function relCollect() {
+  const v = id => (document.getElementById(id) || {}).value || '';
+  const checked = cls => [...document.querySelectorAll('.' + cls + ':checked')].map(x => x.value);
+  const dType = (document.querySelector('input[name="rel-dest"]:checked') || {}).value === 'group' ? 'group' : 'numbers';
+  const gSel = document.getElementById('rel-group');
+  return {
+    name: v('rel-name').trim() || 'Relatório', active: _rel.draft ? _rel.draft.active !== false : true, line: v('rel-line'),
+    dest: dType === 'group' ? { type: 'group', groupId: v('rel-group'), groupName: gSel && gSel.selectedIndex > 0 ? gSel.options[gSel.selectedIndex].text : '' }
+      : { type: 'numbers', numbers: v('rel-numbers').split(/[\n,;]+/).map(s => s.replace(/\D/g, '')).filter(s => s.length >= 10) },
+    schedule: { freq: v('rel-freq'), time: v('rel-time') || '09:00', days: checked('rel-day').map(Number), monthDay: +v('rel-md') || 1, date: v('rel-date') },
+    period: { type: v('rel-period'), n: +v('rel-nv') || 7, from: v('rel-from'), to: v('rel-to') },
+    compare: !!(document.getElementById('rel-compare') || {}).checked,
+    adAccount: (v('rel-adacc').trim() && normalizeAdAccountInput(v('rel-adacc'))) || '',
+    saleStages: checked('rel-st-saleStages'), negStages: checked('rel-st-negStages'), lostStages: checked('rel-st-lostStages'),
+    text: v('rel-text')
+  };
+}
+function relValidate(rep, forSave) {
+  if (!rep.line) return 'Conecte um número de WhatsApp por QR Code para enviar relatórios.';
+  if (rep.dest.type === 'group' && !rep.dest.groupId) return 'Escolha o grupo que vai receber.';
+  if (rep.dest.type === 'numbers' && !rep.dest.numbers.length) return 'Informe pelo menos um número com DDD.';
+  if (forSave && rep.schedule.freq === 'weekly' && !rep.schedule.days.length) return 'Marque pelo menos um dia da semana.';
+  if (forSave && rep.schedule.freq === 'once' && !rep.schedule.date) return 'Escolha a data do envio.';
+  if (rep.period.type === 'custom' && (!rep.period.from || !rep.period.to)) return 'Escolha as duas datas do período.';
+  return '';
+}
+
+let _relPrevTimer = null;
+function relPreviewSoon() { clearTimeout(_relPrevTimer); _relPrevTimer = setTimeout(relPreview, 900); }
+async function relPreview() {
+  const box = document.getElementById('rel-preview');
+  if (!box) return;
+  const rep = relCollect();
+  box.textContent = 'Calculando...';
+  try {
+    const r = await window._fb.whatsapp('/reports/preview', relAct(), { report: rep });
+    if (!document.getElementById('rel-preview')) return;
+    box.innerHTML = escapeHtml(r.text || '').replace(/\*([^*\n]+)\*/g, '<b>$1</b>');
+    document.getElementById('rel-warn').textContent = (r.warnings || []).join(' ');
+  } catch (e) { box.textContent = 'Não consegui montar a prévia: ' + e.message; }
+}
+
+async function relSave() {
+  const rep = relCollect();
+  const err = relValidate(rep, true);
+  if (err) return showToast(err, 'error');
+  try {
+    const r = await window._fb.whatsapp('/reports/save', relAct(), { id: _rel.draft && _rel.draft.id || '', report: rep });
+    closeHuvenModal();
+    showToast(r.nextAt ? 'Relatório salvo. Próximo envio: ' + relDateTime(r.nextAt) : 'Relatório salvo.', 'success');
+    _rel.draft = null;
+    loadRelatorios();
+  } catch (e) { showToast('Erro ao salvar: ' + e.message, 'error'); }
+}
+
+async function relSendDraft() {
+  const rep = relCollect();
+  const err = relValidate(rep, false);
+  if (err) return showToast(err, 'error');
+  if (!await showConfirm(`O relatório vai agora para ${relDestLabel(rep.dest)}, com os números de hoje.`, 'Enviar teste', 'Enviar', false)) return;
+  try {
+    const r = await window._fb.whatsapp('/reports/send-now', relAct(), { report: rep });
+    showToast(r.failed ? `Enviado para ${r.sent}, falhou para ${r.failed}.` : 'Relatório enviado.', r.failed ? 'info' : 'success');
+  } catch (e) { showToast('Não enviou: ' + e.message, 'error'); }
+}
+
+async function relSendNow(i) {
+  const r0 = _rel.items[i];
+  if (!r0 || !await showConfirm(`"${r0.name}" vai agora para ${relDestLabel(r0.dest)}. O envio programado continua igual.`, 'Enviar agora', 'Enviar', false)) return;
+  try {
+    const r = await window._fb.whatsapp('/reports/send-now', relAct(), { id: r0.id });
+    showToast(r.failed ? `Enviado para ${r.sent}, falhou para ${r.failed}.` : 'Relatório enviado.', r.failed ? 'info' : 'success');
+    loadRelatorios();
+  } catch (e) { showToast('Não enviou: ' + e.message, 'error'); }
+}
+
+async function relToggle(i) {
+  const r0 = _rel.items[i];
+  if (!r0) return;
+  try {
+    await window._fb.whatsapp('/reports/toggle', relAct(), { id: r0.id, active: !r0.active });
+    showToast(r0.active ? 'Relatório pausado.' : 'Relatório ativado.', 'success');
+    loadRelatorios();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function relDelete(i) {
+  const r0 = _rel.items[i];
+  if (!r0 || !await showConfirm(`Excluir o relatório "${r0.name}"? Os envios programados param.`, 'Excluir relatório', 'Excluir', true)) return;
+  try {
+    await window._fb.whatsapp('/reports/delete', relAct(), { id: r0.id });
+    showToast('Relatório excluído.', 'success');
+    loadRelatorios();
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 // ===== @ NAS MENSAGENS PROGRAMADAS PARA GRUPOS (Cadência e agendadas do Chat) =====
@@ -26917,7 +27268,7 @@ function onMobileClientChange() {
 // ===== Logins extras do cliente: o admin escolhe quais áreas cada login enxerga =====
 const SUB_LOGIN_VIEWS = [
   ['report', 'Dashboard'], ['analise', 'Atendimento'], ['crm', 'Funil de vendas'], ['chat', 'Chat'], ['contatos', 'Contatos'], ['calendario', 'Calendário'],
-  ['automacoes', 'Automações'], ['capi', 'Conversões Meta'], ['historico', 'Histórico'], ['instagram', 'Instagram'], ['posts', 'Postagens'], ['prospeccao', 'Prospecção'], ['campanhas', 'Campanhas'], ['cadencia', 'Cadência'], ['whatsapp', 'Conexões'], ['integracoes', 'Integrações'], ['modelos', 'Modelos API oficial']
+  ['automacoes', 'Automações'], ['capi', 'Conversões Meta'], ['historico', 'Histórico'], ['instagram', 'Instagram'], ['posts', 'Postagens'], ['prospeccao', 'Prospecção'], ['campanhas', 'Campanhas'], ['cadencia', 'Cadência'], ['relatorios', 'Relatórios'], ['whatsapp', 'Conexões'], ['integracoes', 'Integrações'], ['modelos', 'Modelos API oficial']
 ];
 let SUB_LOGINS = [];
 let _subVault = {};
