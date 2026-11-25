@@ -22451,171 +22451,398 @@ async function igAutoDelete(id) {
   renderInstagramView();
 }
 
-// ----- editor da automação (fluxo em blocos, estilo ManyChat) -----
-let _igEd = null;
+// ----- editor visual da automação do Instagram (igual às Automações: blocos ligados por linhas) -----
+// Blocos: gatilho, "só para quem segue" (opcional) e blocos de mensagens. Cada botão de resposta, a resposta pedida
+// e a espera viram uma bolinha de saída que se liga a outro bloco. O servidor recebe blocks[0] = bloco ligado ao gatilho.
 const IG_ASK = [['', 'Não pedir nada'], ['email', 'E-mail (vai para o card)'], ['phone', 'WhatsApp (vai para o card)'], ['text', 'Outra resposta (vai para as respostas do card)']];
+const IGF_COLORS = { trigger: '#C9A24A', gate: '#E1306C', block: '#4C7DFF', opt: '#7A5AF8', ask: '#1FA855', wait: '#E08A1E' };
+let _igf = null, _igfSel = null, _igfView = { x: 40, y: 40, z: 1 }, _igfPtr = null;
 function igNewBlockId() { return 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+function igfBlank(name) { return { id: igNewBlockId(), name: name || 'Mensagens', x: 0, y: 0, messages: [{ text: '', buttons: [] }], options: [], optionsText: '', ask: { type: '', label: '', retry: '', done: '', goto: '' }, wait: { minutes: 0, goto: '' } }; }
+
 function openIgAutoEditor(id) {
-  const act = flowAct();
   const a = id ? JSON.parse(JSON.stringify(_ig.autos.find(x => x.id === id) || {})) : {};
-  const fromReplies = [{ id: 'b0', name: 'Início', messages: (a.replies && a.replies.length ? a.replies : [{ text: '', buttons: [] }]) }];
-  const blocks = (a.blocks && a.blocks.length ? a.blocks : fromReplies).map((b, i) => ({
-    id: i === 0 ? 'b0' : (b.id || igNewBlockId()), name: b.name || (i ? 'Bloco ' + (i + 1) : 'Início'),
+  const src = a.blocks && a.blocks.length ? a.blocks : [{ id: 'b0', name: 'Início', messages: (a.replies && a.replies.length ? a.replies : [{ text: '', buttons: [] }]) }];
+  const blocks = src.map((b, i) => ({
+    id: i === 0 ? 'b0' : (b.id || igNewBlockId()), name: b.name || (i ? 'Bloco ' + (i + 1) : 'Início'), x: Number(b.x) || 0, y: Number(b.y) || 0,
     messages: (b.messages && b.messages.length ? b.messages : [{ text: '', buttons: [] }]).map(r => ({ text: r.text || '', buttons: (r.buttons || []).map(x => ({ ...x })) })),
     options: (b.options || []).map(o => ({ title: o.title || '', goto: o.goto || '' })), optionsText: b.optionsText || '',
     ask: { type: (b.ask && b.ask.type) || '', label: (b.ask && b.ask.label) || '', retry: (b.ask && b.ask.retry) || '', done: (b.ask && b.ask.done) || '', goto: (b.ask && b.ask.goto) || '' },
     wait: { minutes: (b.wait && b.wait.minutes) || 0, goto: (b.wait && b.wait.goto) || '' }
   }));
-  const g = a.followGate || {};
-  _igEd = {
-    id: id || '', name: a.name || '', active: a.active !== false,
+  const g = a.followGate || {}, L = a.layout || {};
+  _igf = {
+    act: flowAct(), id: id || '', name: a.name || 'Nova automação do Instagram', active: a.active !== false,
     trigger: { type: (a.trigger && a.trigger.type) || 'dm_keyword', keywords: (a.trigger && a.trigger.keywords) || [], match: (a.trigger && a.trigger.match) || 'contains', mediaId: (a.trigger && a.trigger.mediaId) || '' },
-    blocks, followGate: { on: !!g.on, text: g.text || '', again: g.again || '', button: g.button || '' },
-    commentReply: a.commentReply || [], moveStage: a.moveStage || '', aiTakeover: !!a.aiTakeover, cooldownHours: a.cooldownHours == null ? 24 : a.cooldownHours
+    gate: { on: !!g.on, text: g.text || '', again: g.again || '', button: g.button || '', x: Number(L.gx) || 0, y: Number(L.gy) || 0 },
+    tpos: { x: Number(L.tx) || 0, y: Number(L.ty) || 0 }, start: 'b0', blocks,
+    commentReply: a.commentReply || [], moveStage: a.moveStage || '', aiTakeover: !!a.aiTakeover, cooldownHours: a.cooldownHours == null ? 24 : a.cooldownHours, _dirty: false
   };
-  igEditorRender(act);
+  if (!(a.layout && (L.tx || L.ty)) && !blocks.some(b => b.x || b.y)) igfAutoLayout();
+  _igfSel = 'trigger'; _igfView = { x: 40, y: 40, z: 1 };
+  igfRender();
+  setTimeout(igfFit, 60);
 }
-function igGotoSelect(idAttr, cur, selfIdx) {
-  return `<select class="field-input" id="${idAttr}"><option value="">Fim (não manda mais nada)</option>${_igEd.blocks.map((b, i) => i === selfIdx ? '' :
-    `<option value="${escapeHtml(b.id)}" ${b.id === cur ? 'selected' : ''}>${i + 1}. ${escapeHtml(b.name || 'Bloco')}</option>`).join('')}</select>`;
+// Posições para automações antigas (sem posição salva): em colunas, seguindo as ligações.
+function igfAutoLayout() {
+  const f = _igf;
+  f.tpos = { x: 0, y: 0 };
+  f.gate.x = 300; f.gate.y = 0;
+  const x0 = f.gate.on ? 600 : 300;
+  const depth = {}, order = [];
+  const visit = (id, d) => { if (!id || depth[id] !== undefined) return; depth[id] = d; order.push(id); const b = f.blocks.find(x => x.id === id); if (!b) return; [...b.options.map(o => o.goto), b.ask.goto, b.wait.goto].forEach(t => visit(t, d + 1)); };
+  visit(f.start, 0);
+  f.blocks.forEach(b => { if (depth[b.id] === undefined) { depth[b.id] = 0; order.push(b.id); } });
+  const rows = {};
+  order.forEach(id => { const b = f.blocks.find(x => x.id === id); const d = depth[id]; rows[d] = (rows[d] || 0); b.x = x0 + d * 300; b.y = rows[d] * 230; rows[d]++; });
 }
-function igBlockHtml(b, bi) {
-  const p = `igb${bi}`;
+
+function igfNodes() {
+  const f = _igf;
+  const list = [{ id: 'trigger', kind: 'trigger', x: f.tpos.x, y: f.tpos.y }];
+  if (f.gate.on) list.push({ id: 'gate', kind: 'gate', x: f.gate.x, y: f.gate.y });
+  f.blocks.forEach(b => list.push({ id: b.id, kind: 'block', x: b.x, y: b.y, b }));
+  return list;
+}
+function igfOuts(n) {
+  const f = _igf;
+  if (n.kind === 'trigger') return f.gate.on ? [] : [{ port: 'start', label: 'Começa por', goto: f.start, color: IGF_COLORS.block }];
+  if (n.kind === 'gate') return [{ port: 'start', label: 'Já segue', goto: f.start, color: IGF_COLORS.gate }];
+  const b = n.b, outs = [];
+  b.options.forEach((o, i) => outs.push({ port: 'o' + i, label: '▸ ' + (o.title || 'Botão ' + (i + 1)), goto: o.goto, color: IGF_COLORS.opt }));
+  if (b.ask.type) outs.push({ port: 'ask', label: 'Depois que responder', goto: b.ask.goto, color: IGF_COLORS.ask });
+  if (b.wait.minutes) outs.push({ port: 'wait', label: `Sem toque em ${b.wait.minutes % 60 === 0 ? b.wait.minutes / 60 + ' h' : b.wait.minutes + ' min'}`, goto: b.wait.goto, color: IGF_COLORS.wait });
+  return outs;
+}
+function igfTitle(n) { return n.kind === 'trigger' ? 'Gatilho' : n.kind === 'gate' ? 'Só para quem segue' : (n.b.id === _igf.start ? 'Início · ' : '') + (n.b.name || 'Mensagens'); }
+function igfSummary(n) {
+  const f = _igf;
+  if (n.kind === 'trigger') {
+    const label = (IG_TRIGGERS.find(x => x[0] === f.trigger.type) || [0, f.trigger.type])[1];
+    const kw = (f.trigger.keywords || []).length ? `<div style="margin-top:4px;">${f.trigger.keywords.map(k => `<b>${escapeHtml(k)}</b>`).join(', ')}</div>` : '';
+    const need = (f.trigger.type === 'dm_keyword' && !(f.trigger.keywords || []).length) ? '<div style="color:var(--red);">Escreva as palavras-chave</div>' : '';
+    return escapeHtml(label) + kw + need + (f.gate.on ? '' : (f.start ? '' : '<div style="color:var(--red);">Ligue a bolinha a um bloco</div>'));
+  }
+  if (n.kind === 'gate') return 'Confere se a pessoa segue o perfil. Quem não segue recebe o pedido com o botão <b>' + escapeHtml(f.gate.button || 'Já segui') + '</b>.' + (f.start ? '' : '<div style="color:var(--red);">Ligue a bolinha a um bloco</div>');
+  const b = n.b;
+  const msgs = b.messages.filter(m => m.text.trim() || m.buttons.length);
+  if (!msgs.length) return '<span style="color:var(--red);">Escreva a mensagem</span>';
+  const links = b.messages.reduce((s, m) => s + m.buttons.length, 0);
+  const ask = b.ask.type ? `<div style="margin-top:4px;">Pede: <b>${escapeHtml({ email: 'e-mail', phone: 'WhatsApp', text: b.ask.label || 'uma resposta' }[b.ask.type])}</b></div>` : '';
+  return escapeHtml(limitText(msgs[0].text, 90)) + (msgs.length > 1 ? ` <b>+${msgs.length - 1}</b>` : '') + (links ? `<div style="margin-top:4px;">🔗 ${links} link${links > 1 ? 's' : ''}</div>` : '') + ask;
+}
+
+function igfRender() {
+  const box = document.getElementById('instagram-body');
+  if (!box || !_igf) return;
+  const keep = ['.flow-palette', '.flow-inspector'].map(sel => { const el = box.querySelector(sel); return [sel, el ? el.scrollTop : 0]; });
+  box.innerHTML = `<div class="flow-editor">
+    <div class="flow-top">
+      <button class="huv-btn" onclick="igfClose()">← Instagram</button>
+      <input class="field-input flow-name" value="${escapeHtml(_igf.name)}" oninput="_igf.name = this.value; _igf._dirty = true" aria-label="Nome da automação">
+      <label class="integ-toggle"><input type="checkbox" ${_igf.active ? 'checked' : ''} onchange="_igf.active = this.checked; _igf._dirty = true"> Ligada</label>
+      <span id="igf-fb" class="integ-muted" style="margin-left:auto;"></span>
+      <button class="btn-add-lead" style="height:38px;padding:0 16px;" onclick="igfSave(this)">Salvar</button>
+    </div>
+    <div class="flow-body">
+      <aside class="flow-palette">
+        <div class="ci-label">Adicionar bloco</div>
+        <button class="flow-add" onclick="igfAddBlock()">${flowIcon('text', IGF_COLORS.block)}<span>Mensagens</span></button>
+        <button class="flow-add" onclick="igfToggleGate(true)" ${_igf.gate.on ? 'disabled style="opacity:.5;cursor:default;"' : ''}>${flowIcon('condition', IGF_COLORS.gate)}<span>Só para quem segue</span></button>
+        <div class="integ-muted" style="margin-top:14px;">Arraste os blocos para organizar. Para ligar, puxe uma bolinha da direita até outro bloco. Cada botão de resposta, a resposta pedida e a espera têm a sua bolinha. Clique na ✕ da linha para desligar.</div>
+        <div class="integ-muted" style="margin-top:10px;">Use {nome} nas mensagens para o primeiro nome da pessoa.</div>
+      </aside>
+      <div class="flow-canvas" id="igf-canvas">
+        <div class="flow-world" id="igf-world"><svg class="flow-edges" id="igf-edges" width="6000" height="4000"></svg><div id="igf-nodes"></div></div>
+        <div class="flow-zoom"><button onclick="igfZoom(0.1)" aria-label="Aproximar">+</button><button onclick="igfZoom(-0.1)" aria-label="Afastar">−</button><button onclick="igfFit()" aria-label="Enquadrar" title="Enquadrar tudo">⤢</button></div>
+      </div>
+      <aside class="flow-inspector" id="igf-inspector"></aside>
+    </div>
+  </div>`;
+  keep.forEach(([sel, top]) => { const el = top && box.querySelector(sel); if (el) el.scrollTop = top; });
+  const c = document.getElementById('igf-canvas');
+  c.addEventListener('pointerdown', igfDown);
+  c.addEventListener('wheel', ev => { if (ev.ctrlKey || ev.metaKey) { ev.preventDefault(); igfZoom(ev.deltaY < 0 ? 0.08 : -0.08); } else { _igfView.x -= ev.deltaX; _igfView.y -= ev.deltaY; igfApply(); ev.preventDefault(); } }, { passive: false });
+  igfRenderNodes(); igfRenderInspector();
+}
+function igfApply() { const w = document.getElementById('igf-world'); if (w) w.style.transform = `translate(${_igfView.x}px, ${_igfView.y}px) scale(${_igfView.z})`; }
+function igfZoom(d) { _igfView.z = Math.min(1.6, Math.max(0.4, +(_igfView.z + d).toFixed(2))); igfApply(); igfEdges(); }
+function igfFit() {
+  const c = document.getElementById('igf-canvas'), ns = _igf && igfNodes();
+  if (!c || !ns || !ns.length) return;
+  const els = ns.map(n => document.querySelector(`#igf-nodes .flow-node[data-node="${n.id}"]`));
+  const minX = Math.min(...ns.map(n => n.x)), minY = Math.min(...ns.map(n => n.y));
+  const maxX = Math.max(...ns.map(n => n.x + FLOW_W)), maxY = Math.max(...ns.map((n, i) => n.y + ((els[i] && els[i].offsetHeight) || 140)));
+  const z = Math.min(1.1, Math.max(0.4, Math.min((c.clientWidth - 60) / (maxX - minX), (c.clientHeight - 60) / (maxY - minY))));
+  _igfView = { z, x: 30 - minX * z, y: 30 - minY * z };
+  igfApply(); igfEdges();
+}
+function igfRenderNodes() {
+  const host = document.getElementById('igf-nodes');
+  if (!host) return;
+  host.innerHTML = igfNodes().map(n => {
+    const color = IGF_COLORS[n.kind];
+    const icon = n.kind === 'trigger' ? 'trigger' : n.kind === 'gate' ? 'condition' : 'text';
+    const outs = igfOuts(n).map(o => `<div style="position:relative;margin:6px -40px 0 0;padding:4px 26px 4px 0;text-align:right;font-size:11px;font-weight:800;color:${o.color};border-top:1px dashed var(--border);">${escapeHtml(limitText(o.label, 30))}<span class="flow-port out" data-node="${n.id}" data-port="${o.port}" style="top:50%;transform:translateY(-50%);border-color:${o.color};"></span></div>`).join('');
+    return `<div class="flow-node ${_igfSel === n.id ? 'selected' : ''}" data-node="${n.id}" style="left:${n.x}px;top:${n.y}px;">
+      ${n.kind === 'block' ? `<span class="flow-port in" data-node="${n.id}"></span>` : ''}
+      <div class="flow-node-head" style="border-color:${color};"><span class="flow-node-icon" style="background:${color}22;">${flowIcon(icon, color)}</span><span>${escapeHtml(igfTitle(n))}</span></div>
+      <div class="flow-node-body">${igfSummary(n)}${outs}</div>
+    </div>`;
+  }).join('');
+  igfApply(); igfEdges();
+}
+function igfPortPos(nodeId, port) {
+  const n = igfNodes().find(x => x.id === nodeId);
+  const el = document.querySelector(`#igf-nodes .flow-node[data-node="${nodeId}"]`);
+  if (!n || !el) return null;
+  if (port === 'in') return { x: n.x, y: n.y + 26 };
+  const p = el.querySelector(`.flow-port.out[data-port="${port}"]`);
+  if (!p) return { x: n.x + FLOW_W, y: n.y + 26 };
+  const nr = el.getBoundingClientRect(), pr = p.getBoundingClientRect();
+  return { x: n.x + (pr.left - nr.left + pr.width / 2) / _igfView.z, y: n.y + (pr.top - nr.top + pr.height / 2) / _igfView.z };
+}
+function igfEdgeList() {
+  const f = _igf, out = [];
+  if (f.gate.on) out.push({ from: 'trigger', port: '', to: 'gate', fixed: true, color: IGF_COLORS.gate });
+  igfNodes().forEach(n => igfOuts(n).forEach(o => { if (o.goto && f.blocks.some(b => b.id === o.goto)) out.push({ from: n.id, port: o.port, to: o.goto, color: o.color }); }));
+  return out;
+}
+function igfEdges(temp) {
+  const svg = document.getElementById('igf-edges');
+  if (!svg) return;
+  const parts = igfEdgeList().map((e, i) => {
+    const a = e.fixed ? (() => { const n = igfNodes().find(x => x.id === 'trigger'); return { x: n.x + FLOW_W, y: n.y + 26 }; })() : igfPortPos(e.from, e.port);
+    const b = igfPortPos(e.to, 'in');
+    if (!a || !b) return '';
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    return `<path d="${flowCurve(a, b)}" stroke="${e.color}" stroke-width="2.2" fill="none"/>` + (e.fixed ? '' :
+      `<g class="flow-edge-del" onclick="igfUnlink('${e.from}','${e.port}')"><circle cx="${mx}" cy="${my}" r="9" fill="var(--surface)" stroke="var(--border2)"/><path d="M${mx - 3.5},${my - 3.5} L${mx + 3.5},${my + 3.5} M${mx + 3.5},${my - 3.5} L${mx - 3.5},${my + 3.5}" stroke="var(--muted2)" stroke-width="1.6"/></g>`);
+  });
+  if (temp && temp.a) parts.push(`<path d="${flowCurve(temp.a, temp.b)}" stroke="var(--accent)" stroke-width="2.2" stroke-dasharray="6 5" fill="none"/>`);
+  svg.innerHTML = parts.join('');
+}
+function igfSetLink(from, port, to) {
+  const f = _igf;
+  if (from === 'trigger' || from === 'gate') f.start = to;
+  else {
+    const b = f.blocks.find(x => x.id === from);
+    if (!b) return;
+    if (port === 'ask') b.ask.goto = to; else if (port === 'wait') b.wait.goto = to; else if (/^o\d+$/.test(port)) { const o = b.options[+port.slice(1)]; if (o) o.goto = to; }
+  }
+  f._dirty = true;
+}
+function igfUnlink(from, port) { igfSetLink(from, port, ''); igfRenderNodes(); igfRenderInspector(); }
+function igfWorld(ev) { const r = document.getElementById('igf-canvas').getBoundingClientRect(); return { x: (ev.clientX - r.left - _igfView.x) / _igfView.z, y: (ev.clientY - r.top - _igfView.y) / _igfView.z }; }
+function igfDown(ev) {
+  if (ev.target.closest('.flow-zoom') || ev.target.closest('.flow-edge-del')) return;
+  const port = ev.target.closest('.flow-port.out'), node = ev.target.closest('.flow-node');
+  if (port) _igfPtr = { mode: 'connect', from: port.dataset.node, port: port.dataset.port };
+  else if (node) { const n = igfNodes().find(x => x.id === node.dataset.node); const p = igfWorld(ev); _igfPtr = { mode: 'node', id: n.id, dx: p.x - n.x, dy: p.y - n.y, moved: false }; }
+  else _igfPtr = { mode: 'pan', sx: ev.clientX, sy: ev.clientY, vx: _igfView.x, vy: _igfView.y, moved: false };
+  document.addEventListener('pointermove', igfMove);
+  document.addEventListener('pointerup', igfUp, { once: true });
+  ev.preventDefault();
+}
+function igfMoveNode(id, x, y) {
+  if (id === 'trigger') { _igf.tpos.x = x; _igf.tpos.y = y; }
+  else if (id === 'gate') { _igf.gate.x = x; _igf.gate.y = y; }
+  else { const b = _igf.blocks.find(v => v.id === id); if (b) { b.x = x; b.y = y; } }
+}
+function igfMove(ev) {
+  const s = _igfPtr;
+  if (!s) return;
+  if (s.mode === 'pan') { _igfView.x = s.vx + ev.clientX - s.sx; _igfView.y = s.vy + ev.clientY - s.sy; s.moved = s.moved || Math.abs(ev.clientX - s.sx) + Math.abs(ev.clientY - s.sy) > 4; igfApply(); }
+  else if (s.mode === 'node') {
+    const p = igfWorld(ev), n = igfNodes().find(x => x.id === s.id);
+    const nx = Math.round((p.x - s.dx) / 10) * 10, ny = Math.round((p.y - s.dy) / 10) * 10;
+    if (nx !== n.x || ny !== n.y) { igfMoveNode(s.id, nx, ny); s.moved = true; _igf._dirty = true; }
+    const el = document.querySelector(`#igf-nodes .flow-node[data-node="${s.id}"]`);
+    if (el) { el.style.left = nx + 'px'; el.style.top = ny + 'px'; }
+    igfEdges();
+  } else if (s.mode === 'connect') igfEdges({ a: igfPortPos(s.from, s.port), b: igfWorld(ev) });
+}
+function igfUp(ev) {
+  document.removeEventListener('pointermove', igfMove);
+  const s = _igfPtr; _igfPtr = null;
+  if (!s) return;
+  if (s.mode === 'connect') {
+    const t = document.elementFromPoint(ev.clientX, ev.clientY);
+    const el = t && t.closest('#igf-nodes .flow-node');
+    const to = el && el.dataset.node;
+    if (to && to !== 'trigger' && to !== 'gate' && to !== s.from) { igfSetLink(s.from, s.port, to); igfRenderNodes(); igfRenderInspector(); }
+    else igfEdges();
+  } else if (s.mode === 'node' && !s.moved) { _igfSel = s.id; igfRenderNodes(); igfRenderInspector(); }
+  else if (s.mode === 'pan' && !s.moved) { _igfSel = null; igfRenderNodes(); igfRenderInspector(); }
+}
+
+function igfAddBlock() {
+  const c = document.getElementById('igf-canvas');
+  const b = igfBlank('Bloco ' + (_igf.blocks.length + 1));
+  b.x = Math.round(((c.clientWidth / 2 - _igfView.x) / _igfView.z - FLOW_W / 2) / 10) * 10;
+  b.y = Math.round(((c.clientHeight / 2 - _igfView.y) / _igfView.z - 60) / 10) * 10;
+  if (_igf.blocks.length >= 15) return showToast('Até 15 blocos por automação.', 'warning');
+  _igf.blocks.push(b);
+  if (!_igf.start) _igf.start = b.id;
+  _igfSel = b.id; _igf._dirty = true;
+  igfRenderNodes(); igfRenderInspector();
+}
+function igfDeleteBlock(id) {
+  const f = _igf;
+  f.blocks = f.blocks.filter(b => b.id !== id);
+  f.blocks.forEach(b => { b.options.forEach(o => { if (o.goto === id) o.goto = ''; }); if (b.ask.goto === id) b.ask.goto = ''; if (b.wait.goto === id) b.wait.goto = ''; });
+  if (f.start === id) f.start = '';
+  _igfSel = null; f._dirty = true;
+  igfRenderNodes(); igfRenderInspector();
+}
+function igfToggleGate(on) {
+  const f = _igf;
+  f.gate.on = on;
+  if (on && !f.gate.x && !f.gate.y) { f.gate.x = f.tpos.x + 300; f.gate.y = f.tpos.y; }
+  _igfSel = on ? 'gate' : 'trigger'; f._dirty = true;
+  igfRenderNodes(); igfRenderInspector();
+}
+document.addEventListener('keydown', ev => {
+  if (!_igf || !_igfSel || (ev.key !== 'Delete' && ev.key !== 'Backspace') || !document.getElementById('igf-canvas')) return;
+  if (ev.target.closest && ev.target.closest('input, textarea, select')) return;
+  if (_igfSel === 'gate') igfToggleGate(false); else if (_igfSel !== 'trigger') igfDeleteBlock(_igfSel);
+});
+
+// ----- painel da direita -----
+function igfCur() { return _igf.blocks.find(b => b.id === _igfSel); }
+function igfUpd(fn, full) { fn(); _igf._dirty = true; igfRenderNodes(); if (full) igfRenderInspector(); }
+function igfRenderInspector() {
+  const box = document.getElementById('igf-inspector');
+  if (!box) return;
+  const f = _igf, act = f.act;
+  const lab = t => `<div class="ai-h" style="margin-top:14px;font-weight:800;color:var(--text);">${t}</div>`;
+  if (!_igfSel) { box.innerHTML = '<div class="integ-muted">Clique num bloco para editar.</div>'; box.classList.remove('open'); return; }
+  box.classList.add('open');
+  if (_igfSel === 'trigger') {
+    const t = f.trigger, stages = (typeof getAllStages === 'function' ? getAllStages(act) : getStages(act)) || [];
+    const isComment = t.type === 'comment_keyword', needsWords = t.type === 'dm_keyword' || isComment;
+    box.innerHTML = `<div class="cfgc-card-title">Gatilho</div>
+      ${lab('Quando acontecer')}<select class="field-input" onchange="igfUpd(() => _igf.trigger.type = this.value, true)">${IG_TRIGGERS.map(([k, l]) => `<option value="${k}" ${t.type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      ${t.type === 'menu' ? '<div class="integ-muted" style="margin-top:6px;">Começa quando a pessoa toca numa pergunta pronta ou num item do menu do direct (card "Perguntas prontas e menu").</div>' : ''}
+      ${needsWords ? `${lab('Palavras-chave')}<input class="field-input" value="${escapeHtml((t.keywords || []).join(', '))}" placeholder="quero, preço, valor" oninput="igfUpd(() => _igf.trigger.keywords = this.value.split(',').map(x => x.trim()).filter(Boolean))">
+        <select class="field-input" onchange="igfUpd(() => _igf.trigger.match = this.value)"><option value="contains" ${t.match !== 'exact' ? 'selected' : ''}>Contém a palavra</option><option value="exact" ${t.match === 'exact' ? 'selected' : ''}>É igual</option></select>` : ''}
+      ${isComment ? `${lab('Postagem')}<div class="integ-muted">${t.mediaId ? 'Uma postagem escolhida' : 'Qualquer postagem'}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;"><button class="huv-btn" type="button" onclick="igfPickMedia()">Escolher postagem</button>${t.mediaId ? '<button class="huv-btn" type="button" onclick="igfUpd(() => _igf.trigger.mediaId = \'\', true)">Qualquer postagem</button>' : ''}</div><div id="igf-media" style="margin-top:8px;"></div>
+        ${lab('Resposta pública no comentário')}<div class="integ-muted">Uma por linha. O CRM sorteia uma.</div><textarea class="field-input" rows="3" placeholder="Te chamei no direct!" oninput="igfUpd(() => _igf.commentReply = this.value.split('\\n').map(x => x.trim()).filter(Boolean))">${escapeHtml((f.commentReply || []).join('\n'))}</textarea>` : ''}
+      ${lab('Só para quem segue')}<label class="integ-toggle"><input type="checkbox" ${f.gate.on ? 'checked' : ''} onchange="igfToggleGate(this.checked)"> Pedir para seguir antes de entregar</label>
+      ${lab('Depois de disparar')}<label class="auto-label">Mover o card para<select class="field-input" onchange="igfUpd(() => _igf.moveStage = this.value)"><option value="">Não mover</option>${stages.map(s => `<option value="${escapeHtml(s.id)}" ${f.moveStage === s.id ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}</select></label>
+      <label class="auto-label" style="display:block;margin-top:8px;">Não repetir para a mesma pessoa por (horas)<input class="field-input" type="number" min="0" max="720" value="${Number(f.cooldownHours)}" oninput="_igf.cooldownHours = Number(this.value) || 0; _igf._dirty = true"></label>
+      <label class="integ-toggle" style="margin-top:8px;"><input type="checkbox" ${f.aiTakeover ? 'checked' : ''} onchange="_igf.aiTakeover = this.checked; _igf._dirty = true"> Passar a conversa para o Agente de IA</label>`;
+    if (isComment && f._media) igfRenderMedia();
+    return;
+  }
+  if (_igfSel === 'gate') {
+    const g = f.gate;
+    box.innerHTML = `<div class="cfgc-card-title">Só para quem segue</div>
+      <div class="integ-muted">Quem ainda não segue recebe esta mensagem com um botão. Ao tocar, o CRM confere e, se já segue, manda o bloco ligado em "Já segue".</div>
+      ${lab('Mensagem para quem não segue')}<textarea class="field-input" rows="3" placeholder="Para receber, é só seguir o perfil e tocar no botão abaixo 👇" oninput="igfUpd(() => _igf.gate.text = this.value)">${escapeHtml(g.text)}</textarea>
+      ${lab('Texto do botão')}<input class="field-input" maxlength="20" value="${escapeHtml(g.button)}" placeholder="Já segui" oninput="igfUpd(() => _igf.gate.button = this.value)">
+      ${lab('Se tocar sem seguir')}<textarea class="field-input" rows="2" placeholder="Ainda não apareceu que você me segue 🙈 Segue e toca de novo." oninput="_igf.gate.again = this.value; _igf._dirty = true">${escapeHtml(g.again)}</textarea>
+      <button class="btn-remove" style="margin-top:14px;" onclick="igfToggleGate(false)">Remover este bloco</button>`;
+    return;
+  }
+  const b = igfCur();
+  if (!b) { _igfSel = null; return igfRenderInspector(); }
+  const bi = _igf.blocks.indexOf(b);
   const waitH = b.wait.minutes && b.wait.minutes % 60 === 0;
-  return `<div class="ig-block" style="border:1px solid var(--border2);border-radius:12px;padding:12px;margin-bottom:12px;">
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;"><b style="white-space:nowrap;">${bi + 1}.</b>
-      <input class="field-input" id="${p}-name" value="${escapeHtml(b.name)}" maxlength="40" ${bi === 0 ? 'readonly title="O primeiro bloco é o que a pessoa recebe primeiro"' : ''} style="flex:1;">
-      ${bi > 0 ? `<button class="btn-remove" type="button" onclick="igEditorSync(); igRemoveBlock(${bi})">Excluir bloco</button>` : ''}</div>
-    ${b.messages.map((r, i) => `<div class="ai-media-item" style="flex-direction:column;">
-      <textarea class="field-input" rows="3" id="${p}-m${i}" placeholder="Mensagem ${i + 1}. Use {nome} para o primeiro nome.">${escapeHtml(r.text)}</textarea>
-      <div class="ai-row"><label>Botão com link (título)<input class="field-input" id="${p}-bt${i}" maxlength="20" value="${escapeHtml((r.buttons[0] || {}).title || '')}" placeholder="Ex.: Ver agora"></label><label style="flex:2;">Endereço do link<input class="field-input" id="${p}-bu${i}" value="${escapeHtml((r.buttons[0] || {}).url || '')}" placeholder="https://"></label></div>
-      ${b.messages.length > 1 ? `<button class="btn-remove" type="button" onclick="igEditorSync(); _igEd.blocks[${bi}].messages.splice(${i},1); igEditorRender(flowAct())">Remover mensagem</button>` : ''}
-    </div>`).join('')}
-    ${b.messages.length < 3 ? `<button class="huv-btn" type="button" onclick="igEditorSync(); _igEd.blocks[${bi}].messages.push({text:'',buttons:[]}); igEditorRender(flowAct())">+ Mensagem</button>` : ''}
-    <div class="ai-h" style="margin-top:12px;">Botões de resposta: a pessoa toca e recebe o bloco escolhido</div>
-    ${b.options.map((o, i) => `<div class="ai-row" style="align-items:flex-end;"><label>Texto do botão<input class="field-input" id="${p}-o${i}" maxlength="20" value="${escapeHtml(o.title)}" placeholder="Ex.: Quero saber o preço"></label>
-      <label>Leva para${igGotoSelect(`${p}-og${i}`, o.goto, -1)}</label>
-      <button class="btn-remove" type="button" style="margin-bottom:4px;" onclick="igEditorSync(); _igEd.blocks[${bi}].options.splice(${i},1); igEditorRender(flowAct())">×</button></div>`).join('')}
-    ${b.options.length < 10 ? `<button class="huv-btn" type="button" onclick="igEditorSync(); _igEd.blocks[${bi}].options.push({title:'',goto:''}); igEditorRender(flowAct())">+ Botão de resposta</button>` : ''}
-    ${b.options.length && b.messages.some(m => (m.buttons || []).length) ? `<label style="display:block;margin-top:8px;">Texto que vai junto dos botões de resposta (quando a última mensagem tem link)<input class="field-input" id="${p}-ot" value="${escapeHtml(b.optionsText)}" placeholder="Escolha uma opção 👇"></label>` : ''}
-    <div class="ai-h" style="margin-top:12px;">Pedir um dado depois deste bloco</div>
-    <select class="field-input" id="${p}-ask" onchange="igEditorSync(); igEditorRender(flowAct())">${IG_ASK.map(([k, l]) => `<option value="${k}" ${b.ask.type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-    ${b.ask.type ? `<div class="ai-row" style="margin-top:6px;">${b.ask.type === 'text' ? `<label>Nome da resposta no card<input class="field-input" id="${p}-al" maxlength="60" value="${escapeHtml(b.ask.label)}" placeholder="Ex.: Cidade"></label>` : ''}
-      <label style="flex:2;">Se não entender a resposta<input class="field-input" id="${p}-ar" value="${escapeHtml(b.ask.retry)}" placeholder="${b.ask.type === 'email' ? 'Não consegui ler o e-mail 😅 Pode mandar de novo?' : b.ask.type === 'phone' ? 'Manda o número com DDD, por favor.' : 'Pode mandar de novo?'}"></label></div>
-      <div class="ai-row"><label style="flex:2;">Depois de receber, responder<input class="field-input" id="${p}-ad" value="${escapeHtml(b.ask.done)}" placeholder="Ex.: Anotado, {nome}! 🙌"></label><label>e mandar${igGotoSelect(`${p}-ag`, b.ask.goto, bi)}</label></div>
-      <div class="ai-h">Escreva a pergunta na última mensagem do bloco (ex.: "Qual o seu melhor e-mail?").</div>` : ''}
-    <div class="ai-h" style="margin-top:12px;">Mandar outro bloco depois de um tempo, se a pessoa não tocar em nada</div>
-    <div class="ai-row"><label>Esperar<input class="field-input" type="number" min="0" max="${waitH ? 23 : 1380}" id="${p}-wn" value="${b.wait.minutes ? (waitH ? b.wait.minutes / 60 : b.wait.minutes) : ''}" placeholder="0"></label>
-      <label>Unidade<select class="field-input" id="${p}-wu"><option value="m" ${waitH ? '' : 'selected'}>minutos</option><option value="h" ${waitH ? 'selected' : ''}>horas</option></select></label>
-      <label style="flex:2;">e mandar${igGotoSelect(`${p}-wg`, b.wait.goto, bi)}</label></div>
-  </div>`;
+  box.innerHTML = `<div class="cfgc-card-title">Mensagens</div>
+    ${lab('Nome do bloco')}<input class="field-input" maxlength="40" value="${escapeHtml(b.name)}" oninput="igfUpd(() => igfCur().name = this.value)">
+    ${b.messages.map((m, i) => `${lab('Mensagem ' + (i + 1))}<textarea class="field-input" rows="4" placeholder="Oi {nome}! ..." oninput="igfUpd(() => igfCur().messages[${i}].text = this.value)">${escapeHtml(m.text)}</textarea>
+      <input class="field-input" maxlength="20" value="${escapeHtml((m.buttons[0] || {}).title || '')}" placeholder="Botão com link (título, opcional)" oninput="igfLink(${i}, 'title', this.value)">
+      <input class="field-input" value="${escapeHtml((m.buttons[0] || {}).url || '')}" placeholder="https://" oninput="igfLink(${i}, 'url', this.value)">
+      ${b.messages.length > 1 ? `<button class="btn-remove" style="margin-top:6px;" onclick="igfUpd(() => igfCur().messages.splice(${i}, 1), true)">Remover mensagem</button>` : ''}`).join('')}
+    ${b.messages.length < 3 ? `<button class="huv-btn" style="margin-top:8px;" onclick="igfUpd(() => igfCur().messages.push({ text: '', buttons: [] }), true)">+ Mensagem</button>` : ''}
+    ${lab('Botões de resposta')}<div class="integ-muted">Cada botão ganha uma bolinha no bloco: ligue cada uma ao bloco que a pessoa recebe ao tocar.</div>
+    ${b.options.map((o, i) => `<div style="display:flex;gap:6px;align-items:center;margin-top:6px;"><input class="field-input" style="margin-top:0;" maxlength="20" value="${escapeHtml(o.title)}" placeholder="Ex.: Quero o preço" oninput="igfUpd(() => igfCur().options[${i}].title = this.value)"><button class="btn-remove" onclick="igfUpd(() => igfCur().options.splice(${i}, 1), true)">×</button></div>`).join('')}
+    ${b.options.length < 10 ? `<button class="huv-btn" style="margin-top:8px;" onclick="igfUpd(() => igfCur().options.push({ title: '', goto: '' }), true)">+ Botão de resposta</button>` : ''}
+    ${b.options.length && b.messages.some(m => m.buttons.length) ? `${lab('Texto junto dos botões')}<input class="field-input" value="${escapeHtml(b.optionsText)}" placeholder="Escolha uma opção 👇" oninput="_igf.blocks[${bi}].optionsText = this.value; _igf._dirty = true">` : ''}
+    ${lab('Pedir um dado')}<select class="field-input" onchange="igfUpd(() => igfCur().ask.type = this.value, true)">${IG_ASK.map(([k, l]) => `<option value="${k}" ${b.ask.type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    ${b.ask.type ? `<div class="integ-muted" style="margin-top:4px;">Escreva a pergunta na última mensagem. A bolinha "Depois que responder" leva ao próximo bloco.</div>
+      ${b.ask.type === 'text' ? `<input class="field-input" maxlength="60" value="${escapeHtml(b.ask.label)}" placeholder="Nome da resposta no card (ex.: Cidade)" oninput="_igf.blocks[${bi}].ask.label = this.value; _igf._dirty = true; igfRenderNodes()">` : ''}
+      <input class="field-input" value="${escapeHtml(b.ask.retry)}" placeholder="Se não entender: ${b.ask.type === 'email' ? 'Pode mandar o e-mail de novo?' : b.ask.type === 'phone' ? 'Manda com DDD, por favor.' : 'Pode mandar de novo?'}" oninput="_igf.blocks[${bi}].ask.retry = this.value; _igf._dirty = true">
+      <input class="field-input" value="${escapeHtml(b.ask.done)}" placeholder="Depois de receber: Anotado, {nome}! 🙌" oninput="_igf.blocks[${bi}].ask.done = this.value; _igf._dirty = true">` : ''}
+    ${lab('Se a pessoa não tocar em nada')}<div class="integ-muted">Depois do tempo, manda o bloco ligado na bolinha da espera (até 23 horas, por causa da janela de 24 horas da Meta).</div>
+    <div style="display:flex;gap:6px;"><input class="field-input" type="number" min="0" max="${waitH ? 23 : 1380}" value="${b.wait.minutes ? (waitH ? b.wait.minutes / 60 : b.wait.minutes) : ''}" placeholder="0 = não esperar" id="igf-wn" oninput="igfWait()">
+      <select class="field-input" id="igf-wu" onchange="igfWait()"><option value="m" ${waitH ? '' : 'selected'}>minutos</option><option value="h" ${waitH ? 'selected' : ''}>horas</option></select></div>
+    ${b.id !== _igf.start ? `<button class="huv-btn" style="margin-top:14px;" onclick="igfUpd(() => _igf.start = '${b.id}', true)">Usar como primeiro bloco</button>` : '<div class="integ-muted" style="margin-top:14px;">Este é o primeiro bloco que a pessoa recebe.</div>'}
+    <button class="btn-remove" style="margin-top:10px;" onclick="igfDeleteBlock('${b.id}')">Excluir bloco</button>`;
 }
-function igRemoveBlock(bi) {
-  const gone = _igEd.blocks[bi].id;
-  _igEd.blocks.splice(bi, 1);
-  _igEd.blocks.forEach(b => { b.options.forEach(o => { if (o.goto === gone) o.goto = ''; }); if (b.ask.goto === gone) b.ask.goto = ''; if (b.wait.goto === gone) b.wait.goto = ''; });
-  igEditorRender(flowAct());
-}
-function igAddBlock() {
-  igEditorSync();
-  if (_igEd.blocks.length >= 15) return showToast('Até 15 blocos por automação.', 'warning');
-  _igEd.blocks.push({ id: igNewBlockId(), name: 'Bloco ' + (_igEd.blocks.length + 1), messages: [{ text: '', buttons: [] }], options: [], optionsText: '', ask: { type: '', label: '', retry: '', done: '', goto: '' }, wait: { minutes: 0, goto: '' } });
-  igEditorRender(flowAct());
-  const list = document.querySelectorAll('#ig-auto-modal .ig-block');
-  if (list.length) list[list.length - 1].scrollIntoView({ block: 'center', behavior: 'smooth' });
-}
-function igEditorRender(act) {
-  const e = _igEd;
-  const stages = (typeof getAllStages === 'function' ? getAllStages(act) : getStages(act)) || [];
-  const isComment = e.trigger.type === 'comment_keyword';
-  const needsWords = e.trigger.type === 'dm_keyword' || isComment;
-  const gate = e.followGate;
-  let ov = document.getElementById('ig-auto-modal');
-  const keepScroll = ov && ov.querySelector('.modal-box') ? ov.querySelector('.modal-box').scrollTop : 0;
-  if (!ov) { ov = document.createElement('div'); ov.id = 'ig-auto-modal'; ov.className = 'modal-overlay stages-modal'; document.body.appendChild(ov); }
-  ov.innerHTML = `<div class="modal-box ai-modal-box">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;">
-      <div class="modal-title" style="margin-bottom:0;">${e.id ? 'Editar automação' : 'Nova automação'} do Instagram</div>
-      <button class="btn-close-panel" onclick="igEditorClose()">×</button>
-    </div>
-    <div class="ai-sec"><div class="ai-row"><label style="flex-basis:100%;">Nome<input class="field-input" id="ige-name" value="${escapeHtml(e.name)}" placeholder="Ex.: Quem comentar EU QUERO"></label></div></div>
-    <div class="ai-sec"><div class="ai-t">Quando acontecer</div>
-      <select class="field-input" id="ige-trigger" onchange="igEditorSync(); igEditorRender(flowAct())">${IG_TRIGGERS.map(([k, l]) => `<option value="${k}" ${e.trigger.type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-      ${e.trigger.type === 'menu' ? '<div class="ai-h" style="margin-top:6px;">Esta automação só começa quando a pessoa toca numa pergunta pronta ou num item do menu do direct (configure no card "Perguntas prontas e menu").</div>' : ''}
-      ${needsWords ? `<div class="ai-row" style="margin-top:8px;"><label style="flex:2;">Palavras-chave (separe por vírgula)<input class="field-input" id="ige-words" value="${escapeHtml((e.trigger.keywords || []).join(', '))}" placeholder="quero, preço, valor"></label>
-        <label>Comparação<select class="field-input" id="ige-match"><option value="contains" ${e.trigger.match !== 'exact' ? 'selected' : ''}>Contém a palavra</option><option value="exact" ${e.trigger.match === 'exact' ? 'selected' : ''}>É igual</option></select></label></div>` : ''}
-      ${isComment ? `<div style="margin-top:10px;"><div class="ai-h">Postagem: ${e.trigger.mediaId ? 'uma postagem escolhida' : 'qualquer postagem'}</div><div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="huv-btn" type="button" onclick="igPickMedia()">Escolher postagem</button>${e.trigger.mediaId ? '<button class="huv-btn" type="button" onclick="_igEd.trigger.mediaId=\'\'; igEditorRender(flowAct())">Qualquer postagem</button>' : ''}</div><div id="ige-media" style="margin-top:8px;"></div></div>` : ''}
-    </div>
-    <div class="ai-sec"><div class="ai-t">Só para quem segue</div>
-      <label class="ai-switch"><span>Pedir para seguir o perfil antes de entregar</span><input type="checkbox" id="ige-gate" ${gate.on ? 'checked' : ''} onchange="igEditorSync(); igEditorRender(flowAct())"></label>
-      ${gate.on ? `<div class="ai-h">Quem ainda não segue recebe esta mensagem com um botão. Ao tocar, o CRM confere e, se já segue, manda o bloco 1.</div>
-        <textarea class="field-input" rows="2" id="ige-gt" placeholder="Para receber, é só seguir o perfil e tocar no botão abaixo 👇">${escapeHtml(gate.text)}</textarea>
-        <div class="ai-row"><label>Texto do botão<input class="field-input" id="ige-gb" maxlength="20" value="${escapeHtml(gate.button)}" placeholder="Já segui"></label>
-          <label style="flex:2;">Se tocar sem seguir<input class="field-input" id="ige-ga" value="${escapeHtml(gate.again)}" placeholder="Ainda não apareceu que você me segue 🙈 Segue e toca de novo."></label></div>` : ''}
-    </div>
-    <div class="ai-sec"><div class="ai-t">Fluxo de mensagens no direct</div>
-      <div class="ai-h">O bloco 1 é enviado primeiro. Os botões de resposta, a pergunta e a espera levam a pessoa para os outros blocos.</div>
-      ${e.blocks.map((b, bi) => igBlockHtml(b, bi)).join('')}
-      <button class="huv-btn" type="button" onclick="igAddBlock()">+ Novo bloco</button>
-    </div>
-    ${isComment ? `<div class="ai-sec"><div class="ai-t">Resposta pública no comentário (opcional)</div><div class="ai-h">Uma por linha. O CRM sorteia uma, para não parecer robô.</div><textarea class="field-input" rows="3" id="ige-cr" placeholder="Te chamei no direct!&#10;Enviei os detalhes no seu direct 😉">${escapeHtml((e.commentReply || []).join('\n'))}</textarea></div>` : ''}
-    <div class="ai-sec"><div class="ai-t">Depois de responder</div>
-      <div class="ai-row"><label>Mover o card para<select class="field-input" id="ige-stage"><option value="">Não mover</option>${stages.map(s => `<option value="${escapeHtml(s.id)}" ${e.moveStage === s.id ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}</select></label>
-        <label>Não repetir para a mesma pessoa por (horas)<input class="field-input" id="ige-cool" type="number" min="0" max="720" value="${Number(e.cooldownHours)}"></label></div>
-      <label class="ai-switch" style="margin-top:8px;"><span>Passar a conversa para o Agente de IA</span><input type="checkbox" id="ige-ai" ${e.aiTakeover ? 'checked' : ''}></label>
-    </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap;"><span id="ige-fb" style="font-size:12px;align-self:center;margin-right:auto;"></span>
-      <button class="modal-btn-cancel" onclick="igEditorClose()">Cancelar</button><button class="modal-btn-save" onclick="igEditorSave(this)">Salvar</button></div>
-  </div>`;
-  ov.style.display = 'flex'; ov.classList.add('open');
-  const box = ov.querySelector('.modal-box'); if (box && keepScroll) box.scrollTop = keepScroll;
-  if (isComment && e._media) igRenderMedia();
-}
-function igEditorSync() {
-  const e = _igEd, g = id => document.getElementById(id);
-  if (!e || !g('ige-name')) return;
-  e.name = g('ige-name').value;
-  if (g('ige-words')) { e.trigger.keywords = g('ige-words').value.split(',').map(x => x.trim()).filter(Boolean); e.trigger.match = g('ige-match').value; }
-  if (g('ige-gate')) e.followGate.on = g('ige-gate').checked;
-  if (g('ige-gt')) { e.followGate.text = g('ige-gt').value.trim(); e.followGate.button = g('ige-gb').value.trim(); e.followGate.again = g('ige-ga').value.trim(); }
-  e.blocks.forEach((b, bi) => {
-    const p = `igb${bi}`;
-    if (!g(p + '-name')) return;
-    b.name = g(p + '-name').value.trim() || (bi ? 'Bloco ' + (bi + 1) : 'Início');
-    b.messages.forEach((r, i) => { if (!g(`${p}-m${i}`)) return; r.text = g(`${p}-m${i}`).value; const t = g(`${p}-bt${i}`).value.trim(), u = g(`${p}-bu${i}`).value.trim(); r.buttons = t && u ? [{ title: t, url: u }] : []; });
-    b.options.forEach((o, i) => { if (!g(`${p}-o${i}`)) return; o.title = g(`${p}-o${i}`).value.trim(); o.goto = g(`${p}-og${i}`).value; });
-    if (g(p + '-ot')) b.optionsText = g(p + '-ot').value.trim();
-    b.ask.type = g(p + '-ask').value;
-    if (g(p + '-ar')) { b.ask.retry = g(p + '-ar').value.trim(); b.ask.done = g(p + '-ad').value.trim(); b.ask.goto = g(p + '-ag').value; }
-    if (g(p + '-al')) b.ask.label = g(p + '-al').value.trim();
-    const n = Math.max(0, Number(g(p + '-wn').value) || 0);
-    b.wait.minutes = Math.min(1380, g(p + '-wu').value === 'h' ? Math.min(23, n) * 60 : n);
-    b.wait.goto = g(p + '-wg').value;
+function igfLink(i, key, val) {
+  igfUpd(() => {
+    const m = igfCur().messages[i];
+    const cur = m.buttons[0] || { title: '', url: '' };
+    cur[key] = val.trim();
+    m.buttons = cur.title || cur.url ? [cur] : [];
   });
-  if (g('ige-cr')) e.commentReply = g('ige-cr').value.split('\n').map(x => x.trim()).filter(Boolean);
-  if (g('ige-stage')) { e.moveStage = g('ige-stage').value; e.cooldownHours = Number(g('ige-cool').value) || 0; e.aiTakeover = g('ige-ai').checked; }
-  if (g('ige-trigger')) e.trigger.type = g('ige-trigger').value;
 }
-function igEditorClose() { const ov = document.getElementById('ig-auto-modal'); if (ov) ov.remove(); _igEd = null; }
-async function igEditorSave(btn) {
-  igEditorSync();
-  const fb = document.getElementById('ige-fb');
-  const e = _igEd;
-  const b0 = e.blocks[0];
-  let problem = '';
-  if (!b0.messages.some(m => m.text.trim() || m.buttons.length) && !b0.options.some(o => o.title)) problem = 'Escreva pelo menos uma mensagem no bloco 1.';
-  e.blocks.forEach((b, i) => {
-    if (b.options.some(o => o.title && o.title.length > 20)) problem = problem || `Bloco ${i + 1}: o texto do botão tem no máximo 20 letras.`;
-    if (b.wait.minutes && !b.wait.goto) problem = problem || `Bloco ${i + 1}: escolha qual bloco mandar depois da espera.`;
-    if (b.messages.some(m => m.buttons.length && !/^https?:\/\//i.test(m.buttons[0].url))) problem = problem || `Bloco ${i + 1}: o link do botão precisa começar com https://`;
-  });
-  if (problem) { fb.style.color = 'var(--red)'; fb.textContent = problem; return; }
+function igfWait() {
+  const n = Math.max(0, Number(document.getElementById('igf-wn').value) || 0);
+  const h = document.getElementById('igf-wu').value === 'h';
+  const before = !!igfCur().wait.minutes;
+  igfUpd(() => { igfCur().wait.minutes = Math.min(1380, h ? Math.min(23, n) * 60 : n); if (!igfCur().wait.minutes) igfCur().wait.goto = ''; });
+  if (before !== !!igfCur().wait.minutes) igfEdges();
+}
+async function igfPickMedia() {
+  const box = document.getElementById('igf-media');
+  box.innerHTML = '<div class="integ-muted">Buscando postagens...</div>';
+  try { const r = await window._fb.whatsapp('/instagram/media', flowAct(), {}); _igf._media = r.media || []; igfRenderMedia(); }
+  catch (e) { box.innerHTML = `<div class="integ-error">${escapeHtml(e.message)}</div>`; }
+}
+function igfRenderMedia() {
+  const box = document.getElementById('igf-media');
+  if (!box || !_igf._media) return;
+  box.innerHTML = `<div class="ig-media-grid">${_igf._media.map(m => `<button type="button" class="ig-media ${_igf.trigger.mediaId === m.id ? 'sel' : ''}" onclick="igfUpd(() => _igf.trigger.mediaId = '${escapeJsString(m.id)}', true)" title="${escapeHtml(m.caption)}">${m.thumb ? `<img src="${escapeHtml(m.thumb)}" alt="">` : ''}<span>${escapeHtml(limitText(m.caption || m.type, 40))}</span></button>`).join('')}</div>`;
+}
+
+async function igfClose() {
+  if (_igf && _igf._dirty && !await showConfirm('Sair sem salvar as mudanças desta automação?', 'Sair', 'Sair sem salvar', true)) return;
+  _igf = null; _igfSel = null;
+  renderInstagramView();
+}
+async function igfSave(btn) {
+  const f = _igf, fb = document.getElementById('igf-fb');
+  const err = t => { fb.style.color = 'var(--red)'; fb.textContent = t; };
+  if (!f.start || !f.blocks.some(b => b.id === f.start)) return err(f.gate.on ? 'Ligue a bolinha "Já segue" a um bloco de mensagens.' : 'Ligue a bolinha do gatilho a um bloco de mensagens.');
+  if ((f.trigger.type === 'dm_keyword') && !(f.trigger.keywords || []).length) return err('Escreva as palavras-chave do gatilho.');
+  for (const b of f.blocks) {
+    if (!b.messages.some(m => m.text.trim() || m.buttons.length) && !b.options.some(o => o.title)) return err(`O bloco "${b.name}" está sem mensagem.`);
+    if (b.messages.some(m => m.buttons.length && (!m.buttons[0].title || !/^https?:\/\//i.test(m.buttons[0].url || '')))) return err(`Bloco "${b.name}": o botão com link precisa de título e de um link https://`);
+    if (b.wait.minutes && !b.wait.goto) return err(`Bloco "${b.name}": ligue a bolinha da espera a um bloco (ou zere a espera).`);
+  }
+  // o primeiro bloco vai com o id b0, como o servidor espera
+  const ren = {};
+  const old0 = f.blocks.find(b => b.id === 'b0');
+  if (f.start !== 'b0') { if (old0) ren['b0'] = igNewBlockId(); ren[f.start] = 'b0'; }
+  const rid = id => ren[id] || id;
+  const blocks = [f.blocks.find(b => b.id === f.start), ...f.blocks.filter(b => b.id !== f.start)].map(b => ({
+    id: rid(b.id), name: b.name, x: b.x, y: b.y, messages: b.messages.map(m => ({ text: m.text, buttons: m.buttons })),
+    options: b.options.filter(o => o.title.trim()).map(o => ({ title: o.title.trim(), goto: rid(o.goto) })), optionsText: b.optionsText,
+    ask: { ...b.ask, goto: rid(b.ask.goto) }, wait: { minutes: b.wait.minutes, goto: rid(b.wait.goto) }
+  }));
   btn.disabled = true; fb.style.color = 'var(--muted)'; fb.textContent = 'Salvando...';
   try {
-    await window._fb.whatsapp('/instagram/auto-save', flowAct(), { auto: { id: e.id, name: e.name || 'Automação do Instagram', active: e.active, trigger: e.trigger, replies: b0.messages, blocks: e.blocks, followGate: e.followGate, commentReply: e.commentReply, moveStage: e.moveStage, aiTakeover: e.aiTakeover, cooldownHours: e.cooldownHours } });
-    igEditorClose(); showToast('Automação salva.', 'success'); renderInstagramView();
-  } catch (err) { fb.style.color = 'var(--red)'; fb.textContent = err.message; btn.disabled = false; }
+    const r = await window._fb.whatsapp('/instagram/auto-save', flowAct(), { auto: {
+      id: f.id, name: f.name.trim() || 'Automação do Instagram', active: f.active, trigger: f.trigger, replies: blocks[0].messages, blocks,
+      followGate: { on: f.gate.on, text: f.gate.text, again: f.gate.again, button: f.gate.button },
+      layout: { tx: f.tpos.x, ty: f.tpos.y, gx: f.gate.x, gy: f.gate.y },
+      commentReply: f.commentReply, moveStage: f.moveStage, aiTakeover: f.aiTakeover, cooldownHours: f.cooldownHours } });
+    f.id = (r && r.id) || f.id;
+    f.blocks.forEach(b => { b.id = rid(b.id); b.options.forEach(o => o.goto = rid(o.goto)); b.ask.goto = rid(b.ask.goto); b.wait.goto = rid(b.wait.goto); });
+    if (_igfSel) _igfSel = rid(_igfSel);
+    f.start = 'b0'; f._dirty = false;
+    btn.disabled = false; fb.style.color = 'var(--green, #1FA855)'; fb.textContent = 'Salvo';
+    showToast('Automação do Instagram salva.', 'success');
+    igfRenderNodes(); igfRenderInspector();
+    try { const au = await window._fb.whatsapp('/instagram/autos', flowAct(), {}); _ig.autos = au.autos || _ig.autos; } catch (e) {}
+  } catch (e) { btn.disabled = false; err(e.message); }
 }
+window.igfClose = igfClose; window.igfSave = igfSave; window.igfAddBlock = igfAddBlock; window.igfToggleGate = igfToggleGate; window.igfZoom = igfZoom; window.igfFit = igfFit;
+window.igfUnlink = igfUnlink; window.igfUpd = igfUpd; window.igfLink = igfLink; window.igfWait = igfWait; window.igfDeleteBlock = igfDeleteBlock; window.igfPickMedia = igfPickMedia; window.igfCur = igfCur;
 
 // ----- perguntas prontas e menu fixo do direct -----
 function igProfileCardHtml() {
@@ -22646,22 +22873,9 @@ async function igProfileSave(btn) {
   try { await window._fb.whatsapp('/instagram/profile-save', flowAct(), { iceBreakers, menu }); showToast('Perguntas prontas e menu salvos no Instagram.', 'success'); renderInstagramView(); }
   catch (e) { fb.style.color = 'var(--red)'; fb.textContent = e.message; btn.disabled = false; }
 }
-window.igAddBlock = igAddBlock; window.igRemoveBlock = igRemoveBlock; window.igProfileSave = igProfileSave;
-async function igPickMedia() {
-  igEditorSync();
-  const box = document.getElementById('ige-media');
-  box.innerHTML = '<div class="integ-muted">Buscando postagens...</div>';
-  try { const r = await window._fb.whatsapp('/instagram/media', flowAct(), {}); _igEd._media = r.media || []; igRenderMedia(); }
-  catch (e) { box.innerHTML = `<div class="integ-error">${escapeHtml(e.message)}</div>`; }
-}
-function igRenderMedia() {
-  const box = document.getElementById('ige-media');
-  if (!box || !_igEd._media) return;
-  box.innerHTML = `<div class="ig-media-grid">${_igEd._media.map(m => `<button type="button" class="ig-media ${_igEd.trigger.mediaId === m.id ? 'sel' : ''}" onclick="igEditorSync(); _igEd.trigger.mediaId='${escapeJsString(m.id)}'; igEditorRender(flowAct())" title="${escapeHtml(m.caption)}">${m.thumb ? `<img src="${escapeHtml(m.thumb)}" alt="">` : ''}<span>${escapeHtml(limitText(m.caption || m.type, 40))}</span></button>`).join('')}</div>`;
-}
+window.igProfileSave = igProfileSave;
 window.renderInstagramView = renderInstagramView; window.igConnect = igConnect; window.igAccountSave = igAccountSave; window.igDisconnect = igDisconnect;
-window.igAutoToggle = igAutoToggle; window.igAutoDelete = igAutoDelete; window.openIgAutoEditor = openIgAutoEditor; window.igEditorSync = igEditorSync;
-window.igEditorRender = igEditorRender; window.igEditorClose = igEditorClose; window.igEditorSave = igEditorSave; window.igPickMedia = igPickMedia;
+window.igAutoToggle = igAutoToggle; window.igAutoDelete = igAutoDelete; window.openIgAutoEditor = openIgAutoEditor;
 
 // ===== POSTAGENS: planejamento, calendário e programação =====
 const POST_STATUS = {
