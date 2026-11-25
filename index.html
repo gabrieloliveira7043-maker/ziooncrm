@@ -11446,8 +11446,8 @@ const REL_VARS = [
   ['Tráfego', [['investimento', 'Investimento'], ['leads', 'Leads'], ['cpl', 'Custo por lead'], ['conversas', 'Conversas'], ['custo_conversa', 'Custo por conversa'],
     ['impressoes', 'Impressões'], ['alcance', 'Alcance'], ['cliques', 'Cliques'], ['ctr', 'CTR'], ['cpm', 'CPM'], ['cpc', 'CPC'], ['frequencia', 'Frequência'],
     ['compras', 'Compras'], ['faturamento', 'Faturamento'], ['roas', 'ROAS'], ['melhor_campanha', 'Melhor campanha']]],
-  ['Comercial', [['novos_leads', 'Novos leads'], ['negociacoes', 'Em negociação'], ['fechamentos', 'Fechamentos'], ['valor_vendido', 'Valor vendido'],
-    ['ticket_medio', 'Ticket médio'], ['taxa_conversao', 'Taxa de conversão'], ['perdidos', 'Perdidos'], ['leads_por_origem', 'Leads por origem']]]
+  ['Comercial', [['novos_leads', 'Novos leads'], ['leads_por_origem', 'Leads por origem']]],
+  ['Vendas', [['fechamentos', 'Fechamentos'], ['valor_vendido', 'Valor vendido'], ['ticket_medio', 'Ticket médio'], ['taxa_conversao', 'Taxa de conversão']]]
 ];
 let _rel = { act: '', items: [], defaultText: '', draft: null, loading: false };
 
@@ -11558,9 +11558,34 @@ function relDefaultStages(act) {
   };
 }
 
+// Uma variável por coluna do funil do cliente ({etapa_...}), para o relatório seguir o funil de cada um.
+function relStageVars(act) {
+  const n = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 34) || 'coluna';
+  const used = new Set();
+  return relStageOptions(act).map(o => {
+    let v = 'etapa_' + n(o.label);
+    if (/_(var|total|valor)$/.test(v)) v += '_c';
+    let x = v, i = 2;
+    while (used.has(x)) x = v + '_' + (i++);
+    used.add(x);
+    return { v: x, key: o.key, label: o.label };
+  });
+}
+// Mensagem padrão de um relatório novo: tráfego igual para todos e a parte comercial com as colunas do funil do cliente.
+function relDefaultText(act, saleStages) {
+  const base = _rel.defaultText || '📊 *Relatório · {cliente}*\n{periodo}\n\n*Tráfego pago*\n💰 Investimento: {investimento} {investimento_var}\n👥 Leads: {leads} {leads_var}\n🎯 Custo por lead: {cpl}\n💬 Conversas: {conversas}\n📈 CTR: {ctr} · CPM: {cpm}\n\n';
+  const i = base.indexOf('*Comercial*');
+  const head = i >= 0 ? base.slice(0, i) : base.replace(/\s*$/, '\n\n');
+  const lines = relStageVars(act).map(x => `• ${x.label}: {${x.v}}`);
+  return head + '*Comercial*\n🧲 Novos leads: {novos_leads} {novos_leads_var}\n' + lines.join('\n')
+    + ((saleStages || []).length ? '\n✅ Vendas: {fechamentos} · {valor_vendido}' : '');
+}
 function openRelEditor(index) {
   const act = relAct();
   if (!act) return showToast('Escolha o cliente primeiro.', 'error');
+  pipelinesReady(act).then(() => relOpenEditorNow(index, act));
+}
+function relOpenEditorNow(index, act) {
   const base = index != null ? _rel.items[index] : null;
   const def = relDefaultStages(act);
   const lines = waLines(act).filter(l => !/^api/.test(l.id));
@@ -11569,7 +11594,7 @@ function openRelEditor(index) {
     dest: { type: 'group', groupId: '', groupName: '', numbers: [] },
     schedule: { freq: 'weekly', days: [5], monthDay: 1, time: '18:00', date: '' },
     period: { type: 'last_n', n: 7, from: '', to: '' }, compare: true, adAccount: '',
-    saleStages: def.saleStages, negStages: def.negStages, lostStages: def.lostStages, text: _rel.defaultText
+    saleStages: def.saleStages, negStages: [], lostStages: [], text: relDefaultText(act, def.saleStages)
   };
   const d = _rel.draft;
   d.id = base ? base.id : '';
@@ -11579,7 +11604,10 @@ function openRelEditor(index) {
     <div style="display:flex;flex-wrap:wrap;gap:6px;">${relStageOptions(act).map(o => `<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;border:1px solid var(--border);border-radius:999px;padding:3px 9px;cursor:pointer;">
       <input type="checkbox" class="rel-st-${field}" value="${escapeHtml(o.key)}" ${(d[field] || []).includes(o.key) ? 'checked' : ''}>${escapeHtml(o.label)}</label>`).join('')}</div></div>`;
   const chips = REL_VARS.map(([g, vs]) => `<div style="margin-top:6px;"><span style="font-size:11px;color:var(--muted);margin-right:4px;">${g}:</span>${vs.map(([k, l]) =>
-    `<button type="button" class="btn-cfg" style="width:auto;margin:2px;padding:2px 8px;font-size:11px;" onclick="relInsertVar('${k}')" title="{${k}}">${escapeHtml(l)}</button>`).join('')}</div>`).join('');
+    `<button type="button" class="btn-cfg" style="width:auto;margin:2px;padding:2px 8px;font-size:11px;" onclick="relInsertVar('${k}')" title="{${k}}">${escapeHtml(l)}</button>`).join('')}</div>`).join('')
+    + `<div style="margin-top:6px;"><span style="font-size:11px;color:var(--muted);margin-right:4px;">Funil:</span>${relStageVars(act).map(x =>
+      `<button type="button" class="btn-cfg" style="width:auto;margin:2px;padding:2px 8px;font-size:11px;" onclick="relInsertVar('${x.v}')" title="{${x.v}}">${escapeHtml(x.label)}</button>`).join('') || '<span style="font-size:11px;color:var(--muted);">O funil deste cliente ainda não tem colunas.</span>'}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px;">Coluna do funil: quantos leads entraram nela no período. Acrescente _total para quantos estão nela agora ({etapa_..._total}) ou _valor para a soma dos valores dos cards.</div>`;
   const lab = t => `<div style="font-size:12px;font-weight:600;color:var(--text);margin:14px 0 6px;">${t}</div>`;
   openHuvenModal(base ? 'Editar relatório' : 'Novo relatório', `
     ${lab('Nome do relatório')}<input id="rel-name" class="field-input" value="${escapeHtml(d.name || '')}" maxlength="80">
@@ -11606,10 +11634,8 @@ function openRelEditor(index) {
     <div id="rel-range" style="display:flex;gap:8px;margin-top:8px;align-items:center;font-size:13px;">De <input id="rel-from" type="date" class="field-input" style="width:170px;" value="${escapeHtml(d.period.from || '')}"> até <input id="rel-to" type="date" class="field-input" style="width:170px;" value="${escapeHtml(d.period.to || '')}"></div>
     <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-top:8px;"><input type="checkbox" id="rel-compare" ${d.compare ? 'checked' : ''}> Comparar com o período anterior (▲ ▼ %) nas variáveis terminadas em _var</label>
     ${isAdmin ? `${lab('Conta de anúncios (opcional)')}<input id="rel-adacc" class="field-input mono" placeholder="Em branco: a conta ligada ao cliente. Ou act_123..." value="${escapeHtml(d.adAccount || '')}">` : ''}
-    ${lab('Colunas do funil')}
-    ${stageBox('saleStages', 'Fechamento (contam como venda, com o valor do card)')}
-    ${stageBox('negStages', 'Negociação (quantos estão nessas colunas na hora do envio)')}
-    ${stageBox('lostStages', 'Perdidos')}
+    ${lab('Colunas de venda')}
+    ${stageBox('saleStages', 'Usadas em Fechamentos, Valor vendido, Ticket médio e Taxa de conversão (com o valor do card)')}
     ${lab('Mensagem')}
     <textarea id="rel-text" class="field-input" rows="12" style="font-family:inherit;" oninput="relPreviewSoon()">${escapeHtml(d.text || _rel.defaultText)}</textarea>
     <div style="font-size:12px;color:var(--muted);margin-top:4px;">Clique para inserir. Use *texto* para negrito. Para mostrar a variação, acrescente _var: {leads_var}.</div>
@@ -11691,7 +11717,8 @@ function relCollect() {
     period: { type: v('rel-period'), n: +v('rel-nv') || 7, from: v('rel-from'), to: v('rel-to') },
     compare: !!(document.getElementById('rel-compare') || {}).checked,
     adAccount: (v('rel-adacc').trim() && normalizeAdAccountInput(v('rel-adacc'))) || '',
-    saleStages: checked('rel-st-saleStages'), negStages: checked('rel-st-negStages'), lostStages: checked('rel-st-lostStages'),
+    saleStages: checked('rel-st-saleStages'), negStages: (_rel.draft && _rel.draft.negStages) || [], lostStages: (_rel.draft && _rel.draft.lostStages) || [],
+    stageVars: relStageVars(relAct()),
     text: v('rel-text')
   };
 }
