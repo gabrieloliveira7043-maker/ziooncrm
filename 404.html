@@ -10411,16 +10411,17 @@ function renderCampaignSummary() {
   const read = readCampaignDispatch();
   const d = read.dispatch || WHATSAPP_DISPATCH_DEFAULTS;
   const cloudMode = typeof campMode === 'function' && campMode() === 'cloud';
-  const cloudLines = cloudMode ? Math.max(1, campChosenLines().length) : 0;
+  // Pela API oficial a campanha usa modelo e vai em lote: 30 por minuto (1.800 por hora), somando as linhas.
+  const cloudPerHour = 1800;
   const perDay = cloudMode
-    ? Math.max(1, (Number(d.endHour) - Number(d.startHour)) * 60 * 3 * cloudLines)
+    ? Math.max(1, (Number(d.endHour) - Number(d.startHour)) * cloudPerHour)
     : Math.max(1, Math.min(d.warmup ? 20 : Number(d.dailyLimit) || 100, (Number(d.endHour) - Number(d.startHour)) * (Number(d.hourlyLimit) || 20)));
   const days = Math.ceil(n / perDay);
   const hidden = _campaignDraft.recipients.filter(r => !r.phone).length;
   summary.innerHTML = n
     ? `<b>${n} contato(s)</b> na lista${_campaignDraft.duplicates ? ` · ${_campaignDraft.duplicates} repetido(s) removido(s)` : ''}${_campaignDraft.invalid ? ` · ${_campaignDraft.invalid} sem telefone válido` : ''}${hidden ? ` · ${hidden} com número oculto` : ''}.
        <div style="color:var(--muted);font-size:12px;margin-top:4px;">${cloudMode
-         ? `Pela API oficial saem cerca de ${180 * cloudLines} por hora, dentro do horário de envio: leva cerca de ${n <= 180 * cloudLines ? 'até 1 hora' : Math.ceil(n / (180 * cloudLines)) + ' hora(s)'}${days > 1 ? ` (${days} dia(s))` : ''}.`
+         ? `Pela API oficial saem cerca de 30 por minuto (${cloudPerHour.toLocaleString('pt-BR')} por hora), dentro do horário de envio: leva cerca de ${n <= cloudPerHour ? 'até 1 hora' : Math.ceil(n / cloudPerHour) + ' hora(s)'}${days > 1 ? ` (${days} dia(s))` : ''}.`
          : `Com as configurações abaixo (até ${perDay} por dia${d.warmup ? ' no início do aquecimento' : ''}), leva cerca de ${days} dia(s) de envio.`}</div>`
     : '<span style="color:var(--muted);">Nenhum contato na lista ainda.</span>';
   const source = _campaignDraft.source;
