@@ -21060,18 +21060,10 @@ function chatLines(act) {
   return mine.length ? mine : all.slice(0, 0);
 }
 const chatLineVisible = c => { const ok = chatAllowedLineIds(); return !ok || ok.includes(c.line || waLineOfKey(c.id)); };
-// Número com mais de um atendente (ex.: API oficial): o login vê só as conversas cujo lead é dele (sem lead = visível).
+// Chat: quem tem o número liberado vê todas as conversas dele, mesmo com vários atendentes no número
+// (disparos e respostas aparecem para todos; não divide por responsável).
 function chatVisibleFilter(act) {
-  let index = null;
-  return c => {
-    if (!chatLineVisible(c)) return false;
-    if (!myPersonKeys().length || c.isGroup) return true;
-    const line = c.line || waLineOfKey(c.id);
-    if (attNames((waLines(act).find(l => l.id === line) || {}).attendant).length < 2) return true;
-    index = index || chatLeadIndex(normalizeActValue(act));
-    const lead = chatLeadFor(c, index);
-    return !lead || personVisibleToMe(lead);
-  };
+  return c => chatLineVisible(c);
 }
 const waHasMultiple = act => waLines(act).length > 1;
 const waLineLabel = (act, id) => (waLines(act).find(l => l.id === (id || WA_MAIN)) || { label: 'Principal' }).label;
