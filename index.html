@@ -9223,7 +9223,9 @@ function campaignDeliveryLine(c) {
   if (!tracked) return '';
   const sent = Number(c.sent) || 0, del = Math.min(Number(c.delivered) || 0, sent), read = Math.min(Number(c.read) || 0, sent), und = Number(c.undelivered) || 0;
   const waiting = c.status === 'running' && c.firstSentAt && !c.deliveryOk && !del;
-  return `<div class="cp-sub">${waiting ? '<span style="color:#fbbf24;">Conferindo a entrega do 1º lote com a Meta...</span> · ' : ''}<span style="color:#34d399;">${del} entregues</span> · ${read} lidas${und ? ` · <span style="color:#f87171;">${und} não entregues</span>` : ''}</div>`;
+  const clicked = Number(c.clicked) || 0, clicks = Number(c.clicks) || 0;
+  const clickTxt = clicked ? ` · <span style="color:#a78bfa;" title="${clicks} clique(s) no total">${clicked} clicaram no link${del ? ` (${Math.round(clicked * 100 / del)}% dos entregues)` : ''}</span>` : '';
+  return `<div class="cp-sub">${waiting ? '<span style="color:#fbbf24;">Conferindo a entrega do 1º lote com a Meta...</span> · ' : ''}<span style="color:#34d399;">${del} entregues</span> · ${read} lidas${und ? ` · <span style="color:#f87171;">${und} não entregues</span>` : ''}${clickTxt}</div>`;
 }
 
 function describeDispatch(d) {
@@ -9335,7 +9337,7 @@ function renderCampaignDetailRows(body, rows) {
         ${rows.map(r => `<tr style="border-top:1px solid var(--border);">
           <td style="padding:6px 4px;">${escapeHtml(r.name || '-')}</td>
           <td style="padding:6px 4px;" class="mono">${escapeHtml(r.phone || 'nº oculto')}</td>
-          <td style="padding:6px 4px;" title="${escapeHtml(r.error || r.deliveryError || '')}">${labels[r.status] || escapeHtml(r.status)}${r.error ? ' · ' + escapeHtml(r.error) : ''}${r.delivery === 'read' ? ' · <span style="color:#34d399;">lida</span>' : r.delivery === 'delivered' ? ' · <span style="color:#34d399;">entregue</span>' : r.delivery === 'failed' ? ` · <span style="color:#f87171;">não entregue${r.deliveryError ? ': ' + escapeHtml(r.deliveryError) : ''}</span>` : ''}</td>
+          <td style="padding:6px 4px;" title="${escapeHtml(r.error || r.deliveryError || '')}">${labels[r.status] || escapeHtml(r.status)}${r.error ? ' · ' + escapeHtml(r.error) : ''}${r.delivery === 'read' ? ' · <span style="color:#34d399;">lida</span>' : r.delivery === 'delivered' ? ' · <span style="color:#34d399;">entregue</span>' : r.delivery === 'failed' ? ` · <span style="color:#f87171;">não entregue${r.deliveryError ? ': ' + escapeHtml(r.deliveryError) : ''}</span>` : ''}${r.clickedAt ? ' · <span style="color:#a78bfa;">clicou no link</span>' : ''}</td>
         </tr>`).join('')}
       </table>`;
   } catch (e) {
@@ -20596,6 +20598,9 @@ function renderCloudTemplates(list) {
       <div id="cnt-examples"></div>
       <label class="field-label" style="margin-top:8px;">Rodapé (opcional)</label>
       <input class="field-input" id="cnt-footer" maxlength="60" placeholder="Responda SAIR para não receber mais">
+      <label class="field-label" style="margin-top:8px;">Botões (opcional, até 3)</label>
+      <div id="cnt-buttons"></div>
+      <button class="chat-pill" id="cnt-add-btn" onclick="addCntButton()">+ Botão</button>
       <div style="display:flex;gap:8px;align-items:center;margin-top:10px;"><button class="btn-save" id="cnt-btn" style="width:auto;padding:9px 16px;" onclick="createCloudTemplate()">Enviar para aprovação</button><span id="cnt-fb" class="integ-muted" style="font-size:12.5px;"></span></div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;">${list.map(t => `
@@ -20609,8 +20614,46 @@ function renderCloudTemplates(list) {
         ${cloudHeaderPreviewHtml(t)}${t.header ? `<div style="font-size:12.5px;font-weight:600;color:var(--text);">${escapeHtml(t.header)}</div>` : ''}
         <div style="font-size:12.5px;color:var(--text);white-space:pre-wrap;">${escapeHtml(t.body)}</div>
         ${t.footer ? `<div class="integ-muted" style="font-size:11.5px;">${escapeHtml(t.footer)}</div>` : ''}
+        ${(t.buttons || []).length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${t.buttons.map(b => `<span class="chat-tag" style="background:var(--surface3);color:var(--text);" title="${escapeHtml(b.url || b.phone || '')}">${b.type === 'URL' ? '↗' : b.type === 'PHONE_NUMBER' ? '☎' : '↩'} ${escapeHtml(b.text)}${b.track ? ' · <span style="color:#a78bfa;">conta cliques</span>' : ''}</span>`).join('')}</div>` : ''}
       </div>`).join('') || '<div class="integ-muted">Nenhum modelo ainda. Crie o primeiro: a Meta costuma aprovar em minutos.</div>'}</div>`;
   renderCloudDefaultParams();
+  renderCntButtons();
+}
+
+// Botões do modelo novo. Link com "Contar cliques": o botão passa pelo CRM, que conta e leva ao link.
+let _cntButtons = [];
+function addCntButton() {
+  if (_cntButtons.length >= 3) return;
+  _cntButtons.push({ type: 'URL', text: '', url: '', phone: '', track: true });
+  renderCntButtons();
+}
+function setCntButton(i, key, value) {
+  if (!_cntButtons[i]) return;
+  _cntButtons[i][key] = value;
+  if (key === 'type' || key === 'track') renderCntButtons();
+}
+function removeCntButton(i) { _cntButtons.splice(i, 1); renderCntButtons(); }
+function renderCntButtons() {
+  const box = document.getElementById('cnt-buttons');
+  if (!box) return;
+  const add = document.getElementById('cnt-add-btn');
+  if (add) add.style.display = _cntButtons.length >= 3 ? 'none' : '';
+  box.innerHTML = _cntButtons.map((b, i) => `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        <select class="field-input" style="width:auto;" onchange="setCntButton(${i}, 'type', this.value)">
+          <option value="URL"${b.type === 'URL' ? ' selected' : ''}>Abrir link</option>
+          <option value="QUICK_REPLY"${b.type === 'QUICK_REPLY' ? ' selected' : ''}>Resposta rápida</option>
+          <option value="PHONE_NUMBER"${b.type === 'PHONE_NUMBER' ? ' selected' : ''}>Ligar</option>
+        </select>
+        <input class="field-input" maxlength="25" placeholder="Texto do botão (até 25)" value="${escapeHtml(b.text)}" oninput="setCntButton(${i}, 'text', this.value)" style="flex:1;min-width:140px;">
+        <button class="chat-pill" style="color:var(--red);" onclick="removeCntButton(${i})">Tirar</button>
+      </div>
+      ${b.type === 'URL' ? `<input class="field-input" placeholder="https://seusite.com.br/pagina" value="${escapeHtml(b.url)}" oninput="setCntButton(${i}, 'url', this.value)" style="margin-top:6px;">
+      <label style="display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--text);margin-top:6px;cursor:pointer;"><input type="checkbox"${b.track ? ' checked' : ''} onchange="setCntButton(${i}, 'track', this.checked)"> Contar cliques</label>
+      <div class="integ-muted" style="font-size:11.5px;">${b.track ? 'O botão passa pelo CRM antes de abrir o link, e a campanha mostra quantas pessoas clicaram. Quem recebe nem percebe.' : 'Sem contar: o botão abre o link direto e o CRM não sabe quem clicou.'}</div>`
+      : b.type === 'PHONE_NUMBER' ? `<input class="field-input" placeholder="+55 61 99999-9999" value="${escapeHtml(b.phone)}" oninput="setCntButton(${i}, 'phone', this.value)" style="margin-top:6px;">` : ''}
+    </div>`).join('');
 }
 
 function cloudSelectedTpl(selectId, list) {
@@ -20676,9 +20719,11 @@ async function createCloudTemplate() {
     const r = await window._fb.whatsapp('/whatsapp/cloud-template-create', act, {
       line, name: val('cnt-name'), category: val('cnt-cat'), header: htype === 'text' ? val('cnt-header') : '', body: val('cnt-body'), footer: val('cnt-footer'),
       headerType: CLOUD_HEADER_TYPES[htype] ? htype : '', headerMediaId: CLOUD_HEADER_TYPES[htype] ? _cntHeaderMedia.id : '',
-      examples: [...document.querySelectorAll('#cnt-examples input')].map(i => i.value.trim())
+      examples: [...document.querySelectorAll('#cnt-examples input')].map(i => i.value.trim()),
+      buttons: _cntButtons.map(b => ({ type: b.type, text: b.text.trim(), ...(b.type === 'URL' ? { url: b.url.trim(), track: !!b.track } : b.type === 'PHONE_NUMBER' ? { phone: b.phone.trim() } : {}) }))
     });
     _cntHeaderMedia = null;
+    _cntButtons = [];
     showToast(`Modelo "${r.name}" enviado. Status: ${(CLOUD_STATUS[r.status] || [r.status])[0]}. Clique em Atualizar daqui a pouco para ver a aprovação.`, 'success', 8000);
     renderCloudTemplates(await cloudTemplatesFor(act, line, true));
   } catch (e) { fb.style.color = 'var(--red)'; fb.textContent = e.message; btn.disabled = false; }
