@@ -2776,7 +2776,8 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
     },
     listenCampaignRecipients(id, max, callback, onlyClicked) {
       const base = collection(db, 'campaigns', id, 'recipients');
-      return onSnapshot(onlyClicked ? query(base, where('clickedAt', '>', ''), limit(5000)) : query(base, limit(max || 500)), snap => {
+      const field = onlyClicked === 'tapped' ? 'tappedAt' : onlyClicked ? 'clickedAt' : '';
+      return onSnapshot(field ? query(base, where(field, '>', ''), limit(5000)) : query(base, limit(max || 500)), snap => {
         callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       }, error => callback(null, error));
     },
@@ -9225,10 +9226,16 @@ function campaignDeliveryLine(c) {
   const sent = Number(c.sent) || 0, del = Math.min(Number(c.delivered) || 0, sent), read = Math.min(Number(c.read) || 0, sent), und = Number(c.undelivered) || 0;
   const waiting = c.status === 'running' && c.firstSentAt && !c.deliveryOk && !del;
   const clicked = Number(c.clicked) || 0, clicks = Number(c.clicks) || 0;
-  const clickTxt = clicked ? ` · <span style="color:#a78bfa;" title="${clicks} clique(s) no total">${clicked} clicaram no link${del ? ` (${Math.round(clicked * 100 / del)}% dos entregues)` : ''}</span>` : '';
   // Modelo sem "Contar cliques": a Meta informa só o total do modelo, sem dizer quem, com algumas horas de atraso.
-  const metaClicked = Number(c.metaClicked) || 0;
-  const metaTxt = c.metaClicksAt ? ` · <span style="color:#a78bfa;" title="Total que a Meta informa para o modelo, sem dizer quem clicou. Chega com algumas horas de atraso. ${Number(c.metaClicks) || 0} clique(s) no total. Atualizado em ${new Date(c.metaClicksAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}.">${metaClicked} clicaram no link${clicked ? ' antes da troca' : ''} (total da Meta)</span>` : '';
+  const metaClicked = Number(c.metaClicked) || 0, hasMeta = !!c.metaClicksAt;
+  const metaTip = hasMeta ? `A Meta informa só o total do modelo antigo, sem dizer quem clicou, com algumas horas de atraso. Atualizado em ${new Date(c.metaClicksAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}.` : '';
+  let clickTxt = '';
+  if (clicked && hasMeta) clickTxt = ` · <span style="color:#a78bfa;" title="${metaTip}">${clicked + metaClicked} clicaram no link (${clicked} com o modelo que conta cliques + ${metaClicked} antes da troca, total da Meta)</span>`;
+  else if (clicked) clickTxt = ` · <span style="color:#a78bfa;" title="${clicks} clique(s) no total">${clicked} clicaram no link${del ? ` (${Math.round(clicked * 100 / del)}% dos entregues)` : ''}</span>`;
+  else if (hasMeta) clickTxt = ` · <span style="color:#a78bfa;" title="${metaTip}">${metaClicked} clicaram no link (total da Meta)</span>`;
+  const taps = c.taps || {}, tapLabels = c.tapLabels || {};
+  const tapKeys = Object.keys(taps).filter(k => Number(taps[k]) > 0).sort();
+  const metaTxt = tapKeys.length ? ` · <span style="color:#38bdf8;">Botões: ${tapKeys.map(k => `${escapeHtml(tapLabels[k] || 'Botão ' + (Number(k.slice(1)) + 1))} ${Number(taps[k])}`).join(', ')}</span>` : '';
   return `<div class="cp-sub">${waiting ? '<span style="color:#fbbf24;">Conferindo a entrega do 1º lote com a Meta...</span> · ' : ''}<span style="color:#34d399;">${del} entregues</span> · ${read} lidas${und ? ` · <span style="color:#f87171;">${und} não entregues</span>` : ''}${clickTxt}${metaTxt}</div>`;
 }
 
@@ -9332,26 +9339,28 @@ async function openCampaignDetail(id) {
 
 // Detalhes: todos (os primeiros 500) ou só quem clicou no link (sem limite de 500).
 function listenCampaignDetail() {
-  const id = window._campDetailId, onlyClicked = !!window._campDetailClicked;
+  const id = window._campDetailId;
   const body = document.getElementById('campaign-detail-body');
   if (window._campDetailUnsub) { window._campDetailUnsub(); window._campDetailUnsub = null; }
   body.innerHTML = 'Carregando...';
   window._campDetailUnsub = window._fb.listenCampaignRecipients(id, 500, (rows, err) => {
     if (err || !rows) { body.innerHTML = `<div style="color:#f87171;">${escapeHtml((err && err.message) || 'Erro ao carregar')}</div>`; return; }
     renderCampaignDetailRows(body, rows);
-  }, onlyClicked);
+  }, window._campDetailClicked);
 }
-function setCampaignDetailClicked(v) { window._campDetailClicked = !!v; listenCampaignDetail(); }
+function setCampaignDetailClicked(v) { window._campDetailClicked = v === 'tapped' ? 'tapped' : !!v; listenCampaignDetail(); }
 
 function downloadCampaignClicks() {
   const rows = window._campDetailRows || [];
   const c = (_campaignsCache || []).find(x => x.id === window._campDetailId) || {};
   const esc = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-  const lines = [['Nome', 'Telefone', 'Clicou em'].map(esc).join(';')].concat(rows.map(r => [r.name || '', r.phone || '', r.clickedAt ? new Date(r.clickedAt).toLocaleString('pt-BR') : ''].map(esc).join(';')));
+  const tapped = window._campDetailClicked === 'tapped';
+  const when = r => { const t = tapped ? r.tappedAt : r.clickedAt; return t ? new Date(t).toLocaleString('pt-BR') : ''; };
+  const lines = [(tapped ? ['Nome', 'Telefone', 'Botão', 'Tocou em'] : ['Nome', 'Telefone', 'Clicou em']).map(esc).join(';')].concat(rows.map(r => (tapped ? [r.name || '', r.phone || '', (r.tappedButtons || []).join(', '), when(r)] : [r.name || '', r.phone || '', when(r)]).map(esc).join(';')));
   const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'clicaram_' + String(c.name || 'campanha').replace(/[^\w\u00C0-\u017F-]+/g, '_').slice(0, 60) + '.csv';
+  a.download = (tapped ? 'tocaram_botao_' : 'clicaram_') + String(c.name || 'campanha').replace(/[^\w\u00C0-\u017F-]+/g, '_').slice(0, 60) + '.csv';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
@@ -9360,23 +9369,26 @@ function renderCampaignDetailRows(body, rows) {
   try {
     rows.sort((a, b) => (a.order || 0) - (b.order || 0));
     const labels = { pending: 'Na fila', sending: 'Enviando', sent: 'Enviada', skipped: 'Pulada', failed: 'Erro' };
-    const onlyClicked = !!window._campDetailClicked;
+    const mode = window._campDetailClicked, onlyClicked = mode === true, onlyTapped = mode === 'tapped';
     window._campDetailRows = rows;
     const camp = (_campaignsCache || []).find(x => x.id === window._campDetailId) || {};
     const nClicked = Number(camp.clicked) || 0;
+    const nTaps = Object.values(camp.taps || {}).reduce((s, n) => s + (Number(n) || 0), 0);
     const bar = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
-        <button class="chat-pill${onlyClicked ? '' : ' active'}" onclick="setCampaignDetailClicked(false)">Todos</button>
+        <button class="chat-pill${mode ? '' : ' active'}" onclick="setCampaignDetailClicked(false)">Todos</button>
         <button class="chat-pill${onlyClicked ? ' active' : ''}" onclick="setCampaignDetailClicked(true)">Só quem clicou no link${nClicked ? ' (' + nClicked + ')' : ''}</button>
-        ${onlyClicked && rows.length ? '<button class="chat-pill" onclick="downloadCampaignClicks()">Baixar planilha</button>' : ''}
+        <button class="chat-pill${onlyTapped ? ' active' : ''}" onclick="setCampaignDetailClicked('tapped')">Só quem tocou em botão de resposta${nTaps ? ' (' + nTaps + ')' : ''}</button>
+        ${mode && rows.length ? '<button class="chat-pill" onclick="downloadCampaignClicks()">Baixar planilha</button>' : ''}
       </div>`;
     if (onlyClicked && !rows.length) { body.innerHTML = bar + `<div class="integ-muted">Ninguém clicou ainda. Só conta quem recebeu a campanha com um modelo que tem "Contar cliques".${camp.metaClicked ? ` Os ${camp.metaClicked} cliques "total da Meta" não dizem quem foi.` : ''}</div>`; return; }
-    body.innerHTML = bar + `<div style="color:var(--muted);margin-bottom:8px;">${onlyClicked ? `${rows.length} pessoa(s) clicaram no link.` : `Mostrando ${rows.length} contato(s)${rows.length === 500 ? ' (os primeiros 500; para ver quem clicou, use "Só quem clicou no link")' : ''}.`}</div>
+    if (onlyTapped && !rows.length) { body.innerHTML = bar + '<div class="integ-muted">Ninguém tocou ainda. Conta os botões de resposta rápida dos modelos da API oficial, nos envios feitos a partir de agora.</div>'; return; }
+    body.innerHTML = bar + `<div style="color:var(--muted);margin-bottom:8px;">${onlyClicked ? `${rows.length} pessoa(s) clicaram no link.` : onlyTapped ? `${rows.length} pessoa(s) tocaram em botão de resposta.` : `Mostrando ${rows.length} contato(s)${rows.length === 500 ? ' (os primeiros 500; para ver quem clicou ou tocou num botão, use os filtros acima)' : ''}.`}</div>
       <table style="width:100%;border-collapse:collapse;">
         <tr style="text-align:left;color:var(--muted);font-size:12px;"><th style="padding:4px;">Nome</th><th style="padding:4px;">Telefone</th><th style="padding:4px;">Situação</th></tr>
         ${rows.map(r => `<tr style="border-top:1px solid var(--border);">
           <td style="padding:6px 4px;">${escapeHtml(r.name || '-')}</td>
           <td style="padding:6px 4px;" class="mono">${escapeHtml(r.phone || 'nº oculto')}</td>
-          <td style="padding:6px 4px;" title="${escapeHtml(r.error || r.deliveryError || '')}">${labels[r.status] || escapeHtml(r.status)}${r.error ? ' · ' + escapeHtml(r.error) : ''}${r.delivery === 'read' ? ' · <span style="color:#34d399;">lida</span>' : r.delivery === 'delivered' ? ' · <span style="color:#34d399;">entregue</span>' : r.delivery === 'failed' ? ` · <span style="color:#f87171;">não entregue${r.deliveryError ? ': ' + escapeHtml(r.deliveryError) : ''}</span>` : ''}${r.clickedAt ? ' · <span style="color:#a78bfa;">clicou no link</span>' : ''}</td>
+          <td style="padding:6px 4px;" title="${escapeHtml(r.error || r.deliveryError || '')}">${labels[r.status] || escapeHtml(r.status)}${r.error ? ' · ' + escapeHtml(r.error) : ''}${r.delivery === 'read' ? ' · <span style="color:#34d399;">lida</span>' : r.delivery === 'delivered' ? ' · <span style="color:#34d399;">entregue</span>' : r.delivery === 'failed' ? ` · <span style="color:#f87171;">não entregue${r.deliveryError ? ': ' + escapeHtml(r.deliveryError) : ''}</span>` : ''}${r.clickedAt ? ' · <span style="color:#a78bfa;">clicou no link</span>' : ''}${(r.tappedButtons || []).length ? ` · <span style="color:#38bdf8;">tocou em ${r.tappedButtons.map(t => '"' + escapeHtml(t) + '"').join(', ')}</span>` : ''}</td>
         </tr>`).join('')}
       </table>`;
   } catch (e) {
