@@ -12507,12 +12507,26 @@ function crmUpdFlowPending() {
     const editing = (typeof resumeEditing === 'function' && resumeEditing()) || (typeof _flow !== 'undefined' && _flow && _flow._dirty);
     if (!editing && !crmUpdModalOpen() && !crmUpdTypingLoose()) crmUpdateReload();
   };
+  let baseHash = null;
+  const bodyHash = async (opts) => {
+    try {
+      const r = await fetch(location.pathname, opts);
+      if (!r.ok) return '';
+      const d = await crypto.subtle.digest('SHA-256', await r.arrayBuffer());
+      return Array.from(new Uint8Array(d)).map(x => x.toString(16).padStart(2, '0')).join('');
+    } catch (e) { return ''; }
+  };
   const check = async () => {
     if (pending) { showBanner(); tryHidden(); return; }
     const t = await tag();
     if (!t) return;
-    if (base === null) { base = t; return; }
-    if (t !== base) { pending = true; showBanner(); tryHidden(); }
+    if (base === null) { base = t; baseHash = await bodyHash({ cache: 'force-cache' }); return; }
+    if (t === base) return;
+    // O ETag mudou: confere pelo conteúdo, porque servidores do GitHub às vezes trocam o ETag sem versão nova.
+    const h = await bodyHash({ cache: 'no-store' });
+    if (!h) return;
+    if (baseHash && h === baseHash) { base = t; return; }
+    pending = true; showBanner(); tryHidden();
   };
   check();
   setInterval(check, 3 * 60 * 1000);
