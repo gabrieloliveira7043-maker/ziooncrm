@@ -2774,8 +2774,9 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
       });
       return { und: und.length, fail: fail.length };
     },
-    listenCampaignRecipients(id, max, callback) {
-      return onSnapshot(query(collection(db, 'campaigns', id, 'recipients'), limit(max || 500)), snap => {
+    listenCampaignRecipients(id, max, callback, onlyClicked) {
+      const base = collection(db, 'campaigns', id, 'recipients');
+      return onSnapshot(onlyClicked ? query(base, where('clickedAt', '>', ''), limit(5000)) : query(base, limit(max || 500)), snap => {
         callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       }, error => callback(null, error));
     },
@@ -9324,17 +9325,52 @@ async function openCampaignDetail(id) {
   modal.classList.add('open');
   body.innerHTML = 'Carregando...';
   if (window._campDetailUnsub) { window._campDetailUnsub(); window._campDetailUnsub = null; }
+  window._campDetailId = id;
+  window._campDetailClicked = false;
+  listenCampaignDetail();
+}
+
+// Detalhes: todos (os primeiros 500) ou só quem clicou no link (sem limite de 500).
+function listenCampaignDetail() {
+  const id = window._campDetailId, onlyClicked = !!window._campDetailClicked;
+  const body = document.getElementById('campaign-detail-body');
+  if (window._campDetailUnsub) { window._campDetailUnsub(); window._campDetailUnsub = null; }
+  body.innerHTML = 'Carregando...';
   window._campDetailUnsub = window._fb.listenCampaignRecipients(id, 500, (rows, err) => {
     if (err || !rows) { body.innerHTML = `<div style="color:#f87171;">${escapeHtml((err && err.message) || 'Erro ao carregar')}</div>`; return; }
     renderCampaignDetailRows(body, rows);
-  });
+  }, onlyClicked);
+}
+function setCampaignDetailClicked(v) { window._campDetailClicked = !!v; listenCampaignDetail(); }
+
+function downloadCampaignClicks() {
+  const rows = window._campDetailRows || [];
+  const c = (_campaignsCache || []).find(x => x.id === window._campDetailId) || {};
+  const esc = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const lines = [['Nome', 'Telefone', 'Clicou em'].map(esc).join(';')].concat(rows.map(r => [r.name || '', r.phone || '', r.clickedAt ? new Date(r.clickedAt).toLocaleString('pt-BR') : ''].map(esc).join(';')));
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'clicaram_' + String(c.name || 'campanha').replace(/[^\w\u00C0-\u017F-]+/g, '_').slice(0, 60) + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
 function renderCampaignDetailRows(body, rows) {
   try {
     rows.sort((a, b) => (a.order || 0) - (b.order || 0));
     const labels = { pending: 'Na fila', sending: 'Enviando', sent: 'Enviada', skipped: 'Pulada', failed: 'Erro' };
-    body.innerHTML = `<div style="color:var(--muted);margin-bottom:8px;">Mostrando ${rows.length} contato(s)${rows.length === 500 ? ' (os primeiros 500)' : ''}.</div>
+    const onlyClicked = !!window._campDetailClicked;
+    window._campDetailRows = rows;
+    const camp = (_campaignsCache || []).find(x => x.id === window._campDetailId) || {};
+    const nClicked = Number(camp.clicked) || 0;
+    const bar = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+        <button class="chat-pill${onlyClicked ? '' : ' active'}" onclick="setCampaignDetailClicked(false)">Todos</button>
+        <button class="chat-pill${onlyClicked ? ' active' : ''}" onclick="setCampaignDetailClicked(true)">Só quem clicou no link${nClicked ? ' (' + nClicked + ')' : ''}</button>
+        ${onlyClicked && rows.length ? '<button class="chat-pill" onclick="downloadCampaignClicks()">Baixar planilha</button>' : ''}
+      </div>`;
+    if (onlyClicked && !rows.length) { body.innerHTML = bar + `<div class="integ-muted">Ninguém clicou ainda. Só conta quem recebeu a campanha com um modelo que tem "Contar cliques".${camp.metaClicked ? ` Os ${camp.metaClicked} cliques "total da Meta" não dizem quem foi.` : ''}</div>`; return; }
+    body.innerHTML = bar + `<div style="color:var(--muted);margin-bottom:8px;">${onlyClicked ? `${rows.length} pessoa(s) clicaram no link.` : `Mostrando ${rows.length} contato(s)${rows.length === 500 ? ' (os primeiros 500; para ver quem clicou, use "Só quem clicou no link")' : ''}.`}</div>
       <table style="width:100%;border-collapse:collapse;">
         <tr style="text-align:left;color:var(--muted);font-size:12px;"><th style="padding:4px;">Nome</th><th style="padding:4px;">Telefone</th><th style="padding:4px;">Situação</th></tr>
         ${rows.map(r => `<tr style="border-top:1px solid var(--border);">
