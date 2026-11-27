@@ -11858,10 +11858,14 @@ function relOpenEditorNow(index, act) {
       </div>
     </div></div>`;
   };
-  const chips = REL_VARS.map(([g, vs]) => `<div style="margin-top:6px;"><span style="font-size:11px;color:var(--muted);margin-right:4px;">${g}:</span>${vs.map(([k, l]) =>
-    `<button type="button" class="btn-cfg" style="width:auto;margin:2px;padding:2px 8px;font-size:11px;" onclick="relInsertVar('${k}')" title="{${k}}">${escapeHtml(l)}</button>`).join('')}</div>`).join('')
-    + `<div style="margin-top:6px;"><span style="font-size:11px;color:var(--muted);margin-right:4px;">Funil:</span>${relStageVars(act).map(x =>
-      `<button type="button" class="btn-cfg" style="width:auto;margin:2px;padding:2px 8px;font-size:11px;" onclick="relInsertVar('${x.v}')" title="{${x.v}}">${escapeHtml(x.label)}</button>`).join('') || '<span style="font-size:11px;color:var(--muted);">O funil deste cliente ainda não tem colunas.</span>'}</div>
+  // Variáveis: um seletor por grupo (no lugar da lista de botões). Escolher insere no texto onde está o cursor.
+  const stageVars = relStageVars(act);
+  const chips = `<select class="field-input" style="margin-top:6px;" onchange="if (this.value) { relInsertVar(this.value); this.value = ''; }">
+      <option value="">Inserir variável...</option>
+      ${REL_VARS.map(([g, vs]) => `<optgroup label="${escapeHtml(g)}">${vs.map(([k, l]) => `<option value="${escapeHtml(k)}">${escapeHtml(l)}  {${escapeHtml(k)}}</option>`).join('')}</optgroup>`).join('')}
+      ${stageVars.length ? `<optgroup label="Funil">${stageVars.map(x => `<option value="${escapeHtml(x.v)}">${escapeHtml(x.label)}  {${escapeHtml(x.v)}}</option>`).join('')}</optgroup>` : ''}
+    </select>
+    ${stageVars.length ? '' : '<div style="font-size:11px;color:var(--muted);margin-top:4px;">O funil deste cliente ainda não tem colunas.</div>'}
     <div style="font-size:11px;color:var(--muted);margin-top:4px;">Coluna do funil: quantos leads entraram nela no período. Acrescente _total para quantos estão nela agora ({etapa_..._total}) ou _valor para a soma dos valores dos cards.</div>`;
   const lab = t => `<div style="font-size:12px;font-weight:600;color:var(--text);margin:14px 0 6px;">${t}</div>`;
   openHuvenModal(base ? 'Editar relatório' : 'Novo relatório', `
