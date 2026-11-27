@@ -9346,6 +9346,14 @@ function listenCampaignDetail() {
     renderCampaignDetailRows(body, rows);
   }, window._campDetailClicked);
 }
+// Detalhes: clicar no contato abre o chat dele, pela linha que fez o disparo.
+function openCampaignRecipientChat(rid) {
+  const r = (window._campDetailRows || []).find(x => x.id === rid);
+  const c = (_campaignsCache || []).find(x => x.id === window._campDetailId) || {};
+  if (!r || !r.phone) return;
+  closeCampaignDetail();
+  openChatWith({ act: c.act, phone: r.phone, jid: r.jid || '', name: r.name || '', line: r.line || (Array.isArray(c.lines) ? c.lines[0] : '') });
+}
 function setCampaignDetailClicked(v) { window._campDetailClicked = v === 'tapped' ? 'tapped' : !!v; listenCampaignDetail(); }
 
 function downloadCampaignClicks() {
@@ -9383,7 +9391,7 @@ function renderCampaignDetailRows(body, rows) {
     body.innerHTML = bar + `<div style="color:var(--muted);margin-bottom:8px;">${onlyClicked ? `${rows.length} pessoa(s) clicaram no link.` : onlyTapped ? `${rows.length} pessoa(s) tocaram em botão de resposta.` : `Mostrando ${rows.length} contato(s)${rows.length === 500 ? ' (os primeiros 500; para ver quem clicou ou tocou num botão, use os filtros acima)' : ''}.`}</div>
       <table style="width:100%;border-collapse:collapse;">
         <tr style="text-align:left;color:var(--muted);font-size:12px;"><th style="padding:4px;">Nome</th><th style="padding:4px;">Telefone</th><th style="padding:4px;">Situação</th></tr>
-        ${rows.map(r => `<tr style="border-top:1px solid var(--border);">
+        ${rows.map(r => `<tr style="border-top:1px solid var(--border);${r.phone ? 'cursor:pointer;' : ''}" ${r.phone ? `onclick="openCampaignRecipientChat('${escapeJsString(r.id)}')" title="Abrir o chat deste número"` : ''}>
           <td style="padding:6px 4px;">${escapeHtml(r.name || '-')}</td>
           <td style="padding:6px 4px;" class="mono">${escapeHtml(r.phone || 'nº oculto')}</td>
           <td style="padding:6px 4px;" title="${escapeHtml(r.error || r.deliveryError || '')}">${labels[r.status] || escapeHtml(r.status)}${r.error ? ' · ' + escapeHtml(r.error) : ''}${r.delivery === 'read' ? ' · <span style="color:#34d399;">lida</span>' : r.delivery === 'delivered' ? ' · <span style="color:#34d399;">entregue</span>' : r.delivery === 'failed' ? ` · <span style="color:#f87171;">não entregue${r.deliveryError ? ': ' + escapeHtml(r.deliveryError) : ''}</span>` : ''}${r.clickedAt ? ' · <span style="color:#a78bfa;">clicou no link</span>' : ''}${(r.tappedButtons || []).length ? ` · <span style="color:#38bdf8;">tocou em ${r.tappedButtons.map(t => '"' + escapeHtml(t) + '"').join(', ')}</span>` : ''}</td>
