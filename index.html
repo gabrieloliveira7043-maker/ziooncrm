@@ -9225,7 +9225,10 @@ function campaignDeliveryLine(c) {
   const waiting = c.status === 'running' && c.firstSentAt && !c.deliveryOk && !del;
   const clicked = Number(c.clicked) || 0, clicks = Number(c.clicks) || 0;
   const clickTxt = clicked ? ` · <span style="color:#a78bfa;" title="${clicks} clique(s) no total">${clicked} clicaram no link${del ? ` (${Math.round(clicked * 100 / del)}% dos entregues)` : ''}</span>` : '';
-  return `<div class="cp-sub">${waiting ? '<span style="color:#fbbf24;">Conferindo a entrega do 1º lote com a Meta...</span> · ' : ''}<span style="color:#34d399;">${del} entregues</span> · ${read} lidas${und ? ` · <span style="color:#f87171;">${und} não entregues</span>` : ''}${clickTxt}</div>`;
+  // Modelo sem "Contar cliques": a Meta informa só o total do modelo, sem dizer quem, com algumas horas de atraso.
+  const metaClicked = Number(c.metaClicked) || 0;
+  const metaTxt = c.metaClicksAt ? ` · <span style="color:#a78bfa;" title="Total que a Meta informa para o modelo, sem dizer quem clicou. Chega com algumas horas de atraso. ${Number(c.metaClicks) || 0} clique(s) no total. Atualizado em ${new Date(c.metaClicksAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}.">${metaClicked} clicaram no link${clicked ? ' antes da troca' : ''} (total da Meta)</span>` : '';
+  return `<div class="cp-sub">${waiting ? '<span style="color:#fbbf24;">Conferindo a entrega do 1º lote com a Meta...</span> · ' : ''}<span style="color:#34d399;">${del} entregues</span> · ${read} lidas${und ? ` · <span style="color:#f87171;">${und} não entregues</span>` : ''}${clickTxt}${metaTxt}</div>`;
 }
 
 function describeDispatch(d) {
