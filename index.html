@@ -9536,7 +9536,7 @@ async function saveCampaignEdit() {
   if (contactsMode !== 'keep') {
     if (!d.recipients.length) { setFb('#f87171', 'Escolha os novos contatos (a lista está vazia).'); return; }
     const what = contactsMode === 'replace' ? `Trocar os contatos que ainda não receberam por ${d.recipients.length} contato(s)?` : `Adicionar ${d.recipients.length} contato(s) à campanha?`;
-    if (!await showConfirm(what + (c.status === 'done' ? ' A campanha estava concluída e volta a enviar.' : ''), 'Contatos da campanha', 'Confirmar')) return;
+    if (!await showConfirm(campaignSourcesText() + what + (c.status === 'done' ? ' A campanha estava concluída e volta a enviar.' : ''), 'Contatos da campanha', 'Confirmar')) return;
   }
   setFb('var(--muted)', 'Salvando...');
   try {
@@ -9585,7 +9585,7 @@ function openCampaignEditor(copyFrom, opts = {}) {
   const months = [...new Set(getLeads().filter(l => leadMatchesClient(l, act)).map(leadMonthKey).filter(Boolean))].sort().reverse();
   const hint = 'font-size:11px;color:var(--muted);margin:4px 0 10px;line-height:1.5;';
   const section = 'font-size:13px;font-weight:600;color:var(--text);margin:18px 0 6px;';
-  _campaignDraft = { act, source: 'crm', recipients: [], label: '', media: null, copyFrom: copyFrom || null, cloudPreset: (copyFrom && copyFrom.cloudTemplate) || null };
+  _campaignDraft = { act, source: '', on: new Set(), parts: {}, sheets: [], recipients: [], label: '', media: null, copyFrom: copyFrom || null, cloudPreset: (copyFrom && copyFrom.cloudTemplate) || null };
   _campaignDraft.mode = campInitialMode(act, copyFrom);
   _campaignDraft.editing = editing;
   ensureWaSettings(act).then(() => { if (_campaignDraft && _campaignDraft.act === act) { _campaignDraft.mode = campInitialMode(act, copyFrom); renderCampMode(); } });
@@ -9624,9 +9624,10 @@ function openCampaignEditor(copyFrom, opts = {}) {
     <div id="camp-editc-hint" style="${hint}"></div>` : ''}
     <div id="camp-audience-wrap">
     <div style="${section}">Para quem enviar</div>
+    <div style="${hint}margin-top:0;">Marque uma ou mais fontes: dá para juntar, por exemplo, os leads do CRM com uma ou mais planilhas. O mesmo telefone recebe uma vez só. Grupos do WhatsApp não se misturam com as outras.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-      ${[...(copyFrom ? [['previous', 'Mesmos contatos da campanha']] : []), ['crm', 'Leads do CRM'], ['pick', 'Escolher contatos / etiquetas'], ['sheet', 'Planilha'], ['contacts', 'Contatos do WhatsApp'], ['groups', 'Grupos do WhatsApp']].map(([k, l]) =>
-        `<button id="camp-src-${k}" style="${wbtn}" onclick="selectCampaignSource('${k}')">${l}</button>`).join('')}
+      ${[...(copyFrom ? [['previous', 'Mesmos contatos da campanha']] : []), ['crm', 'Leads do CRM'], ['pick', 'Escolher contatos / etiquetas'], ['sheet', 'Planilha (Excel/CSV)'], ['contacts', 'Contatos do WhatsApp'], ['groups', 'Grupos do WhatsApp']].map(([k, l]) =>
+        `<button id="camp-src-${k}" data-label="${escapeHtml(l)}" aria-pressed="false" style="${wbtn}" onclick="selectCampaignSource('${k}')">${l}</button>`).join('')}
     </div>
     <div id="camp-src-crm-box" class="camp-src-box">
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
@@ -9667,8 +9668,9 @@ function openCampaignEditor(copyFrom, opts = {}) {
       <div id="camp-pick"></div>
     </div>
     <div id="camp-src-sheet-box" class="camp-src-box" style="display:none;">
-      <div style="${hint}">Planilha .xlsx ou .csv com uma coluna de nome e uma de telefone (com DDD), e os títulos na primeira linha. As outras colunas (ex.: Empresa, Tempo de empresa) podem preencher as variáveis do modelo e as mensagens com {col:Nome da coluna}.</div>
-      <input type="file" id="camp-sheet-file" accept=".xlsx,.xls,.csv" onchange="loadCampaignSheet(this)" class="field-input">
+      <div style="${hint}">Planilha .xlsx ou .csv com uma coluna de nome e uma de telefone (com DDD), e os títulos na primeira linha. Pode enviar mais de uma. {primeiro_nome} vira a primeira palavra do nome. As outras colunas (ex.: Empresa, Tempo de empresa) podem preencher as variáveis do modelo e as mensagens com {col:Nome da coluna}.</div>
+      <input type="file" id="camp-sheet-file" accept=".xlsx,.xls,.csv" multiple onchange="loadCampaignSheet(this)" class="field-input">
+      <div id="camp-sheet-list" style="margin-top:8px;"></div>
     </div>
     <div id="camp-src-contacts-box" class="camp-src-box" style="display:none;">
       <div style="${hint}">Os contatos salvos no WhatsApp conectado deste cliente.</div>
@@ -9754,20 +9756,20 @@ function applyCampaignCopy(c) {
 }
 
 async function loadPreviousCampaignRecipients() {
-  if (!_campaignDraft || !_campaignDraft.copyFrom || _campaignDraft.source !== 'previous') return;
+  if (!_campaignDraft || !_campaignDraft.copyFrom || !campSrcOn('previous')) return;
   const c = _campaignDraft.copyFrom;
   const filter = (document.getElementById('camp-prev-filter') || {}).value || 'all';
   const summary = document.getElementById('camp-summary');
   summary.textContent = 'Carregando os contatos da campanha...';
   try {
     if (!_campaignDraft.prevRows) _campaignDraft.prevRows = await window._fb.getCampaignRecipients(c.id, 20000);
-    if (!_campaignDraft || _campaignDraft.source !== 'previous') return;
+    if (!_campaignDraft || !campSrcOn('previous')) return;
     // Recebeu = enviada e a Meta não recusou a entrega. Quem não tem WhatsApp (131026) ou parou de receber marketing (131050) não volta.
     const got = r => r.status === 'sent' && r.delivery !== 'failed';
     const dead = r => [131026, 131050].includes(Number(r.deliveryErrorCode) || 0);
     const rows = _campaignDraft.prevRows.filter(r => filter === 'all' || (filter === 'sent' ? got(r) : !got(r) && !dead(r)));
     const labels = { all: '', sent: ', só quem recebeu', notsent: ', só quem não recebeu' };
-    setCampaignRecipients(rows.map(r => ({ name: r.name, phone: r.phone, jid: r.jid, fields: r.fields })), `Contatos de "${c.name || 'Campanha'}"${labels[filter]}`);
+    setCampaignRecipients(rows.map(r => ({ name: r.name, phone: r.phone, jid: r.jid, fields: r.fields })), `Contatos de "${c.name || 'Campanha'}"${labels[filter]}`, 'previous');
   } catch (e) {
     summary.innerHTML = `<span style="color:#f87171;">${escapeHtml(e.message)}</span>`;
   }
@@ -9802,7 +9804,7 @@ function campaignPickEntries() {
 }
 
 function renderCampaignPickerList() {
-  if (!_campaignDraft || !_campaignDraft.pick || _campaignDraft.source !== 'pick') return;
+  if (!_campaignDraft || !_campaignDraft.pick || !campSrcOn('pick')) return;
   const p = _campaignDraft.pick;
   const tags = _contactTagsCache[_campaignDraft.act] || [];
   const tagById = Object.fromEntries(tags.map(t => [t.id, t]));
@@ -9857,7 +9859,7 @@ function updateCampaignPickRecipients() {
   const label = tagNames.length && chosen.length === filtered.length && filtered.every(e => p.selected.has(e.key))
     ? `Etiquetas: ${tagNames.join(', ')}`
     : `Contatos escolhidos (${chosen.length})`;
-  setCampaignRecipients(chosen.map(e => ({ name: e.name, phone: e.phone, jid: e.lead ? e.lead.whatsappJid : '', fields: e.contact && e.contact.fields })), label);
+  setCampaignRecipients(chosen.map(e => ({ name: e.name, phone: e.phone, jid: e.lead ? e.lead.whatsappJid : '', fields: e.contact && e.contact.fields })), label, 'pick');
 }
 
 
@@ -9872,12 +9874,19 @@ function closeCampaignEditor(keepResume) {
 function campaignResumeSave() {
   const d = _campaignDraft, editor = document.getElementById('campaign-editor');
   if (!d || !editor || editor.style.display === 'none') return;
-  const keepList = ['sheet', 'contacts', 'groups'].includes(d.source) && (d.recipients || []).length <= 5000;
+  // Listas que não dá para refazer sozinho (planilhas, contatos e grupos do WhatsApp) ficam guardadas, até 5.000 contatos.
+  const parts = {};
+  let kept = 0;
+  ['contacts', 'groups'].concat((d.sheets || []).map(s => 'sheet:' + s.id)).forEach(k => {
+    const p = d.parts && d.parts[k];
+    if (p && kept + p.list.length <= 5000) { parts[k] = p; kept += p.list.length; }
+  });
   resumeSet('campanha', {
     act: d.act,
     state: {
       copyFromId: d.copyFrom ? d.copyFrom.id : '', editing: !!d.editing, mode: d.mode, mediaType: d.mediaType, media: d.media,
-      source: d.source, label: d.label, recipients: keepList ? d.recipients : null, editContacts: d.editContacts || '',
+      on: [...(d.on || [])], sheets: (d.sheets || []).filter(s => parts['sheet:' + s.id]), parts,
+      source: d.source, label: d.label, editContacts: d.editContacts || '',
       pick: d.pick ? { selected: [...d.pick.selected], tags: [...d.pick.tags] } : null
     },
     fields: resumeFields(editor)
@@ -9902,14 +9911,30 @@ function campaignResumeOpen(act) {
   const editor = document.getElementById('campaign-editor');
   resumeApplyFields(editor, r.fields);
   if (s.editing && s.editContacts) setCampEditContacts(s.editContacts);
-  if (s.source === 'pick' && s.pick) {
-    selectCampaignSource('pick');
-    d.pick.selected = new Set(s.pick.selected); d.pick.tags = new Set(s.pick.tags);
-    renderCampaignPickerList();
-  } else if (s.source && s.recipients && s.recipients.length) {
-    selectCampaignSource(s.source);
-    setCampaignRecipients(s.recipients, s.label || 'Lista que você tinha montado');
-  } else if (s.source) selectCampaignSource(s.source);
+  // Rascunho antigo (uma fonte só): vira a lista "on" com essa fonte.
+  const on = Array.isArray(s.on) ? s.on : s.source ? [s.source] : [];
+  if (on.length) {
+    [...d.on].forEach(k => campaignSourceOff(k, true));
+    d.sheets = Array.isArray(s.sheets) ? s.sheets : [];
+    Object.entries(s.parts || {}).forEach(([k, p]) => { if (p && Array.isArray(p.list)) d.parts[k] = p; });
+    if (!s.parts && Array.isArray(s.recipients) && s.recipients.length && s.source !== 'sheet') d.parts[s.source] = { list: s.recipients, label: s.label || 'Lista que você tinha montado' };
+    if (!s.parts && Array.isArray(s.recipients) && s.recipients.length && s.source === 'sheet') { d.sheets = [{ id: 'old', name: 'planilha anterior' }]; d.parts['sheet:old'] = { list: s.recipients, label: s.label || 'Planilha' }; }
+    on.forEach(k => {
+      if (!CAMP_SOURCE_KEYS.includes(k)) return;
+      d.on.add(k);
+      if (k === 'pick' && s.pick) {
+        renderCampaignSourceButtons();
+        renderCampaignPicker();
+        d.pick.selected = new Set(s.pick.selected); d.pick.tags = new Set(s.pick.tags);
+        renderCampaignPickerList();
+      }
+    });
+    renderCampaignSourceButtons();
+    if (d.on.has('crm')) buildCampaignAudience();
+    if (d.on.has('previous')) loadPreviousCampaignRecipients();
+    renderCampaignSheetList();
+    mergeCampaignAudience();
+  }
   if (typeof renderCampaignSummary === 'function') renderCampaignSummary();
   resumeNotice('Reabrimos a campanha que você estava montando.', () => closeCampaignEditor());
 }
@@ -9955,45 +9980,156 @@ async function uploadCampaignMediaFile(input) {
   }
 }
 
-function selectCampaignSource(source) {
-  if (!_campaignDraft) return;
-  _campaignDraft.source = source;
-  _campaignDraft.recipients = [];
-  _campaignDraft.label = '';
-  ['previous', 'crm', 'pick', 'sheet', 'contacts', 'groups'].forEach(k => {
+// ----- Público da campanha: várias fontes ao mesmo tempo -----
+// _campaignDraft.on = fontes marcadas; _campaignDraft.parts[chave] = { list, label } de cada fonte
+// (cada planilha é uma fonte "sheet:<id>"). recipients = a junção, sem repetir telefone.
+// "Grupos do WhatsApp" não se mistura com as outras (dentro dos grupos cada destinatário é um grupo).
+const CAMP_SOURCE_KEYS = ['previous', 'crm', 'pick', 'sheet', 'contacts', 'groups'];
+
+function campSrcOn(k) {
+  const d = _campaignDraft;
+  return !!(d && d.on && d.on.has(k));
+}
+
+function renderCampaignSourceButtons() {
+  const d = _campaignDraft;
+  if (!d) return;
+  CAMP_SOURCE_KEYS.forEach(k => {
     const box = document.getElementById(`camp-src-${k}-box`);
     const btn = document.getElementById(`camp-src-${k}`);
-    if (box) box.style.display = k === source ? 'block' : 'none';
-    if (btn) btn.style.background = k === source ? 'var(--accent-glow)' : 'transparent';
+    const on = d.on.has(k);
+    if (box) box.style.display = on ? 'block' : 'none';
+    if (btn) { btn.style.background = on ? 'var(--accent-glow)' : 'transparent'; btn.setAttribute('aria-pressed', on ? 'true' : 'false'); btn.textContent = (on ? '✓ ' : '') + btn.dataset.label; }
   });
+}
+
+// Liga ou desliga uma fonte. force = true só liga (nunca desliga).
+function selectCampaignSource(source, force) {
+  const d = _campaignDraft;
+  if (!d) return;
+  if (!d.on) d.on = new Set();
+  if (!d.parts) d.parts = {};
+  if (d.on.has(source) && !force) {
+    campaignSourceOff(source);
+    return;
+  }
+  if (!d.on.has(source)) {
+    if (source === 'groups') [...d.on].forEach(k => { if (k !== 'groups') campaignSourceOff(k, true); });
+    else if (d.on.has('groups')) campaignSourceOff('groups', true);
+    d.on.add(source);
+  }
+  renderCampaignSourceButtons();
   if (source === 'crm') buildCampaignAudience();
   else if (source === 'previous') loadPreviousCampaignRecipients();
   else if (source === 'pick') renderCampaignPicker();
-  else renderCampaignSummary();
+  else mergeCampaignAudience();
 }
 
-// Remove repetidos e inválidos. Cada item: { name, phone, jid }.
-function setCampaignRecipients(list, label) {
-  const seen = new Set();
-  let invalid = 0;
+function campaignSourceOff(source, quiet) {
+  const d = _campaignDraft;
+  if (!d || !d.on) return;
+  d.on.delete(source);
+  if (source !== 'sheet') delete d.parts[source]; // as planilhas ficam guardadas: ao religar, voltam
+  if (source === 'groups') _groupParticipantsRequest++;
+  if (quiet) return;
+  renderCampaignSourceButtons();
+  mergeCampaignAudience();
+}
+
+// Cada fonte entrega a sua lista aqui. Cada item: { name, phone, jid, fields }.
+// key: 'crm', 'pick', 'contacts', 'groups', 'previous' ou 'sheet:<id>'. Sem key, vale a única fonte marcada.
+function setCampaignRecipients(list, label, key) {
+  const d = _campaignDraft;
+  if (!d) return;
+  if (!d.parts) d.parts = {};
+  if (!d.on) d.on = new Set();
+  if (!key) key = d.on.size === 1 ? [...d.on][0] : (d.source || 'crm');
+  d.parts[key] = { list: Array.isArray(list) ? list : [], label: label || '' };
+  mergeCampaignAudience();
+}
+
+// Telefone para comparar entre as fontes: só dígitos, com 55 na frente; o 9 extra do celular não conta
+// (55 19 99999-8888 e 55 19 9999-8888 são o mesmo WhatsApp).
+function campaignPhoneKey(phone) {
+  return phone ? chatPhoneKey(phone) : '';
+}
+
+// Junta as fontes marcadas, na ordem dos botões, sem repetir telefone. Quem aparece em mais de uma fonte
+// conta só na primeira; se ela não tinha nome (ou colunas), pega o nome da outra.
+function mergeCampaignAudience() {
+  const d = _campaignDraft;
+  if (!d) return;
+  if (!d.on) d.on = new Set();
+  if (!d.parts) d.parts = {};
+  const keys = [];
+  CAMP_SOURCE_KEYS.forEach(k => {
+    if (!d.on.has(k)) return;
+    if (k === 'sheet') (d.sheets || []).forEach(s => keys.push('sheet:' + s.id));
+    else if (d.parts[k]) keys.push(k);
+  });
+  const seen = new Map();
   const out = [];
-  for (const item of list) {
-    const phone = normalizeCampaignPhone(item.phone);
-    const jid = phone ? '' : String(item.jid || '');
-    const key = phone || jid;
-    if (!key) { invalid += 1; continue; }
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ name: String(item.name || '').trim().slice(0, 80), phone, jid, ...(item.fields ? { fields: item.fields } : {}) });
+  const stats = [];
+  let invalid = 0, duplicates = 0;
+  for (const key of keys) {
+    const part = d.parts[key] || { list: [], label: '' };
+    const st = { key, label: part.label, valid: 0, added: 0, repeated: 0, invalid: 0 };
+    const mine = new Set();
+    for (const item of part.list) {
+      const phone = normalizeCampaignPhone(item.phone);
+      const jid = phone ? '' : String(item.jid || '');
+      const k = phone ? campaignPhoneKey(phone) : jid;
+      if (!k) { st.invalid += 1; continue; }
+      if (mine.has(k)) { duplicates += 1; continue; } // repetido dentro da mesma lista
+      mine.add(k);
+      st.valid += 1;
+      const name = String(item.name || '').trim().slice(0, 80);
+      const prev = seen.get(k);
+      if (prev) {
+        st.repeated += 1;
+        duplicates += 1;
+        if (!prev.name && name) prev.name = name;
+        if (item.fields) prev.fields = { ...item.fields, ...(prev.fields || {}) };
+        continue;
+      }
+      const r = { name, phone, jid, ...(item.fields ? { fields: item.fields } : {}) };
+      seen.set(k, r);
+      out.push(r);
+      st.added += 1;
+    }
+    invalid += st.invalid;
+    stats.push(st);
   }
-  _campaignDraft.recipients = out;
+  d.recipients = out;
+  d.stats = stats;
+  d.invalid = invalid;
+  d.duplicates = duplicates;
+  d.source = d.on.size === 1 ? [...d.on][0] : d.on.size ? 'mixed' : '';
+  d.label = stats.map(s => s.label).filter(Boolean).join(' + ');
   // Colunas extras dos contatos (planilha da campanha ou importada em Contatos): servem para as variáveis.
-  _campaignDraft.sheetColumns = [...new Set(out.flatMap(r => r.fields ? Object.keys(r.fields) : []))].slice(0, 30);
+  d.sheetColumns = [...new Set(out.flatMap(r => r.fields ? Object.keys(r.fields) : []))].slice(0, 30);
   if (document.getElementById('camp-cloud-tpl') && typeof renderCampCloudParams === 'function') renderCampCloudParams(currentCampCloudParams());
-  _campaignDraft.label = label;
-  _campaignDraft.invalid = invalid;
-  _campaignDraft.duplicates = list.length - invalid - out.length;
+  if (typeof renderCampaignSheetList === 'function') renderCampaignSheetList();
   renderCampaignSummary();
+}
+
+// Quantos vêm de cada fonte (antes de iniciar): válidos na fonte e quantos já estavam numa fonte de cima.
+function campaignSourcesBreakdownHtml() {
+  const d = _campaignDraft;
+  const stats = (d && d.stats) || [];
+  if (stats.length < 2) return '';
+  return `<div style="margin-bottom:8px;">${stats.map(s => `<div style="display:flex;gap:8px;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
+      <span style="min-width:0;">${escapeHtml(s.label || s.key)}</span>
+      <span style="white-space:nowrap;"><b>${s.valid}</b> contato(s)${s.repeated ? ` <span style="color:var(--muted);">(${s.repeated} já em outra fonte)</span>` : ''}${s.invalid ? ` <span style="color:var(--muted);">· ${s.invalid} sem telefone válido</span>` : ''}</span>
+    </div>`).join('')}</div>`;
+}
+
+// Texto curto para a confirmação: "Leads do CRM: 120 · Planilha x.xlsx: 80 · Total sem repetidos: 185".
+function campaignSourcesText() {
+  const d = _campaignDraft;
+  const stats = (d && d.stats) || [];
+  if (stats.length < 2) return '';
+  return stats.map(s => `${s.label || s.key}: ${s.valid}`).join(' · ') + ` · Total sem repetidos: ${d.recipients.length}. `;
 }
 
 // Colunas para escolher o público da campanha, agrupadas por pipeline (com "todo o pipeline" em cada grupo).
@@ -10032,7 +10168,7 @@ function toggleCampaignStagePick(on) {
 }
 
 async function buildCampaignAudience() {
-  if (!_campaignDraft || _campaignDraft.source !== 'crm') return;
+  if (!_campaignDraft || !campSrcOn('crm')) return;
   const act = _campaignDraft.act;
   const stage = document.getElementById('camp-crm-stage').value;
   const month = document.getElementById('camp-crm-month').value;
@@ -10055,15 +10191,15 @@ async function buildCampaignAudience() {
     const leads = on.size ? getLeads().filter(l => leadMatchesClient(l, act) && on.has(l.stage)
       && dateFlt.ok(l) && !l.whatsappOptOut) : [];
     setCampaignRecipients(leads.map(l => ({ name: l.name, phone: l.phone, jid: l.whatsappJid })),
-      `Leads do CRM (${label}, ${dateFlt.label})`);
+      `Leads do CRM (${label}, ${dateFlt.label})`, 'crm');
     return;
   }
   if (stage === '__contacts__') {
     document.getElementById('camp-summary').textContent = 'Carregando a base de contatos...';
     try {
       const contacts = await window._fb.getWhatsAppContacts(act);
-      if (!_campaignDraft || _campaignDraft.source !== 'crm') return; // trocou de público enquanto carregava
-      setCampaignRecipients(contacts, 'Base de contatos do WhatsApp');
+      if (!_campaignDraft || !campSrcOn('crm')) return; // trocou de público enquanto carregava
+      setCampaignRecipients(contacts, 'Base de contatos do WhatsApp', 'crm');
     } catch (e) {
       document.getElementById('camp-summary').innerHTML = `<span style="color:#f87171;">${escapeHtml(e.message)}</span>`;
     }
@@ -10077,45 +10213,88 @@ async function buildCampaignAudience() {
     && (plOnly ? leadPipeline(l) === plOnly : (!stage || l.stage === stage))
     && dateFlt.ok(l) && !l.whatsappOptOut);
   setCampaignRecipients(leads.map(l => ({ name: l.name, phone: l.phone, jid: l.whatsappJid })),
-    `Leads do CRM (${stageLabel}, ${dateFlt.label})`);
+    `Leads do CRM (${stageLabel}, ${dateFlt.label})`, 'crm');
 }
 
-async function loadCampaignSheet(input) {
-  const file = input.files && input.files[0];
-  if (!file) return;
-  try {
-    await ensureXlsxLoaded();
-    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
-    if (!rows.length) throw new Error('Planilha vazia');
-    const norm = v => String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-    const header = rows[0].map(norm);
-    let nameCol = header.findIndex(h => /nome|name/.test(h));
-    let phoneCol = header.findIndex(h => /tel|fone|phone|whats|celular|numero|contato/.test(h));
-    let dataRows = rows.slice(1);
-    if (phoneCol === -1) {
-      // Sem títulos: acha a coluna que mais parece telefone.
-      dataRows = rows;
-      const cols = Math.max(...rows.slice(0, 20).map(r => r.length));
-      let best = -1, bestScore = 0;
-      for (let c = 0; c < cols; c++) {
-        const score = rows.slice(0, 20).filter(r => normalizeCampaignPhone(r[c])).length;
-        if (score > bestScore) { best = c; bestScore = score; }
-      }
-      phoneCol = best;
-      nameCol = phoneCol === 0 ? 1 : 0;
+// Lê uma planilha (.xlsx/.xls/.csv) e devolve [{ name, phone, fields }]. Usada pela campanha e pela cadência.
+async function readAudienceSheet(file) {
+  await ensureXlsxLoaded();
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' }).filter(r => r.some(v => String(v).trim()));
+  if (!rows.length) throw new Error('Planilha vazia');
+  const norm = v => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const header = rows[0].map(norm);
+  // Nome: prefere "Nome"/"Nome completo" a "Primeiro nome" ({primeiro_nome} sai da primeira palavra do nome).
+  let nameCol = header.findIndex(h => /^(nome( completo)?|name|full name|cliente|lead)$/.test(h));
+  if (nameCol === -1) nameCol = header.findIndex(h => /nome|name/.test(h) && !/primeiro|first|sobrenome|last|arquivo|empresa/.test(h));
+  if (nameCol === -1) nameCol = header.findIndex(h => /nome|name/.test(h));
+  let phoneCol = header.findIndex(h => /tel|fone|phone|whats|celular|numero/.test(h));
+  if (phoneCol === -1) phoneCol = header.findIndex(h => /contato/.test(h) && h !== header[nameCol]);
+  let dataRows = rows.slice(1);
+  if (phoneCol === -1) {
+    // Sem títulos: acha a coluna que mais parece telefone.
+    dataRows = rows;
+    const cols = Math.max(...rows.slice(0, 20).map(r => r.length));
+    let best = -1, bestScore = 0;
+    for (let c = 0; c < cols; c++) {
+      const score = rows.slice(0, 20).filter(r => normalizeCampaignPhone(r[c])).length;
+      if (score > bestScore) { best = c; bestScore = score; }
     }
-    if (phoneCol === -1) throw new Error('Não encontrei a coluna de telefone');
-    // Todas as colunas com título ficam guardadas no contato: servem para as variáveis ({col:Coluna}).
-    const titles = dataRows === rows ? [] : rows[0].map(h => String(h || '').trim().slice(0, 60));
-    const cols = titles.map((t, i) => ({ t, i })).filter(c => c.t && c.i !== phoneCol).slice(0, 30);
-    setCampaignRecipients(dataRows.map(r => ({
-      name: nameCol >= 0 ? r[nameCol] : '', phone: r[phoneCol],
-      fields: cols.length ? Object.fromEntries(cols.map(c => [c.t, String(r[c.i] == null ? '' : r[c.i]).trim().slice(0, 200)])) : undefined
-    })), `Planilha ${file.name}`);
-  } catch (e) {
-    showToast('Não foi possível ler a planilha: ' + e.message, 'warning');
+    phoneCol = best;
+    nameCol = phoneCol === 0 ? 1 : 0;
   }
+  if (phoneCol === -1) throw new Error('Não encontrei a coluna de telefone');
+  // Todas as colunas com título ficam guardadas no contato: servem para as variáveis ({col:Coluna}).
+  const titles = dataRows === rows ? [] : rows[0].map(h => String(h || '').trim().slice(0, 60));
+  const cols = titles.map((t, i) => ({ t, i })).filter(c => c.t && c.i !== phoneCol).slice(0, 30);
+  return dataRows.map(r => ({
+    name: nameCol >= 0 ? String(r[nameCol] == null ? '' : r[nameCol]).trim() : '', phone: r[phoneCol],
+    fields: cols.length ? Object.fromEntries(cols.map(c => [c.t, String(r[c.i] == null ? '' : r[c.i]).trim().slice(0, 200)])) : undefined
+  }));
+}
+
+// Campanha: cada planilha enviada vira uma fonte própria (dá para mandar várias e tirar uma depois).
+async function loadCampaignSheet(input) {
+  const files = [...((input && input.files) || [])];
+  const d = _campaignDraft;
+  if (!files.length || !d) return;
+  if (!d.sheets) d.sheets = [];
+  for (const file of files) {
+    try {
+      const list = await readAudienceSheet(file);
+      if (_campaignDraft !== d) return;
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      d.sheets.push({ id, name: file.name });
+      d.parts['sheet:' + id] = { list, label: `Planilha ${file.name}` };
+    } catch (e) {
+      showToast(`Não foi possível ler a planilha ${file.name}: ${e.message}`, 'warning');
+    }
+  }
+  if (input) input.value = '';
+  if (!campSrcOn('sheet')) selectCampaignSource('sheet', true);
+  renderCampaignSheetList();
+  mergeCampaignAudience();
+}
+
+function removeCampaignSheet(id) {
+  const d = _campaignDraft;
+  if (!d) return;
+  d.sheets = (d.sheets || []).filter(s => s.id !== id);
+  delete d.parts['sheet:' + id];
+  renderCampaignSheetList();
+  mergeCampaignAudience();
+}
+
+function renderCampaignSheetList() {
+  const box = document.getElementById('camp-sheet-list');
+  const d = _campaignDraft;
+  if (!box || !d) return;
+  box.innerHTML = (d.sheets || []).map(s => {
+    const n = ((d.parts['sheet:' + s.id] || {}).list || []).length;
+    return `<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);padding:4px 0;">
+      <span style="flex:1;min-width:0;">📄 ${escapeHtml(s.name)} <span style="color:var(--muted);">(${n} linha(s))</span></span>
+      <a href="#" style="color:var(--red);" onclick="event.preventDefault();removeCampaignSheet('${escapeJsString(s.id)}')">Tirar</a></div>`;
+  }).join('');
 }
 
 async function loadCampaignContacts() {
@@ -10123,7 +10302,7 @@ async function loadCampaignContacts() {
   summary.textContent = 'Carregando contatos do WhatsApp...';
   try {
     const r = await window._fb.whatsapp('/whatsapp/contacts', _campaignDraft.act, { line: (campChosenLines()[0] || waDefaultLine(_campaignDraft.act)) });
-    setCampaignRecipients(r.contacts || [], 'Contatos do WhatsApp');
+    setCampaignRecipients(r.contacts || [], 'Contatos do WhatsApp', 'contacts');
   } catch (e) {
     summary.innerHTML = `<span style="color:#f87171;">${escapeHtml(e.message)}</span>`;
   }
@@ -10271,8 +10450,8 @@ async function importContactsToCrm() {
   const act = _campaignDraft.act;
   const summary = document.getElementById('camp-summary');
   try {
-    if (_campaignDraft.source !== 'contacts' || !_campaignDraft.recipients.length) await loadCampaignContacts();
-    const fromWhatsApp = _campaignDraft.recipients.filter(r => r.phone);
+    if (!campSrcOn('contacts') || !(_campaignDraft.parts.contacts || {}).list) { selectCampaignSource('contacts', true); await loadCampaignContacts(); }
+    const fromWhatsApp = ((_campaignDraft.parts.contacts || {}).list || []).map(r => ({ ...r, phone: normalizeCampaignPhone(r.phone) })).filter(r => r.phone);
     if (!fromWhatsApp.length) { showToast('Nenhum contato com telefone para importar.', 'warning'); return; }
     if (!await showConfirm(`${fromWhatsApp.length} contato(s) do WhatsApp vão para a base de contatos do CRM (tela Contatos). Eles não entram no kanban nem recebem mensagem automática.`, 'Importar contatos', 'Importar')) return;
     summary.textContent = 'Importando...';
@@ -10370,7 +10549,7 @@ let _groupParticipantsRequest = 0;
 async function loadCampaignGroupParticipants() {
   const checked = [...document.querySelectorAll('.camp-group:checked')];
   const summary = document.getElementById('camp-summary');
-  if (!checked.length) { _groupParticipantsRequest++; setCampaignRecipients([], ''); return; }
+  if (!checked.length) { _groupParticipantsRequest++; setCampaignRecipients([], '', 'groups'); return; }
   const allGroups = checked.length === document.querySelectorAll('.camp-group').length;
   const groupNames = checked.map(cb => cb.getAttribute('data-subject'));
   const mentionRow = document.getElementById('camp-groups-mention-row');
@@ -10387,7 +10566,7 @@ async function loadCampaignGroupParticipants() {
   summary.textContent = `Carregando participantes de ${checked.length} grupo(s)... pode levar até 1 minuto.`;
   try {
     const r = await window._fb.whatsapp('/whatsapp/group-participants', _campaignDraft.act, { groupIds: checked.map(cb => cb.value), line: (campChosenLines()[0] || waDefaultLine(_campaignDraft.act)) });
-    if (request !== _groupParticipantsRequest || !_campaignDraft || _campaignDraft.source !== 'groups') return; // seleção mudou enquanto carregava
+    if (request !== _groupParticipantsRequest || !_campaignDraft || !campSrcOn('groups')) return; // seleção mudou enquanto carregava
     setCampaignRecipients(r.participants || [], allGroups
       ? `No privado dos participantes de todos os grupos (${checked.length})`
       : `No privado dos participantes de: ${groupNames.slice(0, 3).join(', ')}${groupNames.length > 3 ? ` e mais ${groupNames.length - 3}` : ''}`);
@@ -10423,13 +10602,12 @@ function renderCampaignSummary() {
     : Math.max(1, Math.min(d.warmup ? 20 : Number(d.dailyLimit) || 100, (Number(d.endHour) - Number(d.startHour)) * (Number(d.hourlyLimit) || 20)));
   const days = Math.ceil(n / perDay);
   const hidden = _campaignDraft.recipients.filter(r => !r.phone).length;
-  summary.innerHTML = n
-    ? `<b>${n} contato(s)</b> na lista${_campaignDraft.duplicates ? ` · ${_campaignDraft.duplicates} repetido(s) removido(s)` : ''}${_campaignDraft.invalid ? ` · ${_campaignDraft.invalid} sem telefone válido` : ''}${hidden ? ` · ${hidden} com número oculto` : ''}.
+  summary.innerHTML = campaignSourcesBreakdownHtml() + (n
+    ? `<b>${(_campaignDraft.stats || []).length > 1 ? `Total sem repetidos: ${n} contato(s)` : `${n} contato(s)`}</b> na lista${_campaignDraft.duplicates ? ` · ${_campaignDraft.duplicates} repetido(s) removido(s)` : ''}${_campaignDraft.invalid ? ` · ${_campaignDraft.invalid} sem telefone válido` : ''}${hidden ? ` · ${hidden} com número oculto` : ''}.
        <div style="color:var(--muted);font-size:12px;margin-top:4px;">${cloudMode
          ? `Pela API oficial saem cerca de 30 por minuto (${cloudPerHour.toLocaleString('pt-BR')} por hora), dentro do horário de envio: leva cerca de ${n <= cloudPerHour ? 'até 1 hora' : Math.ceil(n / cloudPerHour) + ' hora(s)'}${days > 1 ? ` (${days} dia(s))` : ''}.`
          : `Com as configurações abaixo (até ${perDay} por dia${d.warmup ? ' no início do aquecimento' : ''}), leva cerca de ${days} dia(s) de envio.`}</div>`
-    : '<span style="color:var(--muted);">Nenhum contato na lista ainda.</span>';
-  const source = _campaignDraft.source;
+    : `<span style="color:var(--muted);">${_campaignDraft.on && _campaignDraft.on.size ? 'Nenhum contato na lista ainda.' : 'Marque pelo menos uma fonte acima.'}</span>`);
   const warnings = [];
   if (cloudMode) {
     const qAct = _campaignDraft.act;
@@ -10439,7 +10617,7 @@ function renderCampaignSummary() {
     risk.style.display = 'block';
     return;
   }
-  if (source === 'groups' || source === 'contacts') warnings.push('Mandar mensagem para quem não pediu contato (participantes de grupos, contatos antigos) é o que mais leva o WhatsApp a bloquear números. Prefira pessoas que conhecem a empresa e costumam responder.');
+  if (campSrcOn('groups') || campSrcOn('contacts')) warnings.push('Mandar mensagem para quem não pediu contato (participantes de grupos, contatos antigos) é o que mais leva o WhatsApp a bloquear números. Prefira pessoas que conhecem a empresa e costumam responder.');
   if (read.dispatch && (d.minIntervalSec < 30 || d.hourlyLimit > 30)) warnings.push('Intervalos abaixo de 30 s ou mais de 30 mensagens por hora aumentam bastante o risco de bloqueio.');
   if (n > 300 && !d.warmup) warnings.push('Lista grande: se o número for novo, marque "Número novo (aquecimento)".');
   warnings.push('Ofereça uma saída na mensagem, por exemplo: "Se não quiser receber, responda SAIR". Quem responder é removido das próximas campanhas.');
@@ -10467,8 +10645,8 @@ async function saveCampaign(start) {
   const startInfo = readCampaignStart();
   if (startInfo.error) { setFb('#f87171', startInfo.error); return; }
   const startLabel = startInfo.startAt ? `a partir de ${new Date(startInfo.startAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : 'começando agora';
-  const unitLabel = _campaignDraft.source === 'groups' && campGroupsMode() === 'inside' ? 'grupo(s)' : 'contato(s)';
-  if (start && !await showConfirm(`Enviar para ${_campaignDraft.recipients.length} ${unitLabel}, ${startLabel}: ${describeDispatch(read.dispatch)}.`, startInfo.startAt ? 'Programar disparo' : 'Iniciar disparo', startInfo.startAt ? 'Programar' : 'Iniciar')) return;
+  const unitLabel = campSrcOn('groups') && campGroupsMode() === 'inside' ? 'grupo(s)' : 'contato(s)';
+  if (start && !await showConfirm(`${campaignSourcesText()}Enviar para ${_campaignDraft.recipients.length} ${unitLabel}, ${startLabel}: ${describeDispatch(read.dispatch)}.`, startInfo.startAt ? 'Programar disparo' : 'Iniciar disparo', startInfo.startAt ? 'Programar' : 'Iniciar')) return;
   setFb('var(--muted)', 'Salvando...');
   try {
     const id = await window._fb.createCampaign({
@@ -10485,7 +10663,7 @@ async function saveCampaign(start) {
       startAt: startInfo.startAt,
       audienceType: _campaignDraft.source,
       audienceLabel: _campaignDraft.label,
-      mentionAll: _campaignDraft.source === 'groups' && campGroupsMode() === 'inside' && !!(document.getElementById('camp-groups-mention') || {}).checked
+      mentionAll: campSrcOn('groups') && campGroupsMode() === 'inside' && !!(document.getElementById('camp-groups-mention') || {}).checked
     }, _campaignDraft.recipients);
     if (start) await window._fb.updateCampaign(id, { status: 'running', startedAt: new Date().toISOString() });
     showToast(!start ? 'Campanha salva como rascunho.' : startInfo.startAt ? 'Campanha programada.' : 'Campanha criada e iniciada.', 'success');
@@ -13820,6 +13998,7 @@ function cloudCadenceCardHtml(f, leads, act) {
     <div class="huv-actions">
       <button class="huv-btn primary" onclick="openCloudCadenceEditor('${id}')">Abrir editor</button>
       <button class="huv-btn" onclick="openCloudProgress('${id}')">Andamento</button>
+      ${f.active ? `<button class="huv-btn" onclick="openCadenceAudience('${id}')" title="Leads da coluna, planilhas ou os dois juntos">Colocar contatos</button>` : ''}
       ${f.active ? `<button class="huv-btn" onclick="toggleFlowPause('${id}')">${f.paused ? uiIco('play') + ' Retomar' : uiIco('pause') + ' Pausar'}</button>` : ''}
       <button class="huv-btn" onclick="duplicateFlow('${id}')">Duplicar</button>
       <button class="huv-btn" style="margin-left:auto;color:var(--red);border-color:var(--red);" onclick="deleteFlowConfirm('${id}')">Excluir</button>
@@ -14542,6 +14721,7 @@ function cloudFlowTopHtml() {
     <span id="flow-fb" class="integ-muted" style="margin-left:auto;"></span>
     <button class="huv-btn" style="height:38px;padding:0 12px;" onclick="cloudFlowToList()">Ver em lista</button>
     ${_flow.id ? `<button class="huv-btn" style="height:38px;padding:0 12px;" onclick="openCloudProgress('${escapeJsString(_flow.id)}')">Andamento</button>` : ''}
+    ${_flow.id && _flow.active ? `<button class="huv-btn" style="height:38px;padding:0 12px;" onclick="openCadenceAudience('${escapeJsString(_flow.id)}')" title="Leads da coluna, planilhas ou os dois juntos">Colocar contatos</button>` : ''}
     <button class="huv-btn" style="height:38px;padding:0 14px;" onclick="saveCloudFlow(true)" title="Salva do jeito que está, mesmo incompleto. Fica desligada.">Salvar rascunho</button>
     <button class="btn-add-lead" style="height:38px;padding:0 16px;" onclick="saveCloudFlow(false)">Salvar</button>
     ${_flow.active ? `<button class="huv-btn" style="height:38px;padding:0 14px;color:var(--red);border-color:var(--red);" onclick="activateCloudFlow(false)">Desligar</button>` : `<button class="btn-add-lead" style="height:38px;padding:0 16px;background:#1FA855;border-color:#1FA855;" onclick="activateCloudFlow(true)">Ligar</button>`}`;
@@ -14679,6 +14859,7 @@ function renderCloudCadenceEditor() {
       <button class="huv-btn" onclick="_cc.data.draft = false; saveCloudCadence(false)">Salvar</button>
       ${d.active ? `<button class="huv-btn" style="color:var(--red);border-color:var(--red);" onclick="setCloudCadenceActive(false)">Desligar</button>` : `<button class="btn-save" style="width:auto;padding:9px 16px;" onclick="setCloudCadenceActive(true)">Ligar cadência</button>`}
       ${_cc.id ? `<button class="huv-btn" onclick="openCloudProgress('${escapeJsString(_cc.id)}')">Andamento</button>` : ''}
+      ${_cc.id && d.active ? `<button class="huv-btn" onclick="openCadenceAudience('${escapeJsString(_cc.id)}')" title="Leads da coluna, planilhas ou os dois juntos">Colocar contatos</button>` : ''}
       <span id="cc-fb" class="integ-muted" style="font-size:12.5px;">${d.active ? 'Ligada.' : 'Desligada.'}</span>
     </div>`;
 }
@@ -14765,15 +14946,9 @@ async function setCloudCadenceActive(on) {
   auditLog(_cc.act, 'automacao', `${on ? 'Ligou' : 'Desligou'} a cadência da API oficial "${d.name || ''}"`);
   renderCloudCadenceEditor();
   if (!on) return showToast('Cadência desligada. Os leads que estavam nela param de receber.', 'success');
-  const inCol = (_leadsCache || []).filter(l => leadMatchesClient(l, _cc.act) && l.stage === d.triggerStage).length;
-  const first = ccPayload().steps[0];
-  const include = inCol && await showConfirm(`Colocar também os ${inCol} lead(s) que já estão em "${autoStageLabel(_cc.act, d.triggerStage)}"? Eles recebem a 1ª mensagem (Dia ${first.day}, ${first.time}) todos juntos. Se não, só entram os que chegarem na coluna a partir de agora.`, 'Leads que já estão na coluna', 'Incluir todos', false);
-  if (!include) return showToast('Cadência ligada. Os leads que chegarem na coluna entram nela.', 'success', 6000);
-  try {
-    const r = await window._fb.whatsapp('/cadence/enroll', _cc.act, { id: _cc.id });
-    const when = r.firstAt ? new Date(r.firstAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-    showToast(`${r.enrolled} lead(s) entraram na cadência${r.skipped ? ` (${r.skipped} pulados: sem telefone, pediram para sair ou já estavam)` : ''}.${when ? ' 1ª mensagem: ' + when + '.' : ''}`, 'success', 9000);
-  } catch (e) { showToast('Cadência ligada, mas não consegui colocar os leads da coluna: ' + e.message, 'error', 8000); }
+  showToast('Cadência ligada. Os leads que chegarem na coluna entram nela.', 'success', 6000);
+  // Quem mais entra agora: os leads que já estão na coluna, planilhas, ou os dois juntos.
+  openCadenceAudience(_cc.id);
 }
 async function toggleCloudCadence(id, on) {
   const f = (_flowList || []).find(x => x.id === id);
@@ -14781,6 +14956,191 @@ async function toggleCloudCadence(id, on) {
   if (await prepareCloudCc(id)) await setCloudCadenceActive(on);
   renderAutomacoesView();
 }
+
+// ===== Público da cadência (API oficial): leads da coluna + planilhas, juntos ou separados =====
+// A cadência roda nos leads (o andamento e as paradas ficam no card). Por isso o contato da planilha que ainda não
+// é lead vira um card na coluna do gatilho (origem "Planilha ...", sem a 1ª mensagem automática) e entra na cadência.
+// O mesmo telefone (só dígitos, com 55; o 9 extra não conta) entra uma vez só.
+let _cadAud = null;
+function openCadenceAudience(id) {
+  const auto = (_flowList || []).find(x => x.id === id) || (_cc && _cc.id === id ? _cc.data : null);
+  if (!auto || auto.channel !== 'cloud') return showToast('Cadência não encontrada. Salve a cadência antes.', 'warning');
+  const act = normalizeActValue(auto.act || flowAct());
+  const inCol = cadAudColumnLeads(act, id, auto.triggerStage).length;
+  _cadAud = { act, id, auto, sheets: [], parts: {}, useCol: inCol > 0, moveOther: false };
+  openHuvenModal('Colocar contatos na cadência', `
+    <div class="integ-muted" style="font-size:12.5px;line-height:1.55;margin-bottom:10px;">Marque uma ou mais fontes. O mesmo telefone entra uma vez só. Quem chegar na coluna "${escapeHtml(autoStageLabel(act, auto.triggerStage))}" depois continua entrando sozinho.</div>
+    <label class="integ-toggle" style="display:flex;margin-bottom:8px;"><input type="checkbox" id="cad-aud-col" ${_cadAud.useCol ? 'checked' : ''} onchange="_cadAud.useCol = this.checked; renderCadenceAudience()"> Leads do CRM que já estão na coluna "${escapeHtml(autoStageLabel(act, auto.triggerStage))}"</label>
+    <label class="integ-toggle" style="display:flex;margin-bottom:6px;"><input type="checkbox" id="cad-aud-sheet-on" onchange="document.getElementById('cad-aud-sheet-box').style.display = this.checked ? '' : 'none'; renderCadenceAudience()"> Planilhas (Excel/CSV)</label>
+    <div id="cad-aud-sheet-box" style="display:none;margin:0 0 10px 24px;">
+      <div class="integ-muted" style="font-size:12px;margin-bottom:6px;">Planilha .xlsx ou .csv com uma coluna de nome e uma de telefone (com DDD), títulos na primeira linha. Pode enviar mais de uma. {primeiro_nome} vira a primeira palavra do nome.</div>
+      <input type="file" class="field-input" accept=".xlsx,.xls,.csv" multiple onchange="loadCadenceAudienceSheet(this)">
+      <div id="cad-aud-sheets" style="margin-top:6px;"></div>
+      <label class="integ-toggle" style="display:flex;margin-top:8px;"><input type="checkbox" id="cad-aud-move" onchange="_cadAud.moveOther = this.checked; renderCadenceAudience()"> Quem da planilha já é lead em outra coluna: mover para "${escapeHtml(autoStageLabel(act, auto.triggerStage))}" e colocar na cadência</label>
+    </div>
+    <div id="cad-aud-summary" style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text);"></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap;">
+      <button class="btn-save" id="cad-aud-go" style="width:auto;padding:9px 16px;" onclick="applyCadenceAudience()">Colocar na cadência</button>
+      <button class="huv-btn" onclick="closeHuvenModal()">Agora não</button>
+      <span id="cad-aud-fb" class="integ-muted" style="font-size:12.5px;"></span>
+    </div>`, 620);
+  renderCadenceAudience();
+}
+
+// Leads da coluna que ainda podem entrar: com telefone, sem pedido de saída e que não passaram por esta cadência nesta coluna.
+function cadAudColumnLeads(act, id, stage) {
+  return (_leadsCache || []).filter(l => leadMatchesClient(l, act) && l.stage === stage && !l.whatsappOptOut
+    && normalizeCampaignPhone(l.phone) && !(l.cloudCadence && l.cloudCadence.id === id && l.cloudCadence.stage === l.stage));
+}
+
+async function loadCadenceAudienceSheet(input) {
+  const s = _cadAud;
+  if (!s) return;
+  for (const file of [...((input && input.files) || [])]) {
+    try {
+      const list = await readAudienceSheet(file);
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      s.sheets.push({ id, name: file.name });
+      s.parts[id] = { list, label: `Planilha ${file.name}` };
+    } catch (e) { showToast(`Não foi possível ler a planilha ${file.name}: ${e.message}`, 'warning'); }
+  }
+  if (input) input.value = '';
+  renderCadenceAudience();
+}
+
+function removeCadenceAudienceSheet(id) {
+  if (!_cadAud) return;
+  _cadAud.sheets = _cadAud.sheets.filter(x => x.id !== id);
+  delete _cadAud.parts[id];
+  renderCadenceAudience();
+}
+
+// Junta as fontes e decide o que acontece com cada contato da planilha.
+function cadenceAudiencePlan() {
+  const s = _cadAud;
+  const act = s.act, stage = s.auto.triggerStage;
+  const sheetsOn = !!(document.getElementById('cad-aud-sheet-on') || {}).checked;
+  const leads = (_leadsCache || []).filter(l => leadMatchesClient(l, act));
+  const byKey = new Map();
+  leads.forEach(l => [l.phone, l.whatsappPhone].forEach(p => { const k = campaignPhoneKey(normalizeCampaignPhone(p)); if (k && !byKey.has(k)) byKey.set(k, l); }));
+  const passed = l => l.cloudCadence && l.cloudCadence.id === s.id && l.cloudCadence.stage === l.stage;
+  const seen = new Set();
+  const stats = [], create = [], move = [];
+  const colLeads = s.useCol ? cadAudColumnLeads(act, s.id, stage) : [];
+  if (s.useCol) {
+    colLeads.forEach(l => seen.add(campaignPhoneKey(normalizeCampaignPhone(l.phone))));
+    stats.push({ label: `Leads da coluna "${autoStageLabel(act, stage)}"`, valid: colLeads.length, added: colLeads.length });
+  }
+  if (sheetsOn) s.sheets.forEach(sh => {
+    const part = s.parts[sh.id] || { list: [] };
+    const st = { label: part.label, valid: 0, added: 0, repeated: 0, invalid: 0, passed: 0, optOut: 0, elsewhere: 0, created: 0 };
+    const mine = new Set();
+    part.list.forEach(item => {
+      const phone = normalizeCampaignPhone(item.phone);
+      const k = campaignPhoneKey(phone);
+      if (!k) { st.invalid++; return; }
+      if (mine.has(k)) return;
+      mine.add(k);
+      st.valid++;
+      if (seen.has(k)) { st.repeated++; return; }
+      seen.add(k);
+      const lead = byKey.get(k);
+      if (!lead) { create.push({ name: String(item.name || '').trim().slice(0, 80), phone, origem: part.label }); st.added++; st.created++; return; }
+      if (passed(lead)) { st.passed++; return; }
+      if (lead.whatsappOptOut) { st.optOut++; return; }
+      // Já está na coluna (e a coluna não foi marcada): entra de novo na coluna agora, e com isso na cadência.
+      if (lead.stage === stage || s.moveOther) { move.push(lead); st.added++; return; }
+      st.elsewhere++;
+    });
+    stats.push(st);
+  });
+  return { stats, create, move, colLeads, total: colLeads.length + create.length + move.length };
+}
+
+function renderCadenceAudience() {
+  const s = _cadAud;
+  const box = document.getElementById('cad-aud-summary');
+  if (!s || !box) return;
+  const list = document.getElementById('cad-aud-sheets');
+  if (list) list.innerHTML = s.sheets.map(sh => `<div style="display:flex;gap:8px;align-items:center;font-size:12.5px;padding:3px 0;"><span style="flex:1;min-width:0;">📄 ${escapeHtml(sh.name)} <span class="integ-muted">(${(s.parts[sh.id] || { list: [] }).list.length} linha(s))</span></span><a href="#" style="color:var(--red);" onclick="event.preventDefault();removeCadenceAudienceSheet('${escapeJsString(sh.id)}')">Tirar</a></div>`).join('');
+  const p = cadenceAudiencePlan();
+  const active = !!s.auto.active;
+  const rows = p.stats.map(st => {
+    const notes = [
+      st.repeated ? `${st.repeated} já em outra fonte` : '',
+      st.created ? `${st.created} novo(s) no CRM` : '',
+      st.elsewhere ? `${st.elsewhere} já são leads em outra coluna (ficam de fora)` : '',
+      st.passed ? `${st.passed} já passaram por esta cadência` : '',
+      st.optOut ? `${st.optOut} pediram para não receber` : '',
+      st.invalid ? `${st.invalid} sem telefone válido` : ''
+    ].filter(Boolean).join(' · ');
+    return `<div style="display:flex;gap:8px;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:12.5px;"><span style="min-width:0;">${escapeHtml(st.label)}${notes ? `<div class="integ-muted" style="font-size:11.5px;">${escapeHtml(notes)}</div>` : ''}</span><span style="white-space:nowrap;"><b>${st.valid}</b> contato(s)</span></div>`;
+  }).join('');
+  box.innerHTML = (rows || '<div class="integ-muted">Marque pelo menos uma fonte.</div>')
+    + `<div style="margin-top:8px;"><b>Total sem repetidos: ${p.total} contato(s)</b> entram na cadência${p.create.length ? `; ${p.create.length} viram lead(s) novo(s) na coluna "${escapeHtml(autoStageLabel(s.act, s.auto.triggerStage))}"` : ''}.</div>`
+    + (active ? '' : '<div style="color:var(--red);font-size:12px;margin-top:6px;">Ligue a cadência antes de colocar contatos.</div>');
+  const go = document.getElementById('cad-aud-go');
+  if (go) go.disabled = !active || !p.total;
+}
+
+async function applyCadenceAudience() {
+  const s = _cadAud;
+  if (!s) return;
+  const fb = document.getElementById('cad-aud-fb');
+  const p = cadenceAudiencePlan();
+  if (!s.auto.active) { fb.textContent = 'Ligue a cadência antes.'; return; }
+  if (!p.total) { fb.textContent = 'Nenhum contato para colocar.'; return; }
+  if (p.create.length > 5000) { fb.textContent = 'Envie no máximo 5.000 contatos novos por vez.'; return; }
+  const act = s.act, stage = s.auto.triggerStage, stageLabel = autoStageLabel(act, stage);
+  const pipeline = (pipelineList(act).find(pl => (getStages(act, pl.id) || []).some(x => x.id === stage)) || { id: 'principal' }).id;
+  const first = (s.auto.steps || [])[0];
+  const parts = p.stats.map(st => `${st.label}: ${st.valid}`).join(' · ');
+  if (!await showConfirm(`${parts}. Total sem repetidos: ${p.total}.${p.create.length ? ` ${p.create.length} contato(s) da planilha viram lead(s) na coluna "${stageLabel}".` : ''}${p.move.length ? ` ${p.move.length} lead(s) entram de novo na coluna "${stageLabel}".` : ''}${first ? ` A 1ª mensagem sai no Dia ${first.day}, ${first.time}.` : ''}`, 'Colocar na cadência', 'Colocar')) return;
+  const go = document.getElementById('cad-aud-go');
+  if (go) go.disabled = true;
+  fb.textContent = 'Colocando...';
+  try {
+    const now = new Date(), nowIso = now.toISOString(), hist = { stage: stageLabel, at: now.toLocaleString('pt-BR') };
+    const created = p.create.map((c, i) => ({
+      id: now.getTime() + '_cad' + i, name: c.name, phone: c.phone, stage, pipeline, act,
+      origem: c.origem, redeSocial: 'Planilha', source: 'planilha', importado: true,
+      history: [hist], stageChangedAt: nowIso, createdAt: nowIso, updatedAt: nowIso
+    }));
+    if (created.length) {
+      const ids = await window._fb.saveLeadsBatch(created);
+      (ids || []).forEach((id, i) => { if (created[i] && id) created[i]._docId = id; });
+      if (_leadsCache) _leadsCache.push(...created.filter(l => !_leadsCache.some(x => x.id === l.id)));
+    }
+    const moved = p.move.filter(l => l._docId).map(l => ({
+      _docId: l._docId, stage, pipeline, stageChangedAt: nowIso, updatedAt: nowIso,
+      ...(l.stage !== stage ? { history: [...(Array.isArray(l.history) ? l.history : []), hist] } : {})
+    }));
+    if (moved.length) {
+      await window._fb.saveLeadsBatch(moved);
+      moved.forEach(m => { const l = (_leadsCache || []).find(x => x._docId === m._docId); if (l) { if (l.stage !== stage) auditMove(l, l.stage, stageLabel, 'pela cadência'); Object.assign(l, m); } });
+    }
+    let msg = '';
+    if (s.useCol) {
+      // Coloca agora todos os da coluna (inclusive os que acabaram de chegar da planilha).
+      const r = await window._fb.whatsapp('/cadence/enroll', act, { id: s.id });
+      const when = r.firstAt ? new Date(r.firstAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+      msg = `${r.enrolled} contato(s) entraram na cadência.${when ? ' 1ª mensagem: ' + when + '.' : ''}`;
+    } else {
+      // Só planilha: os cards novos (ou que voltaram para a coluna) entram na cadência na próxima rodada do servidor (em poucos minutos).
+      msg = `${created.length + moved.length} contato(s) entram na cadência nos próximos minutos.`;
+    }
+    auditLog(act, 'automacao', `Colocou contatos na cadência da API oficial "${s.auto.name || ''}" (${p.stats.map(st => `${st.label}: ${st.valid}`).join(', ')}; total ${p.total}${created.length ? `; ${created.length} lead(s) criados da planilha` : ''})`);
+    closeHuvenModal();
+    _cadAud = null;
+    showToast(msg + (created.length ? ` ${created.length} lead(s) novo(s) na coluna "${stageLabel}".` : ''), 'success', 9000);
+    if (typeof renderAutomacoesView === 'function' && document.getElementById('automacoes-view') && !_flow) renderAutomacoesView();
+  } catch (e) {
+    if (go) go.disabled = false;
+    fb.style.color = 'var(--red)';
+    fb.textContent = 'Erro: ' + e.message;
+  }
+}
+window.openCadenceAudience = openCadenceAudience;
 // Andamento da cadência (API oficial): o histórico vem do registro de cada lead (cloudCadence.log),
 // que guarda "Dia N HH:MM: modelo "x" enviado" ou "Dia N HH:MM: não enviado (motivo)".
 let _cpState = null;
@@ -20939,7 +21299,7 @@ function renderCampMode() {
   if (qr) qr.style.display = mode === 'cloud' ? 'none' : '';
   // Contatos e grupos do WhatsApp só existem nos números por QR Code.
   ['contacts', 'groups'].forEach(k => { const b = document.getElementById('camp-src-' + k); if (b) b.style.display = mode === 'cloud' ? 'none' : ''; });
-  if (mode === 'cloud' && ['contacts', 'groups'].includes(d.source)) selectCampaignSource('crm');
+  if (mode === 'cloud' && (campSrcOn('contacts') || campSrcOn('groups'))) { campaignSourceOff('contacts', true); campaignSourceOff('groups', true); if (!d.on.size) selectCampaignSource('crm', true); else { renderCampaignSourceButtons(); mergeCampaignAudience(); } }
   const hint = document.getElementById('camp-dispatch-hint');
   document.querySelectorAll('#campaign-editor [data-qronly]').forEach(el => { el.style.display = mode === 'cloud' ? 'none' : ''; });
   if (typeof renderCampaignSummary === 'function') renderCampaignSummary();
