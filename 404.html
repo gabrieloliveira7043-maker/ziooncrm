@@ -2689,6 +2689,13 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
       if (pass) await saveToVault(login, pass);
       return uid;
     },
+    // Só admin: quantos logins de equipe o login principal pode ter.
+    async setTeamLimit(login, n) {
+      const uid = await findUidByLogin(login);
+      if (!uid) throw new Error('Login não encontrado');
+      await updateDoc(doc(db, 'users', uid), { teamLimit: n });
+      await updateDoc(doc(db, 'extra_clients', login), { teamLimit: n }).catch(() => {});
+    },
     async setPartnerActs(uid, acts) {
       await updateDoc(doc(db, 'users', uid), { partnerActs: (acts || []).map(normalizeAct) });
     },
@@ -8851,10 +8858,17 @@ function subViewsAll(a, on) {
 function subLoginsHtml(parentLogin, team) {
   const subs = SUB_LOGINS.filter(x => x.parentLogin === parentLogin).sort((a, b) => String(a.name).localeCompare(String(b.name), 'pt-BR'));
   const pj = escapeJsString(parentLogin);
-  return `<div class="sub-head"><div class="sub-head-t">Logins extras <small>${subs.length ? subs.length + ' criado' + (subs.length > 1 ? 's' : '') : 'nenhum ainda'}</small></div>
-      ${team ? '' : `<button class="integ-btn" onclick="toggleSubLoginForm('${pj}', this)">+ Novo login</button>`}</div>
-    ${team ? '' : `<div class="sub-new" style="display:none;">
-      <div class="sub-new-t">Novo login para a equipe deste cliente</div>
+  // Equipe: o login principal do cliente cria até o limite que o admin define (teste grátis: nenhum).
+  const ti = team ? (_teamInfo || { used: subs.length, limit: 0, trial: false, loading: true }) : null;
+  const lim = team ? ti.limit : (TEAM_LIMITS[parentLogin] ?? 3);
+  const canCreate = !team || (!ti.loading && !ti.trial && subs.length < lim);
+  const trialAdm = !team && TEAM_LIMITS[parentLogin + '|trial'];
+  return `<div class="sub-head"><div class="sub-head-t">Logins extras <small>${team && ti.loading ? subs.length + ' criado' + (subs.length === 1 ? '' : 's') : subs.length + ' de ' + lim}${trialAdm ? ' · teste grátis: não cria logins' : ''}</small></div>
+      ${canCreate ? `<button class="integ-btn" onclick="toggleSubLoginForm('${pj}', this)">+ Novo login</button>` : ''}</div>
+    ${team ? '' : `<div class="sub-limit-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 10px;font-size:12.5px;color:var(--muted);">Quantos logins extras este cliente pode ter: <input type="number" min="0" max="1000" class="field-input sub-limit" value="${lim}" style="width:90px;"> <button class="integ-btn" onclick="saveTeamLimit('${pj}', this)">Salvar limite</button><span class="sub-msg"></span></div>`}
+    ${team && !ti.loading && ti.trial ? '<div class="sub-empty">Criar logins para a equipe fica disponível depois do período de teste.</div>' : team && !ti.loading && !canCreate ? `<div class="sub-empty">Você chegou ao limite de ${lim} login${lim === 1 ? '' : 's'} da equipe. Fale com a gente para liberar mais.</div>` : ''}
+    ${!canCreate ? '' : `<div class="sub-new" style="display:none;">
+      <div class="sub-new-t">${team ? 'Novo login para a sua equipe' : 'Novo login para a equipe deste cliente'}</div>
       <div class="sub-grid">
         <input class="field-input sub-name" placeholder="Nome da pessoa (ex.: Maria)">
         <input class="field-input sub-login mono" placeholder="Login (ex.: maria.petland)" autocomplete="off">
@@ -8884,7 +8898,7 @@ function subLoginsHtml(parentLogin, team) {
           <span class="sub-sep"></span>
           <input class="field-input sub-newpass mono" placeholder="Nova senha" autocomplete="off">
           <button class="integ-btn" onclick="resetSubLoginPass('${lj}', this)">Trocar senha</button>
-          ${team ? '' : `<button class="integ-btn danger" onclick="deleteSubLogin('${lj}', this)">Excluir</button>`}
+          <button class="integ-btn danger" onclick="deleteSubLogin('${lj}', this)">Excluir</button>
           <span class="sub-msg"></span>
         </div>
       </div>`;
@@ -8896,12 +8910,16 @@ function renderContaTeam() {
   const box = document.getElementById('conta-team');
   if (!box) return;
   const p = (window._fb && window._fb.getProfile && window._fb.getProfile()) || {};
-  const subs = (!isAdmin && p.login && !p.parentLogin) ? SUB_LOGINS.filter(x => x.parentLogin === p.login) : [];
-  if (!subs.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const main = !isAdmin && p.login && !p.parentLogin && p.role === 'client';
+  if (!main) { box.style.display = 'none'; box.innerHTML = ''; return; }
   box.style.display = 'block';
-  box.innerHTML = `<div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px;">Minha equipe</div>
-    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">Logins ligados ao seu. Você escolhe o que cada pessoa pode abrir e troca a senha. Para criar ou remover um login, fale com a Huven.</div>
+  const draw = () => {
+    box.innerHTML = `<div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px;">Minha equipe</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">Logins da sua equipe. Você cria, escolhe o que cada pessoa pode abrir, troca a senha e exclui.</div>
     <div class="sublogin-box" data-parent="${escapeHtml(p.login)}">${subLoginsHtml(p.login, true)}</div>`;
+  };
+  draw();
+  window._fb.teamCall('/team/limit', {}).then(r => { _teamInfo = r; draw(); }).catch(() => { _teamInfo = { used: 0, limit: 0, trial: false }; draw(); });
 }
 window.renderContaTeam = renderContaTeam;
 
@@ -8936,6 +8954,20 @@ function refreshSubBox(parentLogin) {
   const search = document.getElementById('admin-logins-search');
   if (search && search.value) filterAdminLogins(search.value);
 }
+// Admin: quantos logins de equipe o login principal do cliente pode ter.
+async function saveTeamLimit(parentLogin, btn) {
+  const row = btn.closest('.sub-limit-row');
+  const msg = row.querySelector('.sub-msg');
+  const n = Math.floor(Number(row.querySelector('.sub-limit').value));
+  if (!Number.isFinite(n) || n < 0 || n > 1000) { msg.style.color = 'var(--red)'; msg.textContent = 'Use um número de 0 a 1000.'; return; }
+  btn.disabled = true;
+  try {
+    await window._fb.setTeamLimit(parentLogin, n);
+    TEAM_LIMITS[parentLogin] = n;
+    showToast('Limite salvo: ' + n + ' login' + (n === 1 ? '' : 's') + ' de equipe.', 'success');
+    refreshSubBox(parentLogin);
+  } catch (e) { btn.disabled = false; msg.style.color = 'var(--red)'; msg.textContent = 'Erro: ' + e.message; }
+}
 function toggleSubLoginForm(parentLogin, btn) {
   const f = btn.closest('.sublogin-box').querySelector('.sub-new');
   f.style.display = f.style.display === 'none' ? 'block' : 'none';
@@ -8952,6 +8984,19 @@ async function createSubLogin(parentLogin, btn) {
   if (pass.length < 6) return subMsg(btn, 'A senha precisa ter pelo menos 6 caracteres.', false);
   if (!views.length) return subMsg(btn, 'Marque pelo menos uma área.', false);
   if (CREDENTIALS[login] || SUB_LOGINS.some(x => x.login === login)) return subMsg(btn, 'Esse login já existe.', false);
+  // Login principal do cliente: o servidor cria, conferindo o limite e o período de teste.
+  if (!isAdmin) {
+    btn.disabled = true; subMsg(btn, 'Criando...', true);
+    try {
+      const r = await window._fb.teamCall('/team/create', { login, name, password: pass, views });
+      SUB_LOGINS.push({ login: r.login, name, act: r.act, parentLogin, perms: r.perms });
+      _subVault[r.login] = pass;
+      _teamInfo = { used: r.used, limit: r.limit, trial: false };
+      showToast(`Login "${r.login}" criado para ${name}.`, 'success');
+      refreshSubBox(parentLogin);
+    } catch (e) { btn.disabled = false; subMsg(btn, 'Erro: ' + e.message, false); }
+    return;
+  }
   const cred = CREDENTIALS[parentLogin];
   if (!cred) return subMsg(btn, 'Cliente não encontrado.', false);
   btn.disabled = true; subMsg(btn, 'Criando...', true);
@@ -9056,7 +9101,8 @@ async function deleteSubLogin(login, btn) {
   if (!await showConfirm(`O login "${login}" deixa de entrar no CRM. Os leads e dados do cliente não são apagados.`, 'Excluir login', 'Excluir', true)) return;
   const parent = (SUB_LOGINS.find(x => x.login === login) || {}).parentLogin;
   try {
-    await window._fb.deleteExtraClient(login);
+    if (isAdmin) await window._fb.deleteExtraClient(login);
+    else { await window._fb.teamCall('/team/delete', { login }); if (_teamInfo) _teamInfo.used = Math.max(0, (_teamInfo.used || 1) - 1); }
     SUB_LOGINS = SUB_LOGINS.filter(x => x.login !== login);
     delete _subVault[login];
     showToast('Login excluído.', 'success');
@@ -28218,6 +28264,8 @@ const SUB_LOGIN_VIEWS = [
   ['automacoes', 'Automações'], ['capi', 'Conversões Meta'], ['historico', 'Histórico'], ['instagram', 'Instagram'], ['posts', 'Postagens'], ['prospeccao', 'Prospecção'], ['campanhas', 'Campanhas'], ['cadencia', 'Cadência'], ['relatorios', 'Relatórios'], ['whatsapp', 'Conexões'], ['integracoes', 'Integrações'], ['modelos', 'Modelos API oficial']
 ];
 let SUB_LOGINS = [];
+let TEAM_LIMITS = {}; // login principal -> quantos logins de equipe pode ter (sem número: 3)
+let _teamInfo = null; // Minha equipe: { used, limit, trial } vindo do servidor
 let _subVault = {};
 
 // null = sem restrição (admin e logins principais). Conta e Ajuda ficam sempre liberadas.
@@ -28263,6 +28311,11 @@ async function loadExtraClients() {
   try {
     const extras = await window._fb.getExtraClients();
     SUB_LOGINS = extras.filter(c => c.parentLogin);
+    extras.filter(c => !c.parentLogin).forEach(c => {
+      const n = Number(c.teamLimit);
+      TEAM_LIMITS[c.login] = c.teamLimit !== undefined && c.teamLimit !== null && Number.isFinite(n) ? n : 3;
+      if (c.trialUntil) TEAM_LIMITS[c.login + '|trial'] = c.trialUntil;
+    });
     extras.filter(c => !c.parentLogin).forEach(c => {
       (c.renamedFrom || []).forEach(old => { if (CREDENTIALS[old] && CREDENTIALS[old].act === c.act) delete CREDENTIALS[old]; });
       CREDENTIALS[c.login] = { pass: null, act: c.act };
