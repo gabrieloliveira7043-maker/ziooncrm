@@ -11814,8 +11814,8 @@ function relDefaultText(act, saleStages) {
   const base = _rel.defaultText || '📊 *Relatório · {cliente}*\n{periodo}\n\n*Tráfego pago*\n💰 Investimento: {investimento} {investimento_var}\n👥 Leads: {leads} {leads_var}\n🎯 Custo por lead: {cpl}\n💬 Conversas: {conversas}\n📈 CTR: {ctr} · CPM: {cpm}\n\n';
   const i = base.indexOf('*Comercial*');
   const head = i >= 0 ? base.slice(0, i) : base.replace(/\s*$/, '\n\n');
-  const lines = relStageVars(act).map(x => `• ${x.label}: {${x.v}}`);
-  return head + '*Comercial*\n🧲 Novos leads: {novos_leads} {novos_leads_var}\n' + lines.join('\n')
+  // As colunas do funil não entram sozinhas: cada uma é acrescentada pelo seletor "Funil", só as que o cliente quiser.
+  return head + '*Comercial*\n🧲 Novos leads: {novos_leads} {novos_leads_var}'
     + ((saleStages || []).length ? '\n✅ Vendas: {fechamentos} · {valor_vendido}' : '');
 }
 function openRelEditor(index) {
@@ -11861,13 +11861,13 @@ function relOpenEditorNow(index, act) {
   // Variáveis: um seletor por grupo (no lugar da lista de botões). Escolher insere no texto onde está o cursor.
   const stageVars = relStageVars(act);
   // Variáveis: um seletor por grupo, lado a lado. Escolher insere no texto onde está o cursor.
-  const varSel = (g, items) => `<label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);">${escapeHtml(g)}
-      <select class="field-input" onchange="if (this.value) { relInsertVar(this.value); this.value = ''; }">
+  const varSel = (g, items, fn) => `<label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);">${escapeHtml(g)}
+      <select class="field-input" onchange="if (this.value) { ${fn || 'relInsertVar'}(this.value); this.value = ''; }">
         <option value="">Inserir...</option>${items.map(([k, l]) => `<option value="${escapeHtml(k)}">${escapeHtml(l)}  {${escapeHtml(k)}}</option>`).join('')}
       </select></label>`;
   const chips = `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));gap:8px;margin-top:6px;">
       ${REL_VARS.map(([g, vs]) => varSel(g, vs)).join('')}
-      ${stageVars.length ? varSel('Funil', stageVars.map(x => [x.v, x.label])) : ''}
+      ${stageVars.length ? varSel('Funil', stageVars.map(x => [x.v, x.label]), 'relInsertStageLine') : ''}
     </div>
     ${stageVars.length ? '' : '<div style="font-size:11px;color:var(--muted);margin-top:4px;">O funil deste cliente ainda não tem colunas.</div>'}
     <div style="font-size:11px;color:var(--muted);margin-top:4px;">Coluna do funil: quantos leads entraram nela no período. Acrescente _total para quantos estão nela agora ({etapa_..._total}) ou _valor para a soma dos valores dos cards.</div>`;
@@ -11971,6 +11971,18 @@ function relPeriodMode() {
   const p = document.getElementById('rel-period').value;
   document.getElementById('rel-n').style.display = p === 'last_n' ? 'block' : 'none';
   document.getElementById('rel-range').style.display = p === 'custom' ? 'flex' : 'none';
+}
+// Coluna do funil: entra a linha pronta ("• Funil › Coluna: {etapa_...}") numa linha nova.
+function relInsertStageLine(v) {
+  const x = relStageVars(relAct()).find(y => y.v === v);
+  const ta = document.getElementById('rel-text');
+  if (!x || !ta) return relInsertVar(v);
+  const a = ta.selectionStart ?? ta.value.length, b = ta.selectionEnd ?? a;
+  const before = ta.value.slice(0, a), line = `• ${x.label}: {${v}}`;
+  const txt = (before && !before.endsWith('\n') ? '\n' : '') + line + '\n';
+  ta.value = before + txt + ta.value.slice(b).replace(/^\n/, '');
+  ta.focus(); ta.selectionStart = ta.selectionEnd = a + txt.length;
+  relPreviewSoon();
 }
 function relInsertVar(k) {
   const ta = document.getElementById('rel-text');
