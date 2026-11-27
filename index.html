@@ -9229,10 +9229,8 @@ function campaignDeliveryLine(c) {
   // Modelo sem "Contar cliques": a Meta informa só o total do modelo, sem dizer quem, com algumas horas de atraso.
   const metaClicked = Number(c.metaClicked) || 0, hasMeta = !!c.metaClicksAt;
   const metaTip = hasMeta ? `A Meta informa só o total do modelo antigo, sem dizer quem clicou, com algumas horas de atraso. Atualizado em ${new Date(c.metaClicksAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}.` : '';
-  let clickTxt = '';
-  if (clicked && hasMeta) clickTxt = ` · <span style="color:#a78bfa;" title="${metaTip}">${clicked + metaClicked} clicaram no link (${clicked} com o modelo que conta cliques + ${metaClicked} antes da troca, total da Meta)</span>`;
-  else if (clicked) clickTxt = ` · <span style="color:#a78bfa;" title="${clicks} clique(s) no total">${clicked} clicaram no link${del ? ` (${Math.round(clicked * 100 / del)}% dos entregues)` : ''}</span>`;
-  else if (hasMeta) clickTxt = ` · <span style="color:#a78bfa;" title="${metaTip}">${metaClicked} clicaram no link (total da Meta)</span>`;
+  // Só cliques de pessoas, conferidos um a um pelo CRM (o total da Meta inclui o robô dela e não aparece).
+  const clickTxt = clicked ? ` · <span style="color:#a78bfa;" title="Pessoas que tocaram no botão do link (cliques do robô da Meta não contam).${c.templateSwitchedAt || hasMeta ? ' Conta só os envios com o modelo que conta cliques.' : ''}">${clicked} clicaram no link${del && !c.templateSwitchedAt && !hasMeta ? ` (${Math.round(clicked * 100 / del)}% dos entregues)` : ''}</span>` : '';
   const taps = c.taps || {}, tapLabels = c.tapLabels || {};
   const tapKeys = Object.keys(taps).filter(k => Number(taps[k]) > 0).sort();
   const metaTxt = tapKeys.length ? ` · <span style="color:#38bdf8;">Botões: ${tapKeys.map(k => `${escapeHtml(tapLabels[k] || 'Botão ' + (Number(k.slice(1)) + 1))} ${Number(taps[k])}`).join(', ')}</span>` : '';
