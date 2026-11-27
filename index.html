@@ -11781,7 +11781,7 @@ function renderRelList() {
 // Colunas de todos os funis do cliente, com a chave "funil|coluna" usada pelo servidor.
 function relStageOptions(act) {
   const out = [];
-  pipelineList(act).forEach(p => (getStages(act, p.id) || []).forEach(s => out.push({ key: `${p.id}|${s.id}`, label: (pipelineList(act).length > 1 ? p.name + ' › ' : '') + (s.label || s.id) })));
+  pipelineList(act).forEach(p => (getStages(act, p.id) || []).forEach(s => out.push({ key: `${p.id}|${s.id}`, label: (pipelineList(act).length > 1 ? p.name + ' › ' : '') + (s.label || s.id), pipe: p.name || p.id, stage: s.label || s.id })));
   return out;
 }
 function relDefaultStages(act) {
@@ -11838,9 +11838,26 @@ function relOpenEditorNow(index, act) {
   d.id = base ? base.id : '';
   ensurePipelines(act, () => {});
   const opt = (list, val) => list.map(([v, l]) => `<option value="${v}" ${v === val ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('');
-  const stageBox = (field, title) => `<div style="margin-top:8px;"><div style="font-size:12px;color:var(--muted);margin-bottom:4px;">${title}</div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;">${relStageOptions(act).map(o => `<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;border:1px solid var(--border);border-radius:999px;padding:3px 9px;cursor:pointer;">
-      <input type="checkbox" class="rel-st-${field}" value="${escapeHtml(o.key)}" ${(d[field] || []).includes(o.key) ? 'checked' : ''}>${escapeHtml(o.label)}</label>`).join('')}</div></div>`;
+  // Seletor de colunas: campo com as escolhidas e uma lista com busca, separada por funil (as caixas continuam sendo lidas por classe).
+  const stageBox = (field, title) => {
+    const groups = [];
+    relStageOptions(act).forEach(o => { let g = groups.find(x => x.name === o.pipe); if (!g) groups.push(g = { name: o.pipe, items: [] }); g.items.push(o); });
+    return `<div style="margin-top:8px;"><div style="font-size:12px;color:var(--muted);margin-bottom:4px;">${title}</div>
+    <div class="rel-ms" id="rel-ms-${field}" style="position:relative;">
+      <div onclick="relMsToggle('${field}')" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:40px;padding:6px 34px 6px 10px;border:1px solid var(--border);border-radius:10px;background:var(--surface2, transparent);cursor:pointer;position:relative;">
+        <span id="rel-ms-chips-${field}" style="display:contents;"></span>
+        <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:12px;">▾</span>
+      </div>
+      <div id="rel-ms-pop-${field}" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;background:var(--surface-solid, var(--surface));border:1px solid var(--border2, var(--border));border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.35);padding:8px;max-height:300px;overflow:auto;">
+        <input class="field-input" placeholder="Buscar coluna ou funil..." oninput="relMsFilter('${field}', this.value)" style="margin-bottom:6px;">
+        ${groups.map(g => `<div class="rel-ms-group">
+          ${groups.length > 1 ? `<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:6px 6px 2px;">${escapeHtml(g.name)}</div>` : ''}
+          ${g.items.map(o => `<label class="rel-ms-opt" data-s="${escapeHtml((o.pipe + ' ' + o.stage).toLowerCase())}" style="display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 8px;border-radius:6px;cursor:pointer;color:var(--text);">
+            <input type="checkbox" class="rel-st-${field}" value="${escapeHtml(o.key)}" data-label="${escapeHtml(o.label)}" ${(d[field] || []).includes(o.key) ? 'checked' : ''} onchange="relMsChips('${field}')">${escapeHtml(o.stage)}</label>`).join('')}
+        </div>`).join('')}
+      </div>
+    </div></div>`;
+  };
   const chips = REL_VARS.map(([g, vs]) => `<div style="margin-top:6px;"><span style="font-size:11px;color:var(--muted);margin-right:4px;">${g}:</span>${vs.map(([k, l]) =>
     `<button type="button" class="btn-cfg" style="width:auto;margin:2px;padding:2px 8px;font-size:11px;" onclick="relInsertVar('${k}')" title="{${k}}">${escapeHtml(l)}</button>`).join('')}</div>`).join('')
     + `<div style="margin-top:6px;"><span style="font-size:11px;color:var(--muted);margin-right:4px;">Funil:</span>${relStageVars(act).map(x =>
@@ -11887,6 +11904,48 @@ function relOpenEditorNow(index, act) {
       <button class="btn-save" style="width:auto;padding:10px 18px;" onclick="relSave()">Salvar</button>
     </div>`, 720);
   relDestMode(); relFreqMode(); relPeriodMode(); relLoadGroups(); relPreview();
+  relMsChips('saleStages', true);
+}
+
+// Seletor de colunas do relatório.
+function relMsToggle(field, open) {
+  const pop = document.getElementById('rel-ms-pop-' + field);
+  if (!pop) return;
+  const show = open == null ? pop.style.display === 'none' : !!open;
+  pop.style.display = show ? 'block' : 'none';
+  if (show) {
+    const inp = pop.querySelector('input.field-input');
+    if (inp) setTimeout(() => inp.focus(), 0);
+    setTimeout(() => document.addEventListener('mousedown', function close(e) {
+      const box = document.getElementById('rel-ms-' + field);
+      if (box && box.contains(e.target)) return;
+      relMsToggle(field, false);
+      document.removeEventListener('mousedown', close);
+    }), 0);
+  }
+}
+function relMsFilter(field, q) {
+  q = String(q || '').toLowerCase().trim();
+  const pop = document.getElementById('rel-ms-pop-' + field);
+  if (!pop) return;
+  pop.querySelectorAll('.rel-ms-group').forEach(g => {
+    let any = false;
+    g.querySelectorAll('.rel-ms-opt').forEach(o => { const ok = !q || o.dataset.s.includes(q); o.style.display = ok ? 'flex' : 'none'; if (ok) any = true; });
+    g.style.display = any ? '' : 'none';
+  });
+}
+function relMsUncheck(field, value, ev) {
+  if (ev) ev.stopPropagation();
+  const box = [...document.querySelectorAll('.rel-st-' + field)].find(x => x.value === value);
+  if (box) { box.checked = false; relMsChips(field); }
+}
+function relMsChips(field, quiet) {
+  const el = document.getElementById('rel-ms-chips-' + field);
+  if (!el) return;
+  const sel = [...document.querySelectorAll('.rel-st-' + field + ':checked')];
+  el.innerHTML = sel.length ? sel.map(x => `<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;background:var(--surface3, rgba(127,127,127,.15));color:var(--text);border-radius:999px;padding:3px 6px 3px 10px;">${escapeHtml(x.dataset.label || x.value)}<button type="button" title="Tirar" onclick="relMsUncheck('${field}', '${escapeJsString(x.value)}', event)" style="border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:13px;line-height:1;padding:0 2px;">×</button></span>`).join('')
+    : '<span style="font-size:13px;color:var(--muted);">Escolher colunas...</span>';
+  if (!quiet) relPreviewSoon();
 }
 
 function relDestMode() {
