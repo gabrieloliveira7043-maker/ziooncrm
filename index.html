@@ -11849,7 +11849,7 @@ function relOpenEditorNow(index, act) {
         <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:12px;">▾</span>
       </div>
       <div id="rel-ms-pop-${field}" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;background:var(--surface-solid, var(--surface));border:1px solid var(--border2, var(--border));border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.35);padding:8px;max-height:300px;overflow:auto;">
-        <input class="field-input" placeholder="Buscar coluna ou funil..." oninput="relMsFilter('${field}', this.value)" style="margin-bottom:6px;">
+        <div style="position:sticky;top:-8px;z-index:1;margin:-8px -8px 4px;padding:8px;background:var(--surface-solid, var(--surface));"><input class="field-input" placeholder="Buscar coluna ou funil..." oninput="relMsFilter('${field}', this.value)"></div>
         ${groups.map(g => `<div class="rel-ms-group">
           ${groups.length > 1 ? `<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:6px 6px 2px;">${escapeHtml(g.name)}</div>` : ''}
           ${g.items.map(o => `<label class="rel-ms-opt" data-s="${escapeHtml((o.pipe + ' ' + o.stage).toLowerCase())}" style="display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 8px;border-radius:6px;cursor:pointer;color:var(--text);">
