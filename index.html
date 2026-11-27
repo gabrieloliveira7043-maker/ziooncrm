@@ -2434,6 +2434,14 @@ html.is-partner #admin-logins-list .admin-login-card > div:has(> [onclick^="save
         throw err;
       }
       const data = snap.data();
+      // Teste grátis vencido: não entra (o servidor também recusa).
+      if (data.trialUntil && Date.parse(data.trialUntil) < Date.now()) {
+        currentProfile = null;
+        await signOut(auth);
+        const err = new Error('Teste encerrado');
+        err.code = 'huven/trial-ended';
+        throw err;
+      }
       currentProfile = {
         uid: user.uid,
         ...data,
@@ -6783,6 +6791,7 @@ async function doLogin() {
       code === 'auth/too-many-requests' ? 'Muitas tentativas. Aguarde alguns minutos e tente de novo.'
       : code === 'auth/network-request-failed' ? 'Sem conexão. Verifique a internet e tente de novo.'
       : code === 'huven/no-profile' ? 'Login sem acesso configurado. Fale com a Zioon.'
+      : code === 'huven/trial-ended' ? 'O seu teste de 15 dias terminou. Fale com a gente para continuar usando o CRM.'
       : 'Usuário ou senha incorretos.'
     );
     if (loginBtn) { loginBtn.textContent = 'Entrar'; loginBtn.disabled = false; }
