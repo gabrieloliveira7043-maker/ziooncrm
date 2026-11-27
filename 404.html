@@ -11860,11 +11860,15 @@ function relOpenEditorNow(index, act) {
   };
   // Variáveis: um seletor por grupo (no lugar da lista de botões). Escolher insere no texto onde está o cursor.
   const stageVars = relStageVars(act);
-  const chips = `<select class="field-input" style="margin-top:6px;" onchange="if (this.value) { relInsertVar(this.value); this.value = ''; }">
-      <option value="">Inserir variável...</option>
-      ${REL_VARS.map(([g, vs]) => `<optgroup label="${escapeHtml(g)}">${vs.map(([k, l]) => `<option value="${escapeHtml(k)}">${escapeHtml(l)}  {${escapeHtml(k)}}</option>`).join('')}</optgroup>`).join('')}
-      ${stageVars.length ? `<optgroup label="Funil">${stageVars.map(x => `<option value="${escapeHtml(x.v)}">${escapeHtml(x.label)}  {${escapeHtml(x.v)}}</option>`).join('')}</optgroup>` : ''}
-    </select>
+  // Variáveis: um seletor por grupo, lado a lado. Escolher insere no texto onde está o cursor.
+  const varSel = (g, items) => `<label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);">${escapeHtml(g)}
+      <select class="field-input" onchange="if (this.value) { relInsertVar(this.value); this.value = ''; }">
+        <option value="">Inserir...</option>${items.map(([k, l]) => `<option value="${escapeHtml(k)}">${escapeHtml(l)}  {${escapeHtml(k)}}</option>`).join('')}
+      </select></label>`;
+  const chips = `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));gap:8px;margin-top:6px;">
+      ${REL_VARS.map(([g, vs]) => varSel(g, vs)).join('')}
+      ${stageVars.length ? varSel('Funil', stageVars.map(x => [x.v, x.label])) : ''}
+    </div>
     ${stageVars.length ? '' : '<div style="font-size:11px;color:var(--muted);margin-top:4px;">O funil deste cliente ainda não tem colunas.</div>'}
     <div style="font-size:11px;color:var(--muted);margin-top:4px;">Coluna do funil: quantos leads entraram nela no período. Acrescente _total para quantos estão nela agora ({etapa_..._total}) ou _valor para a soma dos valores dos cards.</div>`;
   const lab = t => `<div style="font-size:12px;font-weight:600;color:var(--text);margin:14px 0 6px;">${t}</div>`;
