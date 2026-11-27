@@ -18554,7 +18554,7 @@ async function loadChatMedia(id, type) {
   _chatMedia[id] = { loading: true };
   renderChatMessages();
   try {
-    const r = await window._fb.whatsapp('/whatsapp/chat-media', _chatAct, { messageId: id, line: waLineOfKey(_chatOpenKey) });
+    const r = await window._fb.whatsapp('/whatsapp/chat-media', _chatAct, { messageId: id, line: waLineOfKey(_chatOpenKey), chatKey: _chatOpenKey });
     const bytes = Uint8Array.from(atob(r.base64), ch => ch.charCodeAt(0));
     const mime = type === 'audio' && /ogg|opus/.test(r.mimetype) ? 'audio/ogg' : r.mimetype;
     _chatMedia[id] = { url: URL.createObjectURL(new Blob([bytes], { type: mime })) };
